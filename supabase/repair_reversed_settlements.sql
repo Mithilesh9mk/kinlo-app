@@ -1,101 +1,111 @@
 -- Kinlo · repair settlements stored with the payer reversed
 --
--- WHY THE HOME TOTAL LOOKS TOO BIG
+-- WHY THE HOME TOTAL IS TOO BIG
 --
 -- Before migration 0005, settle-up.tsx wrote EVERY settlement with
 -- paid_by = the caller, regardless of who actually handed over the money.
 -- "paid_by = X, split.user_id = Y" means "Y owes X", so a settlement where
--- the friend paid you back got stored as though YOU paid THEM — which adds
--- to the debt instead of clearing it.
+-- the friend paid you back got stored as though YOU paid THEM — adding to the
+-- debt instead of clearing it.
 --
--- The status breakdown shows the scale of it:
+-- The status breakdown showed the arithmetic:
 --     active  expense     15 rows   ₹5134.00
 --     active  settlement  10 rows   ₹1340.50
 --     settled expense      1 row    ₹  26.50
 --     settled settlement   2 rows   ₹ 100.00
+--   5134.00 + 26.50 + 1340.50 = ₹6501, within rounding of the ₹6,400 on Home.
 --
--- 5134.00 + 26.50 + 1340.50 = ₹6501 — within rounding of the ₹6,400 on Home.
--- The settlements are being ADDED to the debt rather than subtracted from it.
--- 0005 fixed how new settlements are written; these older rows still carry the
--- wrong payer and must be corrected in place.
+-- HOW A REVERSED ROW IS IDENTIFIED
 --
--- Run block 1, READ THE ROWS, and only then decide on block 2.
+-- settle-up.tsx writes the description before the payer, and the description
+-- always names whoever actually paid:
+--     friend paid you  ->  "<Friend Name> settled ₹X ... with You."
+--     you paid friend  ->  "You settled ₹X ... with <Friend Name>."
+--
+-- So a row is reversed when the description names someone OTHER than the
+-- recorded payer. Matching on that — rather than on "the friend paid" alone —
+-- matters: settlements written since 0005 already store the correct payer,
+-- and a blanket flip would break those. This predicate leaves them alone.
 
 -- ---------------------------------------------------------------------------
--- 1. Candidates: settlements whose description says the FRIEND paid, but
---    whose paid_by is someone else. Descriptions come from settle-up.tsx:
---      friend paid you  -> "<Name> settled ₹X with You."
---      you paid friend  -> "You settled ₹X ..."
+-- 1. INSPECT — run this alone and read every row before going further.
 -- ---------------------------------------------------------------------------
 SELECT
   t.id,
-  t.created_at::date          AS date,
+  t.created_at::date  AS date,
   t.amount,
-  payer.full_name             AS currently_recorded_payer,
-  debtor.full_name            AS currently_recorded_ower,
-  t.description
+  payer.full_name     AS recorded_payer,
+  ower.full_name      AS recorded_ower,
+  t.description,
+  CASE
+    WHEN t.description LIKE 'You settled%'                 THEN 'you paid — payer must be you'
+    WHEN t.description LIKE payer.full_name || '%'         THEN 'OK — description matches payer'
+    ELSE                                                        'REVERSED — description names someone else'
+  END AS verdict
 FROM public.transactions t
 JOIN public.transaction_splits s ON s.transaction_id = t.id
-LEFT JOIN public.users payer  ON payer.id  = t.paid_by
-LEFT JOIN public.users debtor ON debtor.id = s.user_id
+LEFT JOIN public.users payer ON payer.id = t.paid_by
+LEFT JOIN public.users ower  ON ower.id  = s.user_id
+WHERE t.type = 'settlement'
+  AND t.status IN ('active', 'settled')
+ORDER BY t.created_at DESC;
+
+-- Expect a mix. Only rows marked 'REVERSED' will be touched by block 2.
+-- If NOTHING is marked REVERSED, stop — the inflation is coming from
+-- somewhere else and block 2 would do nothing (or harm).
+
+
+-- ---------------------------------------------------------------------------
+-- 2. COUNT — how many rows would change, and by how much
+-- ---------------------------------------------------------------------------
+SELECT COUNT(*) AS rows_to_repair, SUM(t.amount) AS total_amount
+FROM public.transactions t
+JOIN public.transaction_splits s ON s.transaction_id = t.id
+LEFT JOIN public.users payer ON payer.id = t.paid_by
 WHERE t.type = 'settlement'
   AND t.status IN ('active', 'settled')
   AND t.description NOT LIKE 'You settled%'
-ORDER BY t.created_at DESC;
-
--- Read the output. For each row the description names who actually paid.
--- If `currently_recorded_payer` is NOT that person, the row is reversed.
--- If every row already looks right, STOP — the inflation is coming from
--- something else and block 2 would corrupt correct data.
+  AND t.description NOT LIKE payer.full_name || '%';
 
 
 -- ---------------------------------------------------------------------------
--- 2. THE REPAIR — only run after confirming block 1's rows are genuinely
---    reversed. Swaps payer and debtor on those settlements, then rebuilds
---    every affected balance.
+-- 3. THE REPAIR — only after blocks 1 and 2 look right.
 --
 --    This rewrites financial history. Take a backup first:
---    Supabase Dashboard -> Database -> Backups, or run block 1 and save the
---    output so the change can be reversed by hand.
+--    Dashboard -> Database -> Backups. The _settlement_repair_log table it
+--    creates records the previous values so a mistake can be undone by hand.
+--
+--    Uncomment the block below to run it.
 -- ---------------------------------------------------------------------------
-/*  -- uncomment to run
+/*
 
 BEGIN;
 
--- Snapshot the rows being changed, so the repair can be audited afterwards.
-CREATE TABLE IF NOT EXISTS public._settlement_repair_log AS
-SELECT
-  t.id            AS transaction_id,
-  t.paid_by       AS old_paid_by,
-  s.user_id       AS old_split_user,
-  t.amount,
-  t.description,
-  NOW()           AS repaired_at
+CREATE TABLE IF NOT EXISTS public._settlement_repair_log (
+  transaction_id  UUID,
+  old_paid_by     UUID,
+  old_split_user  UUID,
+  amount          NUMERIC,
+  description     TEXT,
+  repaired_at     TIMESTAMPTZ
+);
+
+-- The rows to flip, resolved once so the log and the updates cannot disagree.
+CREATE TEMP TABLE _swap ON COMMIT DROP AS
+SELECT t.id AS tx_id, t.paid_by AS old_payer, s.user_id AS old_ower,
+       t.amount, t.description
 FROM public.transactions t
 JOIN public.transaction_splits s ON s.transaction_id = t.id
+LEFT JOIN public.users payer ON payer.id = t.paid_by
 WHERE t.type = 'settlement'
   AND t.status IN ('active', 'settled')
   AND t.description NOT LIKE 'You settled%'
-WITH NO DATA;
+  AND t.description NOT LIKE payer.full_name || '%';
 
 INSERT INTO public._settlement_repair_log
-SELECT t.id, t.paid_by, s.user_id, t.amount, t.description, NOW()
-FROM public.transactions t
-JOIN public.transaction_splits s ON s.transaction_id = t.id
-WHERE t.type = 'settlement'
-  AND t.status IN ('active', 'settled')
-  AND t.description NOT LIKE 'You settled%';
+SELECT tx_id, old_payer, old_ower, amount, description, NOW() FROM _swap;
 
--- Swap: the person currently recorded as owing becomes the payer, and vice
--- versa. Done via a temp mapping because both sides change at once.
-CREATE TEMP TABLE _swap ON COMMIT DROP AS
-SELECT t.id AS tx_id, t.paid_by AS old_payer, s.user_id AS old_ower
-FROM public.transactions t
-JOIN public.transaction_splits s ON s.transaction_id = t.id
-WHERE t.type = 'settlement'
-  AND t.status IN ('active', 'settled')
-  AND t.description NOT LIKE 'You settled%';
-
+-- Swap payer and debtor.
 UPDATE public.transaction_splits s
 SET user_id = w.old_payer
 FROM _swap w
@@ -111,19 +121,18 @@ COMMIT;
 -- Rebuild every balance from the corrected rows.
 SELECT * FROM public.admin_rebuild_all_settlements();
 
+-- Confirm the repair.
+SELECT COUNT(*) AS rows_repaired FROM public._settlement_repair_log;
+
 */
 
 
 -- ---------------------------------------------------------------------------
--- 3. SEPARATE ISSUE — 3 'pending' expenses worth ₹4172.50 count toward
---    nothing right now.
+-- 4. SEPARATE ISSUE — 3 'pending' expenses worth ₹4172.50 count toward nothing
 -- ---------------------------------------------------------------------------
 -- Migration 0006 counts only status IN ('active','settled'). I assumed
--- 'pending' was an unused legacy value from the pre-0001 schema; your data
--- shows otherwise — there are 3 real expense rows sitting in it, and none of
--- that ₹4172.50 appears in anyone's balance.
---
--- Inspect them before deciding:
+-- 'pending' was an unused legacy value from the pre-0001 schema; the data says
+-- otherwise. None of that ₹4172.50 appears in anyone's balance right now.
 SELECT
   t.created_at::date AS date,
   t.amount,
@@ -134,8 +143,7 @@ LEFT JOIN public.users payer ON payer.id = t.paid_by
 WHERE t.status = 'pending'
 ORDER BY t.created_at DESC;
 --
--- If they are ordinary expenses that predate the 'active' convention, they
--- should count, and the fix is to promote them:
+-- Ordinary expenses that predate the 'active' convention should count:
 --     UPDATE public.transactions SET status = 'active' WHERE status = 'pending';
 --     SELECT * FROM public.admin_rebuild_all_settlements();
--- If they are drafts or abandoned entries, leave them excluded.
+-- Drafts or abandoned entries should stay excluded.

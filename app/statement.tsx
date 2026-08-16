@@ -31,6 +31,9 @@ export default function StatementScreen() {
   
   const [transactions, setTransactions] = useState<StatementTx[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed fetch used to render as "No transactions", which is
+  // indistinguishable from genuinely having none.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('All');
   const [runningNetBalance, setRunningNetBalance] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -66,11 +69,18 @@ export default function StatementScreen() {
           type,
           transaction_splits ( user_id, share_amount )
         `)
-        .or('paid_by.eq.' + userId + ',transaction_splits.user_id.eq.' + userId)
+        // No .or() on transaction_splits. Filtering an embedded table inside a
+        // top-level .or() only works in PostgREST when the embed is an inner
+        // join; otherwise it can fail and the screen renders as "no
+        // transactions". It is redundant anyway — RLS (transactions_select,
+        // migrations/0002) already limits rows to ones the caller paid for, is
+        // a group member of, or has a split in, and the code below filters to
+        // this user regardless.
         .order('created_at', { ascending: false });
 
       if (error || !txs) {
         console.error("Statement fetch error:", error);
+        setLoadError(error?.message || 'Could not load your statement.');
         setLoading(false);
         return;
       }
@@ -371,6 +381,14 @@ export default function StatementScreen() {
           {loading ? (
             <View className="py-10 items-center justify-center">
               <ActivityIndicator size="large" color="#004c22" />
+            </View>
+          ) : loadError ? (
+            <View className="p-8 items-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl mt-4">
+              <View className="w-12 h-12 rounded-full bg-error-container items-center justify-center mb-3">
+                <MaterialIcons name="error-outline" size={24} color="#b91c1c" />
+              </View>
+              <Text className="font-semibold text-on-surface text-base mb-1">Could not load transactions</Text>
+              <Text className="text-sm text-on-surface-variant/80 text-center">{loadError}</Text>
             </View>
           ) : filtered.length === 0 ? (
             <View className="p-8 items-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl mt-4">

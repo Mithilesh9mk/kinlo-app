@@ -4,6 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { fetchBalances } from '../../lib/balances';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -190,34 +191,21 @@ export default function ProfileScreen() {
         setBalanceLoading(false);
         return;
       }
-      const userId = authData.user.id;
-
-      // What others owe me
-      const { data: myTxs, error: myTxsError } = await supabase
-        .from('transactions')
-        .select('id, transaction_splits(user_id, share_amount)')
-        .eq('paid_by', userId);
-
-      if (myTxsError) throw myTxsError;
+      // Read the ledger through the shared module rather than re-deriving
+      // totals from raw splits. The previous version summed gross amounts
+      // (every share anyone ever owed you, never netted against what you paid
+      // back), so it disagreed with every other screen even when it worked —
+      // and its `transactions!inner(...)` embedded filter is the PostgREST
+      // pattern that was failing outright and rendering as "Couldn't load
+      // your balance".
+      const { friends } = await fetchBalances();
 
       let totalOwedCalc = 0;
-      for (const tx of myTxs ?? []) {
-        for (const s of ((tx as any).transaction_splits || [])) {
-          if (s.user_id !== userId) totalOwedCalc += Number(s.share_amount) || 0;
-        }
-      }
-
-      // What I owe others
-      const { data: mySplits, error: mySplitsError } = await supabase
-        .from('transaction_splits')
-        .select('share_amount, transactions!inner(paid_by)')
-        .eq('user_id', userId)
-        .neq('transactions.paid_by', userId);
-
-      if (mySplitsError) throw mySplitsError;
-
       let totalOweCalc = 0;
-      for (const s of mySplits ?? []) totalOweCalc += Number(s.share_amount) || 0;
+      for (const f of friends) {
+        if (f.balance > 0) totalOwedCalc += f.balance;
+        else if (f.balance < 0) totalOweCalc += -f.balance;
+      }
 
       setTotalOwed(totalOwedCalc);
       setTotalOwe(totalOweCalc);
