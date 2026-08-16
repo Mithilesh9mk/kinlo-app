@@ -8,6 +8,7 @@ import * as Contacts from 'expo-contacts/legacy';
 import { useGlobalBalances } from '../../context/GlobalBalancesContext';
 import { supabase } from '../../lib/supabase';
 import { getRelatedUsers } from '../../lib/friendFetcher';
+import { fetchBalances } from '../../lib/balances';
 import AddFriendModal from '../../components/AddFriendModal';
 
 interface Friend {
@@ -63,55 +64,25 @@ export default function HomeScreen() {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [monthlySpend, setMonthlySpend] = useState(0);
 
-  // Fetch friends from DB — runs every time screen comes into focus
+  // Balances come from the shared snapshot (lib/balances.ts) so this list and
+  // the headline total below it are the same numbers. This used to run its own
+  // ledger query with `.is('group_id', null)`, which quietly disagreed with the
+  // total and with the settle-up picker.
   const fetchFriends = useCallback(async () => {
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-      if (!userId) return;
-
-      // Get related users only (potential friends)
-      const allUsers = await getRelatedUsers(userId, 'id, full_name, avatar_url, phone_number');
-
-      const { data: settlements } = await supabase
-        .from('simplified_settlements')
-        .select('debtor_id, creditor_id, amount')
-        .is('group_id', null)
-        .or(`debtor_id.eq.${userId},creditor_id.eq.${userId}`);
-
-      const friendBalances: Record<string, number> = {};
-      if (settlements) {
-        for (const s of settlements) {
-          const isDebtorMe = s.debtor_id === userId;
-          const friendId = isDebtorMe ? s.creditor_id : s.debtor_id;
-          const amount = Number(s.amount) || 0;
-          if (isDebtorMe) {
-            friendBalances[friendId] = (friendBalances[friendId] || 0) - amount;
-          } else {
-            friendBalances[friendId] = (friendBalances[friendId] || 0) + amount;
-          }
-        }
-      }
-
-      // Build friends list from all known users + balance data
-      const friends: Friend[] = (allUsers || []).map((p) => {
-        const balance = friendBalances[p.id] || 0;
-        const name = p.full_name || 'Unknown';
-        const shortName = name.split(' ')[0];
-        const initials = name.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase().slice(0, 2);
-        return {
-          id: p.id,
-          name: shortName,
-          fullName: name,
-          phoneNumber: p.phone_number || '',
-          balance: Math.abs(balance),
-          status: balance > 0 ? 'owed' as const : balance < 0 ? 'owes' as const : 'settled' as const,
-          image: p.avatar_url || undefined,
-          initials,
-        };
-      });
-
-      setFriendsList(friends);
+      const { friends } = await fetchBalances();
+      setFriendsList(
+        friends.map((f) => ({
+          id: f.id,
+          name: f.name,
+          fullName: f.fullName,
+          phoneNumber: f.phoneNumber,
+          balance: Math.abs(f.balance),
+          status: f.status,
+          image: f.avatarUrl,
+          initials: f.initials,
+        }))
+      );
     } catch (e) {
       console.error('Failed to fetch friends:', e);
     }
@@ -379,26 +350,21 @@ export default function HomeScreen() {
   return (
     <View className="flex-1 bg-surface">
       {/* Header */}
-      <View 
-        className="px-6 pb-4 flex-row justify-between items-center bg-surface/90 z-20"
+      {/* The avatar and the settings gear that used to sit here both pushed
+          /profile, which the Profile tab already reaches — three controls,
+          one destination. The tab is now the single way in. The avatar stays
+          as identity, not navigation. */}
+      <View
+        className="px-6 pb-4 flex-row items-center bg-surface/90 z-20"
         style={{ paddingTop: Math.max(insets.top, 24) }}
       >
-        <TouchableOpacity 
-          onPress={() => router.push('/profile')}
-          className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm"
-        >
-          <Image 
-            source={{ uri: userAvatar }} 
+        <View className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
+          <Image
+            source={{ uri: userAvatar }}
             className="w-full h-full"
           />
-        </TouchableOpacity>
-        <Text className="font-bold text-2xl text-primary tracking-tight">Kinlo</Text>
-        <TouchableOpacity 
-          onPress={() => router.push('/profile')}
-          className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95"
-        >
-          <MaterialIcons name="settings" size={22} color="#404940" />
-        </TouchableOpacity>
+        </View>
+        <Text className="font-bold text-2xl text-primary tracking-tight ml-3">Kinlo</Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 120 }}>

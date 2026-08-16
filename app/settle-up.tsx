@@ -7,6 +7,7 @@ import { useGlobalBalances } from '../context/GlobalBalancesContext';
 import { dispatchPushNotification } from '../lib/pushDispatcher';
 import { recordSettlement } from '../lib/recalculateSettlements';
 import { newTransactionId } from '../lib/idempotency';
+import { fetchBalances } from '../lib/balances';
 
 interface PaymentMethod {
   id: string;
@@ -81,6 +82,7 @@ export default function SettleUpScreen() {
   // Selector state for no-param entrance
   const [friendsList, setFriendsList] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
+  const [friendsError, setFriendsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedFriendId === 'unknown') {
@@ -88,57 +90,28 @@ export default function SettleUpScreen() {
     }
   }, [selectedFriendId]);
 
+  // Reads the shared snapshot rather than running its own ledger query. The
+  // old version filtered `.is('group_id', null)`, so group debts were missing
+  // here while Home's total included them — Home showed money owed and this
+  // screen said there was nothing to settle.
   const fetchActiveFriends = async () => {
     setLoadingFriends(true);
+    setFriendsError(null);
     try {
-      const { supabase } = await import('../lib/supabase');
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-      if (!userId) return;
-
-      const { getRelatedUsers } = await import('../lib/friendFetcher');
-      const allUsers = await getRelatedUsers(userId, 'id, full_name, avatar_url, phone_number');
-
-      // Use pre-computed simplified_settlements instead of scanning all transactions
-      const { data: settlements } = await supabase
-        .from('simplified_settlements')
-        .select('debtor_id, creditor_id, amount')
-        .is('group_id', null)
-        .or(`debtor_id.eq.${userId},creditor_id.eq.${userId}`);
-
-      const friendBalances: Record<string, number> = {};
-      if (settlements) {
-        for (const s of settlements) {
-          if (s.creditor_id === userId) {
-            // Friend owes me
-            friendBalances[s.debtor_id] = (friendBalances[s.debtor_id] || 0) + Number(s.amount);
-          } else if (s.debtor_id === userId) {
-            // I owe friend
-            friendBalances[s.creditor_id] = (friendBalances[s.creditor_id] || 0) - Number(s.amount);
-          }
-        }
-      }
-
-      const activeFriends = (allUsers || [])
-        .map((p) => {
-          const balance = friendBalances[p.id] || 0;
-          const initials = p.full_name
-            ? p.full_name.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase().slice(0, 2)
-            : 'U';
-          return {
-            id: p.id,
-            name: p.full_name || 'Unknown',
-            balance: Math.abs(balance),
-            status: balance > 0 ? 'owed' : balance < 0 ? 'owes' : 'settled',
-            avatarUrl: p.avatar_url,
-            initials,
-          };
-        })
-        .filter(f => f.balance > 0.01);
-
-      setFriendsList(activeFriends);
-    } catch (err) {
+      const { outstanding } = await fetchBalances();
+      setFriendsList(
+        outstanding.map(f => ({
+          id: f.id,
+          name: f.fullName,
+          balance: Math.abs(f.balance),
+          status: f.status,
+          avatarUrl: f.avatarUrl,
+          initials: f.initials,
+        }))
+      );
+    } catch (err: any) {
       console.warn('Error fetching active friends:', err);
+      setFriendsError(err?.message || 'Could not load your balances.');
     } finally {
       setLoadingFriends(false);
     }
@@ -365,6 +338,17 @@ export default function SettleUpScreen() {
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color="#004c22" />
             <Text className="text-on-surface-variant mt-3 font-medium">Loading balances...</Text>
+          </View>
+        ) : friendsError ? (
+          // Never fall through to "All Settled Up!" on a failed load — that
+          // tells the user they owe nothing when we simply do not know.
+          <View className="flex-1 items-center justify-center px-6">
+            <MaterialIcons name="error-outline" size={40} color="#b91c1c" />
+            <Text className="text-on-surface font-bold text-lg mb-1 mt-3">Could not load balances</Text>
+            <Text className="text-on-surface-variant text-center max-w-xs text-sm">{friendsError}</Text>
+            <TouchableOpacity onPress={fetchActiveFriends} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+              <Text className="text-white font-semibold">Try Again</Text>
+            </TouchableOpacity>
           </View>
         ) : friendsList.length === 0 ? (
           <View className="flex-1 items-center justify-center px-6">

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useGlobalBalances } from '../../context/GlobalBalancesContext';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
+import { fetchBalanceMap, statusFor } from '../../lib/balances';
 
 // Transaction with exact Date tags for mindful timeline filtering
 interface Transaction {
@@ -177,10 +178,13 @@ export default function FriendDetailScreen() {
             };
           });
 
-          const totalBalance = formatted.reduce((sum, t) => {
-            if (t.status === 'voided') return sum;
-            return sum + t.share;
-          }, 0);
+          // The balance comes from the ledger, not from summing the rows
+          // above. Those two used to be computed separately and drifted
+          // apart, which is how this screen could show a figure that Home
+          // and Settle Up disagreed with. The transaction list below is
+          // still built locally — it is a history view, not the balance.
+          const balanceMap = await fetchBalanceMap(userId);
+          const totalBalance = balanceMap[finalFriendId] || 0;
 
           setFriendsData(prev => {
             const baseFriend = prev[friendId] || { name: friendName || 'Unknown', email: '' };
@@ -325,19 +329,20 @@ export default function FriendDetailScreen() {
         }
 
         // Direct action permitted: mark item as voided
-        const updatedTxs = friend.transactions.map(t => 
+        const updatedTxs = friend.transactions.map(t =>
           t.id === selectedTx.id ? { ...t, status: 'voided' } : t
         );
-        
-        // Re-calculate the balance ignoring voided
-        let newBalance = 0;
-        updatedTxs.forEach(t => {
-          if (t.status !== 'voided') {
-            newBalance += t.share;
-          }
-        });
 
-        const newStatus = newBalance > 0 ? 'owed' : newBalance < 0 ? 'owes' : 'settled';
+        // Re-read the balance from the ledger the RPC above just rebuilt,
+        // rather than re-summing the rows locally. Summing here is what let
+        // this screen drift away from Home and Settle Up in the first place.
+        let newBalance = friend.balance;
+        try {
+          const balanceMap = await fetchBalanceMap(currentUserId as string);
+          newBalance = balanceMap[friendId as string] || 0;
+        } catch (balErr) {
+          console.warn('Could not re-read balance after void:', balErr);
+        }
 
         setFriendsData(prev => ({
           ...prev,
@@ -345,7 +350,7 @@ export default function FriendDetailScreen() {
             ...friend,
             transactions: updatedTxs,
             balance: Math.abs(newBalance),
-            status: newStatus
+            status: statusFor(newBalance)
           }
         }));
 

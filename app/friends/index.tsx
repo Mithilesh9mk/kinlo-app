@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { getRelatedUsers } from '../../lib/friendFetcher';
+import { fetchBalances } from '../../lib/balances';
 import AddFriendModal from '../../components/AddFriendModal';
 
 interface Friend {
@@ -26,56 +27,29 @@ export default function FriendsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  // Fetch friends from DB
+  // Balances come from the shared snapshot (lib/balances.ts), so this list
+  // agrees with Home, the settle-up picker and the friend detail screen by
+  // construction rather than by four copies of the same query happening to
+  // match.
   const fetchFriends = useCallback(async () => {
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-      if (!userId) return;
+      const { friends } = await fetchBalances();
 
-      const allUsers = await getRelatedUsers(userId, 'id, full_name, avatar_url, phone_number');
-
-      const { data: settlements } = await supabase
-        .from('simplified_settlements')
-        .select('debtor_id, creditor_id, amount')
-        .is('group_id', null)
-        .or(`debtor_id.eq.${userId},creditor_id.eq.${userId}`);
-
-      const friendBalances: Record<string, number> = {};
-      if (settlements) {
-        for (const s of settlements) {
-          const isDebtorMe = s.debtor_id === userId;
-          const friendId = isDebtorMe ? s.creditor_id : s.debtor_id;
-          const amount = Number(s.amount) || 0;
-          if (isDebtorMe) {
-            friendBalances[friendId] = (friendBalances[friendId] || 0) - amount;
-          } else {
-            friendBalances[friendId] = (friendBalances[friendId] || 0) + amount;
-          }
-        }
-      }
-
-      const friends: Friend[] = (allUsers || []).map((p) => {
-        const balance = friendBalances[p.id] || 0;
-        const name = p.full_name || 'Unknown';
-        const shortName = name.split(' ')[0];
-        const initials = name.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase().slice(0, 2);
-        return {
-          id: p.id,
-          name: shortName,
-          fullName: name,
-          phoneNumber: p.phone_number || '',
-          balance: Math.abs(balance),
-          status: balance > 0 ? 'owed' as const : balance < 0 ? 'owes' as const : 'settled' as const,
-          image: p.avatar_url || undefined,
-          initials,
-        };
-      });
+      const mapped: Friend[] = friends.map((f) => ({
+        id: f.id,
+        name: f.name,
+        fullName: f.fullName,
+        phoneNumber: f.phoneNumber,
+        balance: Math.abs(f.balance),
+        status: f.status,
+        image: f.avatarUrl,
+        initials: f.initials,
+      }));
 
       // Sort alphabetically
-      friends.sort((a, b) => a.fullName.localeCompare(b.fullName));
+      mapped.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-      setFriendsList(friends);
+      setFriendsList(mapped);
     } catch (e) {
       console.error('Failed to fetch friends:', e);
     }
