@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .liquid-glass {
+    background-color: rgba(255, 255, 255, 0.72);
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+}

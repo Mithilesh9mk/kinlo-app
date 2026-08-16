@@ -1,0 +1,502 @@
+import React, { useState, useMemo } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useExpense, SplitMode } from '../../context/ExpenseContext';
+import { calculateEqualSplit, calculatePercentSplit, validateExactSplit } from '../../lib/splitCalculator';
+import { supabase } from '../../lib/supabase';
+import { useGlobalBalances } from '../../context/GlobalBalancesContext';
+import { dispatchPushNotification } from '../../lib/pushDispatcher';
+import { recalculateGroupSettlements, recalculatePairSettlements } from '../../lib/recalculateSettlements';
+import { newTransactionId } from '../../lib/idempotency';
+
+const CATEGORY_ICONS: Record<string, string> = {
+  food: 'restaurant',
+  travel: 'flight',
+  home: 'home',
+  utilities: 'bolt',
+  other: 'category'
+};
+
+
+export default function SplitExpenseScreen() {
+  const router = useRouter();
+  const { amount: amountStr, description, category, payer, participants, setParticipants, splitMode, setSplitMode, groupId, editTransactionId, editTransactionStatus, reset } = useExpense();
+  const { refreshBalances } = useGlobalBalances();
+  
+  const totalAmount = parseFloat(amountStr || '0');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Idempotency key for this expense attempt, so a double-tap retries the same
+  // row instead of minting a second transaction. Mirrors settle-up.tsx.
+  const idempotencyKey = React.useRef(newTransactionId());
+
+  // setIsSubmitting is async, so a fast double-tap can re-enter the handler
+  // before the state flips. This ref blocks that synchronously.
+  const submitInFlight = React.useRef(false);
+
+  const includedParticipants = participants.filter(p => p.included);
+  const includedCount = includedParticipants.length;
+
+  const toggleParticipant = (id: string) => {
+    if (id === payer.id) return; // Payer must always be included
+    setParticipants(participants.map(p => 
+      p.id === id ? { ...p, included: !p.included } : p
+    ));
+  };
+
+  const handleInputChange = (id: string, field: 'percentageShare' | 'exactAmount', value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setParticipants(participants.map(p => 
+      p.id === id ? { ...p, [field]: numValue } : p
+    ));
+  };
+
+  // Calculate current shares
+  const shares = useMemo(() => {
+    const result: Record<string, number> = {};
+    if (includedCount === 0) return result;
+
+    if (splitMode === 'equal') {
+      const equalShares = calculateEqualSplit(totalAmount, includedCount);
+      includedParticipants.forEach((p, i) => { result[p.id] = equalShares[i]; });
+    } else if (splitMode === 'percent') {
+      const percents = includedParticipants.map(p => p.percentageShare || 0);
+      const sum = percents.reduce((a, b) => a + b, 0);
+      if (Math.abs(sum - 100) < 0.01) {
+        try {
+          const percentShares = calculatePercentSplit(totalAmount, percents);
+          includedParticipants.forEach((p, i) => { result[p.id] = percentShares[i]; });
+        } catch (e) {}
+      } else {
+        // If not exactly 100%, just estimate based on what is typed for display, but it won't be final
+        includedParticipants.forEach(p => {
+          result[p.id] = ((p.percentageShare || 0) / 100) * totalAmount;
+        });
+      }
+    } else if (splitMode === 'exact') {
+      includedParticipants.forEach(p => { result[p.id] = p.exactAmount || 0; });
+    }
+    return result;
+  }, [participants, splitMode, totalAmount, includedCount]);
+
+  const isValidSplit = useMemo(() => {
+    if (includedCount === 0) return false;
+    if (splitMode === 'equal') return true;
+    if (splitMode === 'percent') {
+      const sum = includedParticipants.reduce((acc, p) => acc + (p.percentageShare || 0), 0);
+      return Math.abs(sum - 100) < 0.01;
+    }
+    if (splitMode === 'exact') {
+      const exacts = includedParticipants.map(p => p.exactAmount || 0);
+      return validateExactSplit(totalAmount, exacts);
+    }
+    return false;
+  }, [participants, splitMode, totalAmount, includedCount]);
+
+  const getInfoText = () => {
+    if (splitMode === 'equal') return "Splitting equally ensures everyone pays the same amount. You can adjust individual amounts in 'Exact' mode.";
+    if (splitMode === 'percent') return "Splitting by percent lets you allocate based on proportions. Total must equal 100%.";
+    return "Input exact amounts for each person. Useful for itemized bills or specific order totals.";
+  };
+
+  const handleFinish = async () => {
+    if (!isValidSplit) return;
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
+    setIsSubmitting(true);
+    
+    try {
+      // 1. Get authenticated user
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUser = authData?.user;
+      
+      if (!currentUser) {
+        Alert.alert("Not Logged In", "Please sign in to record expenses. Go to Settings > Sign Out, then sign in again.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 2. Use the REAL authenticated user's UUID
+      const payerId = payer.isYou ? currentUser.id : payer.id;
+      
+      const parsedGroupId = groupId;
+      
+      // 3. Validate that we can use this payerId
+      const effectivePayerId = payerId;
+
+      // Reuse the stable per-attempt key so a retry targets the same row
+      const txId = editTransactionId || idempotencyKey.current;
+
+      // 4. Upsert transaction
+      const txPayload = {
+        id: txId,
+        amount: totalAmount,
+        description,
+        category,
+        paid_by: effectivePayerId,
+        group_id: parsedGroupId,
+        split_type: splitMode,
+        type: 'expense',
+        status: 'active'
+      };
+
+      let txError;
+      if (editTransactionId) {
+        const { error } = await supabase.from('transactions').update(txPayload).eq('id', editTransactionId);
+        txError = error;
+      } else {
+        // upsert (not insert) so retrying the same idempotency key overwrites the
+        // half-written row instead of failing on a duplicate primary key
+        const { error } = await supabase.from('transactions').upsert(txPayload);
+        txError = error;
+      }
+
+      if (txError) {
+        console.error('Transaction save error:', txError);
+        Alert.alert("Database Error", `Could not save transaction: ${txError.message}`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Clear any existing splits for this transaction id. On edit that's the old
+      // set; on a retried create it's the partial set from the failed attempt —
+      // either way the insert below becomes the single source of truth.
+      await supabase.from('transaction_splits').delete().eq('transaction_id', txId);
+      
+      // 5. Insert splits — only for users that exist in the DB (real UUIDs)
+      const splitInserts = includedParticipants
+        .map(p => {
+          let userId: string;
+          if (p.isYou) {
+            userId = currentUser.id;
+          } else {
+            userId = p.id;
+          }
+          return {
+            transaction_id: txId,
+            user_id: userId,
+            share_amount: shares[p.id] || 0
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null); // Remove nulls (skipped mock participants)
+
+      if (splitInserts.length > 0) {
+        const { error: splitError } = await supabase.from('transaction_splits').insert(splitInserts);
+        if (splitError) {
+          console.error('Split insert error:', splitError.message);
+          Alert.alert('Database Error', `Failed to save the friend's split: ${splitError.message}`);
+        }
+      }
+
+      // Send push notification to 1-on-1 counterparty
+      if (!parsedGroupId && !editTransactionId) {
+        const counterpartyId = includedParticipants.find(p => !p.isYou)?.id;
+        if (counterpartyId) {
+          const payerName = payer.isYou ? (currentUser.user_metadata?.full_name || 'Someone') : payer.name;
+          dispatchPushNotification(
+            [counterpartyId],
+            'New Expense Added 💸',
+            `${payerName} added "${description}" for ₹${totalAmount.toFixed(2)}.`
+          );
+        }
+      }
+
+      // Rebuild the ledger server-side. One atomic RPC replaces the old
+      // fetch-all + local-greedy + delete + insert sequence.
+      if (parsedGroupId) {
+        try {
+          await recalculateGroupSettlements(parsedGroupId);
+
+          // Dispatch push notification to group members (except payer)
+          if (!editTransactionId) {
+            const groupUserIds = includedParticipants
+              .map(p => p.isYou ? currentUser.id : p.id)
+              .filter(id => id !== currentUser.id);
+
+            if (groupUserIds.length > 0) {
+              dispatchPushNotification(
+                groupUserIds,
+                'New Group Expense 💸',
+                `${currentUser.user_metadata?.full_name || 'Someone'} added "${description}" for ₹${totalAmount.toFixed(2)}.`
+              );
+            }
+          }
+        } catch (debtErr) {
+          console.warn('Debt simplification error (non-critical):', debtErr);
+        }
+      } else {
+        try {
+          const counterpartyId = includedParticipants.find(p => !p.isYou)?.id;
+          if (counterpartyId) {
+            await recalculatePairSettlements(counterpartyId);
+          }
+        } catch (err) {
+          console.error('Failed to recalc 1-on-1 debt after save', err);
+        }
+      }
+
+      
+      // 6. Update Global Balances (Local Context)
+      await refreshBalances();
+      
+      // The save succeeded, so retire this key. The screen stays mounted behind
+      // the success route, and without rotating we'd upsert over the expense we
+      // just wrote if the user navigated back and submitted again.
+      idempotencyKey.current = newTransactionId();
+
+      // 7. Navigate to success
+      const payerName = payer.isYou ? 'You' : payer.name;
+      let splitDetails = `Split with ${includedCount - 1} friend${includedCount - 1 > 1 ? 's' : ''}`;
+      if (groupId) {
+        splitDetails = `Split in Group`;
+      }
+      
+      const shareAmt = includedCount > 0 ? (totalAmount / includedCount).toFixed(2) : '0.00';
+
+      router.push({
+        pathname: '/expense/success',
+        params: {
+          amount: totalAmount.toFixed(2),
+          description: description,
+          splitInfo: splitDetails,
+          detailText: `${splitMode === 'equal' ? 'Equal' : splitMode === 'percent' ? 'Percentage' : 'Exact'} split`,
+          friendName: payerName
+        }
+      });
+
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert("Error", e.message || "Failed to post transaction");
+    } finally {
+      // Runs for the early returns above too, so a failed attempt stays retryable
+      submitInFlight.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+      {/* Top Navigation */}
+      <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
+        <View className="flex-row items-center space-x-3">
+          <TouchableOpacity 
+            onPress={() => router.back()}
+            className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#004c22" />
+          </TouchableOpacity>
+          <Text className="font-headline-md text-xl text-primary font-semibold">Split</Text>
+        </View>
+      </View>
+
+      <ScrollView className="flex-1 px-5 pt-8" contentContainerStyle={{ paddingBottom: 120 }}>
+        <View className="max-w-xl mx-auto w-full space-y-8">
+          
+          {/* Progress Indicator */}
+          <View className="flex-row items-center justify-center space-x-2 mb-8">
+            <View className="h-1.5 w-8 rounded-full bg-primary/20" />
+            <View className="h-1.5 w-8 rounded-full bg-primary/20" />
+            <View className="h-1.5 w-12 rounded-full bg-primary shadow-sm" />
+          </View>
+
+          {/* Total Summary Header */}
+          <View className="items-center space-y-2">
+            <Text className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider">Total Expense</Text>
+            <Text className="font-display-lg text-4xl font-bold text-primary">₹{totalAmount.toFixed(2)}</Text>
+            
+            <View className="flex-row items-center space-x-4 mt-2">
+              <View className="flex-row items-center space-x-2 px-3 py-1 bg-surface-container rounded-full">
+                <MaterialIcons name={CATEGORY_ICONS[category] as any || 'receipt-long'} size={14} color="#4e6b5a" />
+                <Text className="font-label-sm text-xs text-on-secondary-container">{description}</Text>
+              </View>
+              <View className="flex-row items-center space-x-2 px-3 py-1 bg-secondary-container/60 rounded-full">
+                <MaterialIcons name="payments" size={14} color="#004c22" />
+                <Text className="font-label-sm text-xs text-primary font-semibold">
+                  Paid by {payer.isYou ? 'You' : payer.name.split(' ')[0]}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Split Mode Selector (Tabs) */}
+          <View className="flex-row p-1 bg-surface-container-low rounded-xl">
+            {(['equal', 'percent', 'exact'] as SplitMode[]).map((tab) => {
+              const isActive = splitMode === tab;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setSplitMode(tab)}
+                  className="flex-1 py-3 rounded-lg items-center justify-center transition-all"
+                  style={{
+                    backgroundColor: isActive ? '#004c22' : 'transparent',
+                  }}
+                >
+                  <Text className={`font-label-md text-sm font-medium ${
+                    isActive ? 'text-white' : 'text-on-surface-variant'
+                  }`}>
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Participant List */}
+          <View className="space-y-4">
+            <View className="flex-row justify-between items-center px-1 mb-2">
+              <Text className="font-label-md text-sm text-on-surface-variant uppercase font-semibold">Participants</Text>
+              <Text className="font-label-sm text-xs text-primary font-semibold">Split between {includedCount} people</Text>
+            </View>
+
+            <View className="space-y-3">
+              {participants.map((p) => {
+                const isActualPayer = p.id === payer.id;
+                const shareVal = shares[p.id] || 0;
+                
+                return (
+                  <View 
+                    key={p.id}
+                    className={`p-4 rounded-xl flex-row items-center justify-between ${
+                      p.included ? 'opacity-100' : 'opacity-40'
+                    }`}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.72)',
+                      borderWidth: 1,
+                      borderColor: isActualPayer ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
+                      shadowColor: '#1c1917',
+                      shadowOffset: { width: 0, height: 8 },
+                      shadowOpacity: 0.06,
+                      shadowRadius: 32,
+                      elevation: 2,
+                      marginBottom: 12
+                    }}
+                  >
+                    <View className="flex-row items-center space-x-4 flex-1">
+                      <View className="relative">
+                        {p.image ? (
+                          <Image source={{ uri: p.image }} className="w-12 h-12 rounded-full" />
+                        ) : (
+                          <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center">
+                            <Text className="text-primary font-bold">{p.initials || p.name.charAt(0)}</Text>
+                          </View>
+                        )}
+                        
+                        {p.isYou && (
+                          <View className="absolute -bottom-1 -right-1 bg-primary w-5 h-5 rounded-full items-center justify-center border-2 border-white">
+                            <MaterialIcons name="check" size={12} color="white" />
+                          </View>
+                        )}
+                      </View>
+
+                      <View className="flex-1 mr-2">
+                        <Text className="font-label-md text-base text-on-surface font-semibold">{p.name}</Text>
+                        
+                        {isActualPayer ? (
+                          <View className="flex-row items-center space-x-1 mt-1 bg-secondary-container/50 px-2 py-0.5 rounded-full self-start">
+                            <MaterialIcons name="payments" size={12} color="#004c22" />
+                            <Text className="text-[10px] text-primary font-bold uppercase tracking-wider">
+                              Paid the bill
+                            </Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity 
+                            disabled={isActualPayer}
+                            className="flex-row items-center space-x-2 mt-1"
+                            onPress={() => toggleParticipant(p.id)}
+                          >
+                            <MaterialIcons 
+                              name={p.included ? "check-box" : "check-box-outline-blank"} 
+                              size={18} 
+                              color={p.included ? "#004c22" : "#707a6f"} 
+                            />
+                            <Text className="font-label-sm text-xs text-on-surface-variant">Include</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    <View className="items-end justify-center w-24">
+                      {splitMode === 'equal' && (
+                        <Text className={`font-headline-md font-bold ${isActualPayer ? 'text-primary text-xl' : 'text-on-surface text-lg'}`}>
+                          {p.included ? `₹${shareVal.toFixed(2)}` : '₹0.00'}
+                        </Text>
+                      )}
+                      
+                      {splitMode === 'percent' && p.included && (
+                        <View className="flex-row items-center border-b border-primary pb-1">
+                          <TextInput
+                            value={p.percentageShare?.toString() || ''}
+                            onChangeText={(val) => handleInputChange(p.id, 'percentageShare', val)}
+                            placeholder="0"
+                            keyboardType="numeric"
+                            className="font-headline-md font-bold text-lg text-primary text-right min-w-[30px]"
+                          />
+                          <Text className="font-headline-md font-bold text-lg text-primary">%</Text>
+                        </View>
+                      )}
+                      
+                      {splitMode === 'exact' && p.included && (
+                        <View className="flex-row items-center border-b border-primary pb-1">
+                          <Text className="font-headline-md font-bold text-lg text-primary">₹</Text>
+                          <TextInput
+                            value={p.exactAmount?.toString() || ''}
+                            onChangeText={(val) => handleInputChange(p.id, 'exactAmount', val)}
+                            placeholder="0.00"
+                            keyboardType="numeric"
+                            className="font-headline-md font-bold text-lg text-primary text-right min-w-[50px]"
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Dynamic Note Area */}
+          <View className={`p-4 rounded-2xl border flex-row space-x-3 items-start mt-4 ${isValidSplit || splitMode === 'equal' ? 'bg-secondary-container/30 border-secondary/10' : 'bg-error-container/30 border-error/20'}`}>
+            <MaterialIcons name={isValidSplit || splitMode === 'equal' ? "info-outline" : "error-outline"} size={20} color={isValidSplit || splitMode === 'equal' ? "#486554" : "#ba1a1a"} />
+            <Text className={`flex-1 text-sm leading-relaxed ${isValidSplit || splitMode === 'equal' ? 'text-on-secondary-container' : 'text-error'}`}>
+              {getInfoText()}
+            </Text>
+          </View>
+
+        </View>
+      </ScrollView>
+
+      {/* Bottom Action Bar */}
+      <View 
+        className="absolute bottom-0 left-0 w-full px-5 pt-4 pb-8 flex-row space-x-4 z-50 border-t border-outline-variant/20"
+        style={{ backgroundColor: 'rgba(252, 249, 244, 0.8)' }}
+      >
+        <TouchableOpacity 
+          className="flex-1 bg-surface-container-highest py-4 rounded-xl items-center justify-center"
+        >
+          <Text className="font-label-md text-on-surface-variant font-medium text-base">Draft</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          disabled={!isValidSplit || isSubmitting}
+          className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center space-x-2 shadow-lg ${
+            !isValidSplit || isSubmitting ? 'bg-outline-variant/50' : 'bg-primary shadow-primary/20'
+          }`}
+          onPress={handleFinish}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <>
+              <Text className="text-white font-label-md font-bold text-base">
+                {editTransactionId ? 'Save Changes' : 'Finish & Post'}
+              </Text>
+              <MaterialIcons name="send" size={20} color="white" />
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}

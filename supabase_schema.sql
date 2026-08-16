@@ -1,0 +1,27 @@
+-- ⚠️  This file is NO LONGER the source of truth. Do not edit it.
+--
+-- It described a schema that production had drifted away from — it rejected
+-- writes the app makes on every expense (status='active', a `type` column it
+-- never declared), omitted the `friendships` table entirely, granted no UPDATE
+-- or DELETE policy for rows the app updates from nine call sites, and let any
+-- authenticated account insert a transaction naming any other user as payer.
+--
+-- The schema now lives in versioned migrations:
+--
+--   supabase/migrations/0001_reconcile_schema.sql   columns, constraints,
+--                                                   friendships, placeholder users
+--   supabase/migrations/0002_user_isolation.sql     all RLS policies
+--   supabase/migrations/0003_settlements_rpc.sql    atomic ledger recalculation
+--
+-- To apply:
+--
+--   supabase link --project-ref <your-project-ref>
+--   supabase db execute --file supabase/preflight.sql   # inspect first
+--   supabase db push
+--
+-- To regenerate a snapshot of live state at any time:
+--
+--   supabase db dump --schema public > supabase/schema_snapshot.sql
+--
+-- Keeping a hand-maintained schema file alongside migrations is what caused the
+-- drift in the first place, so this one is intentionally left empty.
