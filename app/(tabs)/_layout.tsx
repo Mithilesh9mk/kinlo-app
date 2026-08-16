@@ -47,7 +47,6 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarStyle: styles.tabBar,
         tabBarItemStyle: styles.tabItem,
-        tabBarBackground: () => null,
       }}
     >
       <Tabs.Screen
@@ -80,14 +79,17 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 28 : 20,
-    left: 20,
-    right: 20,
+    // Margins, not left/right. The navigator's own base style sets
+    // `start: 0, end: 0`, and in React Native `start`/`end` are separate
+    // properties from `left`/`right` — setting left/right here does NOT
+    // override them, so the bar stayed edge-to-edge and never looked like a
+    // pill. Margins have no such conflict.
+    marginHorizontal: 20,
+    marginBottom: Platform.OS === 'ios' ? 24 : 14,
     height: 66,
     borderRadius: 999,
-    // Translucent so the content scrolling underneath stays faintly visible.
-    backgroundColor: 'rgba(252, 249, 244, 0.88)',
+    // Translucent so content scrolling underneath stays faintly visible.
+    backgroundColor: 'rgba(252, 249, 244, 0.92)',
     borderTopWidth: 0,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.55)',
