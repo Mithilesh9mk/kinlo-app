@@ -47,6 +47,15 @@ export default function FriendDetailScreen() {
 
   // Track friends dynamic transaction history states locally
   const [friendsData, setFriendsData] = useState<Record<string, FriendData>>({});
+
+  // Whether this friend's transactions have actually come back from the
+  // server yet. Without this the screen cannot tell "balance is genuinely
+  // zero" from "the fetch failed or hasn't finished", and the fallback
+  // friend object below (balance: 0, status: 'settled') makes the second
+  // case look exactly like the first — which is how Settle Up came to say
+  // "All settled up!" for a friend the user actually owes money to.
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineFilter>('1year');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
@@ -63,7 +72,11 @@ export default function FriendDetailScreen() {
         const { supabase } = await import('../../lib/supabase');
         const { data: authData } = await supabase.auth.getUser();
         const userId = authData?.user?.id;
-        if (!userId) return;
+        if (!userId) {
+          setLoadState('error');
+          setLoadError('You appear to be signed out. Sign in again to see this balance.');
+          return;
+        }
 
         const finalFriendId = friendId;
 
@@ -81,11 +94,19 @@ export default function FriendDetailScreen() {
             type,
             transaction_splits (user_id, share_amount)
           `)
-          .or('paid_by.eq.' + userId + ',transaction_splits.user_id.eq.' + userId)
+          // No .or() on transaction_splits here. Filtering an embedded table
+          // inside a top-level .or() only works in PostgREST when the embed is
+          // an inner join; without that it can fail outright, and a failed
+          // fetch used to surface as "All settled up". It is also redundant:
+          // RLS (transactions_select, migrations/0002) already restricts rows
+          // to ones the caller paid for, is a member of, or has a split in,
+          // and the code below re-filters to this specific friend anyway.
           .is('group_id', null);
 
         if (error) {
           console.error('Error fetching live transactions:', error.message);
+          setLoadState('error');
+          setLoadError(error.message);
           return;
         }
 
@@ -173,9 +194,13 @@ export default function FriendDetailScreen() {
               }
             };
           });
+          setLoadState('ready');
+          setLoadError(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error loading dynamic transactions:', err);
+        setLoadState('error');
+        setLoadError(err?.message || 'Could not load this balance.');
       }
     }
 
@@ -225,6 +250,19 @@ export default function FriendDetailScreen() {
   };
 
   const handleSettleUp = () => {
+    // Never report "settled" on the strength of data we don't have. The
+    // fallback friend object is balance: 0 / status: 'settled', so without
+    // these two guards an unfinished or failed load is reported to the user
+    // as a zero balance — telling someone they owe nothing when they do.
+    if (loadState === 'loading') {
+      triggerToast('Still loading this balance — try again in a moment.');
+      return;
+    }
+    if (loadState === 'error') {
+      triggerToast(loadError ? `Could not load balance: ${loadError}` : 'Could not load this balance. Pull to refresh and try again.');
+      return;
+    }
+
     if (friend.status === 'settled' || friend.balance <= 0.01) {
       triggerToast('All settled up! No outstanding balance.');
       return;

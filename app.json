@@ -36,7 +36,20 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Kinlo uses your contacts so you can add friends by picking them from your phone instead of typing their name and number by hand. Your contacts are read on your device only and are never uploaded."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#004c22"
+        }
+      ]
     ],
     "extra": {
       "router": {},

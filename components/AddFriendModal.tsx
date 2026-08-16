@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Modal, TextInput, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, TextInput, FlatList, ActivityIndicator, Alert, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
@@ -22,39 +22,92 @@ export default function AddFriendModal({ isOpen, onClose, onSuccess }: AddFriend
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [isAddingFriend, setIsAddingFriend] = useState(false);
 
+  // Explain before the system dialog appears. Android's permission prompt
+  // carries no custom copy, so without this the user sees a bare "Allow Kinlo
+  // to access your contacts?" with no reason attached — which reads as a
+  // privacy grab and gets denied. iOS shows the string from the
+  // expo-contacts plugin config in app.json instead.
+  const explainThenRequest = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      Alert.alert(
+        'Find friends from your contacts',
+        "Kinlo can pull names and phone numbers from your phone so you can add friends in one tap instead of typing them in.\n\nYour contacts stay on your device — we only save the person you actually pick.\n\nYou can also skip this and use “Enter Manually”.",
+        [
+          { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Continue', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+
   // Load phone contacts
   const loadPhoneContacts = async () => {
-    setLoadingContacts(true);
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please allow contact access to pick friends from your phone.');
-        setLoadingContacts(false);
-        return;
+      const existing = await Contacts.getPermissionsAsync();
+
+      if (!existing.granted) {
+        // Permanently denied: the OS will no longer show its dialog, so
+        // re-requesting silently does nothing. Send them to Settings instead
+        // of failing with a message they can't act on.
+        if (!existing.canAskAgain) {
+          Alert.alert(
+            'Contacts access is blocked',
+            'Contact access was previously turned off for Kinlo, so your phone will not ask again.\n\nTo turn it on: Settings → Apps → Kinlo → Permissions → Contacts.\n\nOr just use “Enter Manually” to add a friend by name and number.',
+            [
+              { text: 'Use Manual Entry', onPress: () => setAddTab('manual') },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+          return;
+        }
+
+        const wantsToContinue = await explainThenRequest();
+        if (!wantsToContinue) return;
+
+        const { status } = await Contacts.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'No contact access',
+            'That is fine — you can still add friends with “Enter Manually”.',
+            [{ text: 'OK', onPress: () => setAddTab('manual') }]
+          );
+          return;
+        }
       }
-      
+
+      setLoadingContacts(true);
+
       const { data } = await Contacts.getContactsAsync({
         fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
       });
-      
-      const mapped = data
+
+      const mapped = (data ?? [])
         .filter(c => c.name && c.phoneNumbers && c.phoneNumbers.length > 0)
         .map(c => ({
           id: c.id || c.name || '',
           name: c.name || 'Unknown',
           phone: c.phoneNumbers?.[0]?.number || '',
         }));
-        
+
       if (mapped.length === 0) {
-        Alert.alert('No Contacts Found', 'We could not find any contacts with phone numbers on this device.');
+        Alert.alert(
+          'No contacts with phone numbers',
+          'We could not find any contacts that have a phone number saved. You can add a friend with “Enter Manually” instead.',
+          [{ text: 'OK', onPress: () => setAddTab('manual') }]
+        );
       }
-      
+
       setPhoneContacts(mapped);
     } catch (e: any) {
       console.warn('Failed to load contacts:', e);
-      Alert.alert('Error loading contacts', e?.message || 'An unknown error occurred');
+      Alert.alert(
+        'Could not load contacts',
+        `${e?.message || 'An unknown error occurred'}\n\nYou can still add a friend using “Enter Manually”.`,
+        [{ text: 'OK', onPress: () => setAddTab('manual') }]
+      );
+    } finally {
+      setLoadingContacts(false);
     }
-    setLoadingContacts(false);
   };
 
   // Add friend logic
