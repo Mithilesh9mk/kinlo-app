@@ -39,13 +39,10 @@ interface Payer {
 export default function ExpenseDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { 
-    amount, 
-    description, 
-    setDescription, 
-    category: activeCategory, 
-    setCategory: setActiveCategory, 
-    payer: selectedPayer, 
+  const {
+    amount,
+    description,
+    payer: selectedPayer,
     setPayer,
     participants,
     setParticipants,
@@ -53,8 +50,6 @@ export default function ExpenseDetailsScreen() {
     setGroupId,
     editTransactionId
   } = useExpense();
-
-  const [isFocused, setIsFocused] = useState(false);
 
   // Derive selectedGroup and selectedFriends from participants/groupId
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
@@ -276,80 +271,28 @@ export default function ExpenseDetailsScreen() {
             </View>
           </View>
 
-          {/* Description Header */}
+          {/* Header — this step now asks exactly one question: who. The
+              description and category moved to step 1, where they sit with the
+              amount they describe. This screen previously carried four
+              unrelated decisions at once, which is what made it overwhelming. */}
           <View className="mb-6 flex-row justify-between items-end">
             <View className="flex-1 mr-4">
               <Text className="font-headline-lg-mobile text-2xl font-semibold text-on-surface mb-2">
-                {editTransactionId ? 'Edit Expense Details' : 'Expense details'}
+                Who was involved?
               </Text>
-              <Text className="font-body-md text-base text-on-surface-variant">Add a description and pick a category to keep things organized.</Text>
+              <Text className="font-body-md text-base text-on-surface-variant">
+                Pick who paid the bill and who it should be split between.
+              </Text>
             </View>
             <View className="items-end">
               <Text className="text-xs text-on-surface-variant uppercase tracking-wider font-semibold">Amount</Text>
               <Text className="text-2xl font-bold text-primary">₹{parseFloat(amount).toFixed(2)}</Text>
+              {!!description && (
+                <Text className="text-xs text-on-surface-variant mt-0.5 max-w-[140px]" numberOfLines={1}>
+                  {description}
+                </Text>
+              )}
             </View>
-          </View>
-
-          {/* Input Card: Description */}
-          <View 
-            className="p-6 rounded-xl mb-6"
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.72)',
-              borderWidth: 1,
-              borderColor: isFocused ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
-              shadowColor: isFocused ? '#004c22' : '#1c1917',
-              shadowOffset: { width: 0, height: isFocused ? 0 : 8 },
-              shadowOpacity: isFocused ? 0.1 : 0.06,
-              shadowRadius: isFocused ? 4 : 32,
-              elevation: 2,
-            }}
-          >
-            <Text className="font-label-md text-sm text-on-surface-variant mb-2 font-medium">What was it for?</Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              placeholder="e.g. Italian Dinner at Mario's"
-              placeholderTextColor="rgba(64, 73, 64, 0.5)"
-              className="bg-surface-container-low border border-outline-variant/50 rounded-xl p-4 font-body-lg text-lg text-on-surface"
-            />
-          </View>
-
-          {/* Categories Section */}
-          <View className="mb-6">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="font-label-md text-sm font-medium text-on-surface-variant">Category</Text>
-              <Text className="font-label-sm text-xs font-semibold text-primary">View all</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-5 px-5">
-              <View className="flex-row space-x-3 pb-2 pr-5">
-                {categories.map((cat) => {
-                  const isActive = activeCategory === cat.id;
-                  return (
-                    <TouchableOpacity
-                      key={cat.id}
-                      onPress={() => setActiveCategory(cat.id)}
-                      className={`items-center justify-center min-w-[84px] p-4 rounded-xl border ${
-                        isActive 
-                          ? 'bg-secondary-container/70 border-primary/10' 
-                          : 'bg-surface-container-high border-transparent'
-                      }`}
-                    >
-                      <MaterialIcons 
-                        name={cat.icon as any} 
-                        size={24} 
-                        color={isActive ? "#042014" : "#404940"} 
-                        className="mb-1"
-                      />
-                      <Text className={`font-label-sm text-xs font-semibold ${isActive ? 'text-on-secondary-fixed' : 'text-on-surface-variant'}`}>
-                        {cat.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
           </View>
 
           {/* Payer and Group Selection Rows */}

@@ -1,16 +1,36 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, ActivityIndicator, TextInput, ScrollView, Keyboard } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useExpense, Payer, Participant, SplitMode } from '../../context/ExpenseContext';
 import { supabase } from '../../lib/supabase';
 
+// 'utilities' used to be offered here while the database CHECK only allowed
+// food/travel/home/other, so picking it failed on save. Migration 0010
+// replaced that whitelist with a length bound, so any label is now valid —
+// which is also what makes Custom possible.
+const CATEGORIES = [
+  { id: 'food', icon: 'restaurant', label: 'Food' },
+  { id: 'travel', icon: 'flight', label: 'Travel' },
+  { id: 'home', icon: 'home', label: 'Home' },
+  { id: 'utilities', icon: 'bolt', label: 'Utilities' },
+  { id: 'other', icon: 'category', label: 'Other' },
+];
+
 export default function AmountScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { amount, setAmount, setGroupId, setEditModeData, editTransactionId } = useExpense();
-  
+  const {
+    amount, setAmount, setGroupId, setEditModeData, editTransactionId,
+    description, setDescription, category, setCategory,
+  } = useExpense();
+
+  // Custom category input is revealed on demand rather than always shown, so
+  // the common case (one of the presets) stays a single tap.
+  const [customOpen, setCustomOpen] = React.useState(false);
+  const isPreset = CATEGORIES.some(c => c.id === category);
+
   const [isLoading, setIsLoading] = React.useState(false);
 
   // If navigating from a group, set groupId in context immediately
@@ -166,19 +186,115 @@ export default function AmountScreen() {
       </View>
 
       <View className="flex-1 flex-col items-center justify-between px-5 max-w-md mx-auto w-full">
-        {/* Large Numeric Display */}
-        <View className="flex-1 flex-col items-center justify-center w-full space-y-2">
-          <Text className="font-label-md text-on-surface-variant/70 uppercase tracking-widest text-sm mb-2">
-            Enter Amount
-          </Text>
+        {/* Step indicator */}
+        <View className="w-full flex-row items-center justify-center pt-1 pb-2">
+          <Text className="font-label-sm text-xs font-semibold text-on-surface-variant">Step 1 of 3 · How much?</Text>
+        </View>
+
+        {/* Amount + what it was for */}
+        <View className="flex-1 flex-col items-center justify-center w-full">
           <View className="flex-row items-baseline justify-center space-x-2">
             <Text className="font-display-lg text-primary opacity-50 text-5xl font-bold mr-1">₹</Text>
-            <Text 
+            <Text
               className={`font-display-lg text-on-surface tracking-tight font-bold ${amount.length > 7 ? 'text-4xl' : 'text-5xl'}`}
             >
               {amount}
             </Text>
           </View>
+
+          {/* Description sits with the amount: both describe the same one
+              thing, so asking for them together removes a whole screen of
+              back-and-forth later. */}
+          <View className="w-full mt-6">
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What was it for?"
+              placeholderTextColor="rgba(64, 73, 64, 0.4)"
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+              className="w-full text-center text-base font-semibold text-on-surface px-4 py-3 rounded-2xl"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.65)',
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.35)',
+              }}
+            />
+          </View>
+
+          {/* Category */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            className="w-full mt-3"
+            contentContainerStyle={{ paddingHorizontal: 2, gap: 8 }}
+          >
+            {CATEGORIES.map((c) => {
+              const active = category === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => { setCategory(c.id); setCustomOpen(false); }}
+                  className="flex-row items-center px-3 py-2 rounded-full"
+                  style={{
+                    backgroundColor: active ? '#caead6' : 'rgba(255,255,255,0.65)',
+                    borderWidth: 1,
+                    borderColor: active ? '#004c22' : 'rgba(255,255,255,0.35)',
+                  }}
+                >
+                  <MaterialIcons name={c.icon as any} size={15} color={active ? '#004c22' : '#707a6f'} />
+                  <Text
+                    className="text-xs font-semibold ml-1.5"
+                    style={{ color: active ? '#004c22' : '#404940' }}
+                  >
+                    {c.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* Custom */}
+            <TouchableOpacity
+              onPress={() => setCustomOpen(true)}
+              className="flex-row items-center px-3 py-2 rounded-full"
+              style={{
+                backgroundColor: !isPreset && category ? '#caead6' : 'rgba(255,255,255,0.65)',
+                borderWidth: 1,
+                borderColor: !isPreset && category ? '#004c22' : 'rgba(255,255,255,0.35)',
+              }}
+            >
+              <MaterialIcons name="add" size={15} color={!isPreset && category ? '#004c22' : '#707a6f'} />
+              <Text
+                className="text-xs font-semibold ml-1.5"
+                style={{ color: !isPreset && category ? '#004c22' : '#404940' }}
+                numberOfLines={1}
+              >
+                {!isPreset && category ? category : 'Custom'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {customOpen && (
+            <View className="w-full mt-3">
+              <TextInput
+                value={isPreset ? '' : category}
+                onChangeText={(t) => setCategory(t.slice(0, 40))}
+                placeholder="Name your category"
+                placeholderTextColor="rgba(64, 73, 64, 0.4)"
+                autoFocus
+                maxLength={40}
+                returnKeyType="done"
+                onSubmitEditing={() => { Keyboard.dismiss(); setCustomOpen(false); }}
+                className="w-full text-center text-sm font-semibold text-on-surface px-4 py-2.5 rounded-2xl"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.65)',
+                  borderWidth: 1,
+                  borderColor: '#004c22',
+                }}
+              />
+            </View>
+          )}
         </View>
 
         {/* Liquid Glass Keypad Area */}
