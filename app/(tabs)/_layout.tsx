@@ -9,32 +9,33 @@ const ACTIVE_PILL = '#caead6';
 /**
  * Floating pill tab bar.
  *
- * The bar detaches from the bottom edge and floats as a translucent pill.
- * Translucency is done with rgba + shadow rather than expo-blur so this needs
- * no extra native module — matching the `liquidGlass` treatment already used
- * on the cards throughout the app.
+ * Translucency comes from rgba + shadow rather than expo-blur, so no extra
+ * native module is needed — matching the `liquidGlass` treatment used on the
+ * cards elsewhere in the app.
  *
- * The selected tab expands to show its label; unselected tabs stay
- * icon-only. That keeps the pill narrow enough to float without crowding,
- * while the current section is still named rather than left to an icon alone.
+ * Icon and label are stacked vertically. An earlier version put them side by
+ * side and only showed the label on the focused tab; that expanded the active
+ * item enough to push the row past the bar's width on narrower screens, so
+ * icons and labels were pushed out of view entirely. Stacking keeps every
+ * item a fixed, predictable width.
  *
- * Screens must keep bottom padding (~100) on their scroll content, since the
- * bar is absolutely positioned and overlays whatever is beneath it.
+ * Positioning uses margins, not left/right: the navigator's base style sets
+ * `start: 0 / end: 0`, and in React Native `start`/`end` are separate
+ * properties from `left`/`right`, so left/right never override them and the
+ * bar stays edge-to-edge.
+ *
+ * Screens keep ~100 of bottom padding on their scroll content, since the bar
+ * floats above them.
  */
 function TabButton({ focused, icon, label }: { focused: boolean; icon: any; label: string }) {
   return (
-    <View
-      style={[
-        styles.tabButton,
-        focused && styles.tabButtonActive,
-      ]}
-    >
-      <MaterialIcons name={icon} size={22} color={focused ? ACTIVE : INACTIVE} />
-      {focused && (
-        <Text style={styles.tabLabel} numberOfLines={1}>
-          {label}
-        </Text>
-      )}
+    <View style={styles.tabButton}>
+      <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+        <MaterialIcons name={icon} size={21} color={focused ? ACTIVE : INACTIVE} />
+      </View>
+      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -46,7 +47,6 @@ export default function TabLayout() {
         headerShown: false,
         tabBarShowLabel: false,
         tabBarStyle: styles.tabBar,
-        tabBarItemStyle: styles.tabItem,
       }}
     >
       <Tabs.Screen
@@ -79,49 +79,47 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    // Margins, not left/right. The navigator's own base style sets
-    // `start: 0, end: 0`, and in React Native `start`/`end` are separate
-    // properties from `left`/`right` — setting left/right here does NOT
-    // override them, so the bar stayed edge-to-edge and never looked like a
-    // pill. Margins have no such conflict.
-    marginHorizontal: 20,
-    marginBottom: Platform.OS === 'ios' ? 24 : 14,
-    height: 66,
+    marginHorizontal: 28,
+    marginBottom: Platform.OS === 'ios' ? 26 : 16,
+    height: 62,
     borderRadius: 999,
-    // Translucent so content scrolling underneath stays faintly visible.
-    backgroundColor: 'rgba(252, 249, 244, 0.92)',
+    backgroundColor: 'rgba(252, 249, 244, 0.94)',
     borderTopWidth: 0,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.55)',
+    borderColor: 'rgba(255, 255, 255, 0.6)',
     paddingTop: 0,
     paddingBottom: 0,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     shadowColor: '#1c1917',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
     elevation: 12,
-  },
-  tabItem: {
-    height: 66,
-    paddingVertical: 0,
+    // Keeps the rounded corners from being painted over by child content.
+    overflow: 'hidden',
   },
   tabButton: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
   },
-  tabButtonActive: {
+  iconWrap: {
+    width: 42,
+    height: 26,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrapActive: {
     backgroundColor: ACTIVE_PILL,
-    paddingHorizontal: 14,
   },
   tabLabel: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 10,
+    marginTop: 2,
+    color: INACTIVE,
+    fontWeight: '500',
+  },
+  tabLabelActive: {
     color: ACTIVE,
+    fontWeight: '700',
   },
 });
