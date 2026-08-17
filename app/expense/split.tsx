@@ -8,7 +8,7 @@ import { calculateEqualSplit, calculatePercentSplit, validateExactSplit } from '
 import { supabase } from '../../lib/supabase';
 import { useGlobalBalances } from '../../context/GlobalBalancesContext';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
-import { recalculateGroupSettlements, recalculatePairSettlements } from '../../lib/recalculateSettlements';
+import { recordExpense } from '../../lib/recalculateSettlements';
 import { newTransactionId } from '../../lib/idempotency';
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -129,65 +129,38 @@ export default function SplitExpenseScreen() {
       // Reuse the stable per-attempt key so a retry targets the same row
       const txId = editTransactionId || idempotencyKey.current;
 
-      // 4. Upsert transaction
-      const txPayload = {
-        id: txId,
+      // 4. Build the split list
+      const splitRows = includedParticipants.map(p => ({
+        user_id: p.isYou ? currentUser.id : p.id,
+        share_amount: shares[p.id] || 0,
+      }));
+
+      // 5. One atomic call: transaction + splits + ledger rebuild.
+      //
+      // This replaces a direct upsert on `transactions`, which RLS rejects
+      // whenever the payer is someone other than you on a non-group expense —
+      // that is the "Database Error" seen when recording an expense a friend
+      // paid for. The policy is correct and stays: it is what stops anyone
+      // fabricating debt between two strangers. RLS simply cannot express the
+      // check we want, because WITH CHECK runs before the splits exist, so it
+      // cannot see whether the caller is part of the expense. record_expense()
+      // receives the splits up front and validates participation itself.
+      // See supabase/migrations/0009_record_expense.sql.
+      const expenseError = await recordExpense({
+        transactionId: txId,
         amount: totalAmount,
         description,
         category,
-        paid_by: effectivePayerId,
-        group_id: parsedGroupId,
-        split_type: splitMode,
-        type: 'expense',
-        status: 'active'
-      };
+        paidBy: effectivePayerId,
+        splitType: splitMode,
+        splits: splitRows,
+        groupId: parsedGroupId ?? null,
+      });
 
-      let txError;
-      if (editTransactionId) {
-        const { error } = await supabase.from('transactions').update(txPayload).eq('id', editTransactionId);
-        txError = error;
-      } else {
-        // upsert (not insert) so retrying the same idempotency key overwrites the
-        // half-written row instead of failing on a duplicate primary key
-        const { error } = await supabase.from('transactions').upsert(txPayload);
-        txError = error;
-      }
-
-      if (txError) {
-        console.error('Transaction save error:', txError);
-        Alert.alert("Database Error", `Could not save transaction: ${txError.message}`);
-        setIsSubmitting(false);
+      if (expenseError) {
+        console.error('Expense save error:', expenseError);
+        Alert.alert('Could not save expense', expenseError.message);
         return;
-      }
-      
-      // Clear any existing splits for this transaction id. On edit that's the old
-      // set; on a retried create it's the partial set from the failed attempt —
-      // either way the insert below becomes the single source of truth.
-      await supabase.from('transaction_splits').delete().eq('transaction_id', txId);
-      
-      // 5. Insert splits — only for users that exist in the DB (real UUIDs)
-      const splitInserts = includedParticipants
-        .map(p => {
-          let userId: string;
-          if (p.isYou) {
-            userId = currentUser.id;
-          } else {
-            userId = p.id;
-          }
-          return {
-            transaction_id: txId,
-            user_id: userId,
-            share_amount: shares[p.id] || 0
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null); // Remove nulls (skipped mock participants)
-
-      if (splitInserts.length > 0) {
-        const { error: splitError } = await supabase.from('transaction_splits').insert(splitInserts);
-        if (splitError) {
-          console.error('Split insert error:', splitError.message);
-          Alert.alert('Database Error', `Failed to save the friend's split: ${splitError.message}`);
-        }
       }
 
       // Send push notification to 1-on-1 counterparty
@@ -203,41 +176,25 @@ export default function SplitExpenseScreen() {
         }
       }
 
-      // Rebuild the ledger server-side. One atomic RPC replaces the old
-      // fetch-all + local-greedy + delete + insert sequence.
-      if (parsedGroupId) {
-        try {
-          await recalculateGroupSettlements(parsedGroupId);
+      // No recalculation here: record_expense() already rebuilt the ledger
+      // inside the same database transaction as the write.
 
-          // Dispatch push notification to group members (except payer)
-          if (!editTransactionId) {
-            const groupUserIds = includedParticipants
-              .map(p => p.isYou ? currentUser.id : p.id)
-              .filter(id => id !== currentUser.id);
+      // Dispatch push notification to group members (except the sender)
+      if (parsedGroupId && !editTransactionId) {
+        const groupUserIds = includedParticipants
+          .map(p => p.isYou ? currentUser.id : p.id)
+          .filter(id => id !== currentUser.id);
 
-            if (groupUserIds.length > 0) {
-              dispatchPushNotification(
-                groupUserIds,
-                'New Group Expense 💸',
-                `${currentUser.user_metadata?.full_name || 'Someone'} added "${description}" for ₹${totalAmount.toFixed(2)}.`
-              );
-            }
-          }
-        } catch (debtErr) {
-          console.warn('Debt simplification error (non-critical):', debtErr);
-        }
-      } else {
-        try {
-          const counterpartyId = includedParticipants.find(p => !p.isYou)?.id;
-          if (counterpartyId) {
-            await recalculatePairSettlements(counterpartyId);
-          }
-        } catch (err) {
-          console.error('Failed to recalc 1-on-1 debt after save', err);
+        if (groupUserIds.length > 0) {
+          dispatchPushNotification(
+            groupUserIds,
+            'New Group Expense 💸',
+            `${currentUser.user_metadata?.full_name || 'Someone'} added "${description}" for ₹${totalAmount.toFixed(2)}.`
+          );
         }
       }
 
-      
+
       // 6. Update Global Balances (Local Context)
       await refreshBalances();
       

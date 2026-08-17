@@ -37,6 +37,48 @@ export async function recalculatePairSettlements(otherUserId: string) {
 }
 
 /**
+ * Records an expense — transaction, splits and ledger rebuild in one call.
+ *
+ * The client cannot write this directly when the payer is someone else: 0002's
+ * transactions_insert policy requires auth.uid() = paid_by for non-group rows,
+ * so "Vaishnavi paid for dinner" was rejected outright. That policy is what
+ * prevents fabricating debt between strangers and should stay; RLS just can't
+ * express the right check, because WITH CHECK fires before the splits exist
+ * and so cannot tell whether the caller is party to the expense.
+ *
+ * The RPC takes the splits up front, verifies the caller is genuinely
+ * involved and that everyone named is already connected to them, then writes
+ * atomically. Idempotent on transactionId.
+ *
+ * See supabase/migrations/0009_record_expense.sql.
+ */
+export async function recordExpense(params: {
+  transactionId: string;
+  amount: number;
+  description: string;
+  category: string;
+  paidBy: string;
+  splitType: string;
+  splits: { user_id: string; share_amount: number }[];
+  groupId?: string | null;
+}) {
+  const { error } = await supabase.rpc('record_expense', {
+    p_transaction_id: params.transactionId,
+    p_amount: params.amount,
+    p_description: params.description,
+    p_category: params.category,
+    p_paid_by: params.paidBy,
+    p_split_type: params.splitType,
+    p_splits: params.splits,
+    p_group_id: params.groupId ?? null,
+  });
+  if (error) {
+    console.error('Failed to record expense:', error.message);
+  }
+  return error ?? null;
+}
+
+/**
  * Records a settlement with the correct payer direction.
  *
  * The client cannot write this row itself: 0002's RLS requires
