@@ -95,6 +95,40 @@ export default function SplitExpenseScreen() {
     return false;
   }, [participants, splitMode, totalAmount, includedCount]);
 
+  /**
+   * Who ends up owing whom, stated plainly before anything is posted.
+   *
+   * The list above shows each person's *share* of the bill, which is not the
+   * same thing as what they owe: the payer's share is money they already
+   * spent, not a debt. Reading shares alone, it was easy to post an expense
+   * without realising which direction the money would move.
+   *
+   * Everyone except the payer owes the payer their share. The payer is owed
+   * the total minus their own share.
+   */
+  const settlementPreview = useMemo(() => {
+    const payerParticipant =
+      includedParticipants.find(p => p.id === payer.id) ??
+      includedParticipants.find(p => p.isYou && payer.isYou);
+
+    const payerName = payer.isYou ? 'You' : payer.name;
+    const payerShare = payerParticipant ? (shares[payerParticipant.id] || 0) : 0;
+
+    const debts = includedParticipants
+      .filter(p => p.id !== payer.id)
+      .map(p => ({
+        id: p.id,
+        name: p.isYou ? 'You' : p.name,
+        isYou: !!p.isYou,
+        amount: shares[p.id] || 0,
+      }))
+      .filter(d => d.amount > 0);
+
+    const totalOwedToPayer = debts.reduce((sum, d) => sum + d.amount, 0);
+
+    return { payerName, payerIsYou: !!payer.isYou, payerShare, debts, totalOwedToPayer };
+  }, [includedParticipants, shares, payer]);
+
   const getInfoText = () => {
     if (splitMode === 'equal') return "Splitting equally ensures everyone pays the same amount. You can adjust individual amounts in 'Exact' mode.";
     if (splitMode === 'percent') return "Splitting by percent lets you allocate based on proportions. Total must equal 100%.";
@@ -420,6 +454,53 @@ export default function SplitExpenseScreen() {
               {getInfoText()}
             </Text>
           </View>
+
+          {/* Settlement preview — what actually happens when this is posted */}
+          {isValidSplit && settlementPreview.debts.length > 0 && (
+            <View className="mt-5 rounded-3xl border border-primary/15 bg-white/60 overflow-hidden">
+              <View className="px-5 pt-4 pb-3 border-b border-outline-variant/25">
+                <Text className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant font-bold">
+                  After posting
+                </Text>
+                <Text className="font-headline-md text-base font-bold text-on-surface mt-1">
+                  {settlementPreview.payerName} paid ₹{totalAmount.toFixed(2)}
+                </Text>
+              </View>
+
+              <View className="px-5 py-3">
+                {settlementPreview.debts.map((d) => (
+                  <View key={d.id} className="flex-row items-center justify-between py-2">
+                    <View className="flex-row items-center flex-1 mr-3">
+                      <MaterialIcons
+                        name={d.isYou ? 'arrow-upward' : 'arrow-downward'}
+                        size={16}
+                        color={d.isYou ? '#ba1a1a' : '#1f6c3a'}
+                      />
+                      <Text className="text-sm text-on-surface ml-2 flex-1" numberOfLines={1}>
+                        <Text className="font-bold">{d.name}</Text>
+                        {d.isYou ? ' owe ' : ' owes '}
+                        <Text className="font-bold">{settlementPreview.payerName}</Text>
+                      </Text>
+                    </View>
+                    <Text
+                      className="text-sm font-bold"
+                      style={{ color: d.isYou ? '#ba1a1a' : '#1f6c3a' }}
+                    >
+                      ₹{d.amount.toFixed(2)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <View className="px-5 py-3 bg-secondary-container/25 border-t border-outline-variant/25">
+                <Text className="text-xs text-on-surface-variant leading-relaxed">
+                  {settlementPreview.payerIsYou
+                    ? `You get back ₹${settlementPreview.totalOwedToPayer.toFixed(2)} in total. Your own share of ₹${settlementPreview.payerShare.toFixed(2)} is already spent.`
+                    : `${settlementPreview.payerName} gets back ₹${settlementPreview.totalOwedToPayer.toFixed(2)} in total.`}
+                </Text>
+              </View>
+            </View>
+          )}
 
         </View>
       </ScrollView>
