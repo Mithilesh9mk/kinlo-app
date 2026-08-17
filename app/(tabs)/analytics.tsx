@@ -164,19 +164,25 @@ export default function AnalyticsScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       >
+        {/* Explicit gap rather than a `space-y-*` class — that utility did not
+            apply reliably here and the cards ended up touching at the corners. */}
         <Animated.View
-          style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
-          className="px-5 pt-6 max-w-xl mx-auto w-full space-y-6"
+          style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }], gap: 18 }}
+          className="px-5 pt-6 max-w-xl mx-auto w-full"
         >
 
           {/* 1. Monthly Spending */}
           <View className="p-6 rounded-3xl relative overflow-hidden" style={styles.liquidGlass}>
             <View className="flex-row justify-between items-start mb-4">
               <View className="space-y-1">
-                <Text className="font-label-md text-sm text-on-surface-variant font-semibold">Your Spending This Month</Text>
+                <Text className="font-label-md text-sm text-on-surface-variant font-semibold">
+                  Your Spending · {new Date().toLocaleDateString(undefined, { month: 'long' })}
+                </Text>
                 <Text className="font-display-lg text-4xl font-bold text-primary">{money(data.monthlySpend)}</Text>
                 <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
-                  Your share of {data.monthExpenseCount} expense{data.monthExpenseCount === 1 ? '' : 's'}
+                  {data.monthExpenseCount === 0
+                    ? 'No expenses recorded this month'
+                    : `Your share of ${data.monthExpenseCount} expense${data.monthExpenseCount === 1 ? '' : 's'}`}
                 </Text>
               </View>
 
