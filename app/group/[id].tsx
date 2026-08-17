@@ -171,7 +171,8 @@ export default function GroupDetailScreen() {
               
               // Calculate total spend and user balance based on live transactions
               let totalGroupSpend = 0, spentByYou = 0, yourShareSum = 0;
-              const allTxs = [...formatted];
+              // Newest first — same omission as the friend screen had.
+              const allTxs = [...formatted].sort((a, b) => b.timestamp - a.timestamp);
               
               allTxs.forEach(t => {
                 totalGroupSpend += t.totalAmount;

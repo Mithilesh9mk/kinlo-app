@@ -146,13 +146,28 @@ export default function FriendDetailScreen() {
             // ledger did not. 0005 fixes the write; keeping the compensation
             // on top of it would flip the sign back. See
             // migrations/0005_record_settlement.sql.
-            let shareAmt = 0;
+            // Scoped to THIS pair only.
+            //
+            // The old version used `t.amount - myShare` when I paid, which is
+            // what *everyone* owes me — on a three-person expense that
+            // included a third party's share. So this screen showed an
+            // inflated figure, and settling from here tried to settle the
+            // whole expense rather than just what this friend owes.
+            //
+            // Only the two of us matter here:
+            //   I paid      -> this friend owes me their own share
+            //   they paid   -> I owe them my own share
+            //   someone else paid -> no debt between us from this expense
             const mySplit = splits.find((s: any) => s.user_id === userId);
+            const friendSplit = splits.find((s: any) => s.user_id === finalFriendId);
+
+            let shareAmt = 0;
             if (isPayerMe) {
-              const myShare = mySplit ? Number(mySplit.share_amount) : 0;
-              shareAmt = Number(t.amount) - myShare;
-            } else {
+              shareAmt = friendSplit ? Number(friendSplit.share_amount) : 0;
+            } else if (t.paid_by === finalFriendId) {
               shareAmt = mySplit ? -Number(mySplit.share_amount) : 0;
+            } else {
+              shareAmt = 0;
             }
 
             const categoryIcons: Record<string, string> = {
@@ -192,7 +207,10 @@ export default function FriendDetailScreen() {
               ...prev,
               [friendId]: {
                 ...baseFriend,
-                transactions: [...formatted],
+                // Newest first. Nothing sorted these before, so rows arrived in
+                // whatever order Postgres returned and a just-added expense
+                // could appear part-way down the list.
+                transactions: [...formatted].sort((a, b) => b.timestamp - a.timestamp),
                 balance: Math.abs(totalBalance),
                 status: totalBalance > 0 ? 'owed' : totalBalance < 0 ? 'owes' : 'settled'
               }

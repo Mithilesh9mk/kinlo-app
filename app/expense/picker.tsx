@@ -430,19 +430,42 @@ export default function FriendGroupPickerScreen() {
         )}
       </ScrollView>
 
-      {/* Sticky Bottom Action Button */}
-      <View className="absolute bottom-0 left-0 w-full px-5 pt-6 pb-6 bg-gradient-to-t from-surface via-surface/90 to-transparent">
+      {/* Sticky Bottom Action Button.
+          Colours are inline styles, not conditional utility classes. The
+          class-based version kept rendering in its disabled grey even once
+          friends were selected — the same class-not-applying problem seen
+          with gap and space-x elsewhere in this codebase — so the button
+          looked permanently unavailable while actually being tappable. */}
+      <View
+        className="absolute bottom-0 left-0 w-full px-5 pt-6 pb-6"
+        style={{ backgroundColor: 'rgba(252, 249, 244, 0.94)' }}
+      >
         <TouchableOpacity
           disabled={isConfirmDisabled}
           onPress={handleConfirm}
-          className={`w-full h-14 rounded-xl flex-row items-center justify-center active:scale-95 duration-100 shadow-md ${
-            isConfirmDisabled ? 'bg-outline-variant/30 opacity-50' : 'bg-primary'
-          }`}
+          activeOpacity={0.85}
+          style={{
+            width: '100%',
+            height: 56,
+            borderRadius: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isConfirmDisabled ? 'rgba(0,0,0,0.12)' : '#004c22',
+          }}
         >
-          <Text className={`font-semibold text-base ${isConfirmDisabled ? 'text-on-surface-variant/40' : 'text-white'}`}>
-            {selectedGroup 
-              ? `Confirm Group (${selectedGroup.title})` 
-              : `Confirm (${selectedFriends.length} selected)`
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '700',
+              color: isConfirmDisabled ? 'rgba(64,73,64,0.45)' : '#ffffff',
+            }}
+          >
+            {selectedGroup
+              ? `Confirm ${selectedGroup.title}`
+              : selectedFriends.length === 0
+                ? 'Select who to split with'
+                : `Continue with ${selectedFriends.length} ${selectedFriends.length === 1 ? 'person' : 'people'}`
             }
           </Text>
         </TouchableOpacity>
