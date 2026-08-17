@@ -1,6 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { View, Text, Platform, StyleSheet } from 'react-native';
+import { View, Text, Platform, StyleSheet, Animated } from 'react-native';
 
 const ACTIVE = '#004c22';
 const INACTIVE = '#707a6f';
@@ -13,26 +14,60 @@ const ACTIVE_PILL = '#caead6';
  * native module is needed — matching the `liquidGlass` treatment used on the
  * cards elsewhere in the app.
  *
- * Icon and label are stacked vertically. An earlier version put them side by
- * side and only showed the label on the focused tab; that expanded the active
- * item enough to push the row past the bar's width on narrower screens, so
- * icons and labels were pushed out of view entirely. Stacking keeps every
- * item a fixed, predictable width.
- *
- * Positioning uses margins, not left/right: the navigator's base style sets
- * `start: 0 / end: 0`, and in React Native `start`/`end` are separate
- * properties from `left`/`right`, so left/right never override them and the
- * bar stays edge-to-edge.
- *
- * Screens keep ~100 of bottom padding on their scroll content, since the bar
- * floats above them.
+ * Layout notes, each of which was an actual bug:
+ *  - Positioning uses margins, not left/right. The navigator's base style sets
+ *    `start: 0 / end: 0`, and in React Native `start`/`end` are separate
+ *    properties from `left`/`right`, so left/right never override them.
+ *  - Icon and label stack vertically. Side-by-side made the focused item wide
+ *    enough to overflow the bar and push the other icons out of view.
+ *  - tabBarItemStyle centres each item over the full bar height. Without it
+ *    the navigator reserves space for its own (hidden) label, which pushed the
+ *    icons up against the top edge of the pill.
+ *  - Every item is the same fixed width so the four tabs sit on an even pitch
+ *    regardless of how long their labels are ("Home" vs "Insights").
  */
 function TabButton({ focused, icon, label }: { focused: boolean; icon: any; label: string }) {
+  // Springy pop when a tab becomes active. Transform only, so it can run on
+  // the native driver and stay smooth during the screen transition.
+  const scale = useRef(new Animated.Value(focused ? 1 : 0.92)).current;
+
+  useEffect(() => {
+    if (focused) {
+      Animated.sequence([
+        Animated.spring(scale, {
+          toValue: 1.22,
+          useNativeDriver: true,
+          speed: 40,
+          bounciness: 14,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          speed: 18,
+          bounciness: 12,
+        }),
+      ]).start();
+    } else {
+      Animated.spring(scale, {
+        toValue: 0.92,
+        useNativeDriver: true,
+        speed: 20,
+        bounciness: 0,
+      }).start();
+    }
+  }, [focused, scale]);
+
   return (
     <View style={styles.tabButton}>
-      <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-        <MaterialIcons name={icon} size={21} color={focused ? ACTIVE : INACTIVE} />
-      </View>
+      <Animated.View
+        style={[
+          styles.iconWrap,
+          focused && styles.iconWrapActive,
+          { transform: [{ scale }] },
+        ]}
+      >
+        <MaterialIcons name={icon} size={20} color={focused ? ACTIVE : INACTIVE} />
+      </Animated.View>
       <Text style={[styles.tabLabel, focused && styles.tabLabelActive]} numberOfLines={1}>
         {label}
       </Text>
@@ -47,6 +82,8 @@ export default function TabLayout() {
         headerShown: false,
         tabBarShowLabel: false,
         tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabItem,
+        tabBarIconStyle: styles.tabIcon,
       }}
     >
       <Tabs.Screen
@@ -79,9 +116,9 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    marginHorizontal: 28,
+    marginHorizontal: 26,
     marginBottom: Platform.OS === 'ios' ? 26 : 16,
-    height: 62,
+    height: 64,
     borderRadius: 999,
     backgroundColor: 'rgba(252, 249, 244, 0.94)',
     borderTopWidth: 0,
@@ -89,22 +126,38 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.6)',
     paddingTop: 0,
     paddingBottom: 0,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     shadowColor: '#1c1917',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 12,
-    // Keeps the rounded corners from being painted over by child content.
     overflow: 'hidden',
+  },
+  // Fills the bar's full height and centres its content, instead of the
+  // navigator's default top-aligned box that leaves room for a hidden label.
+  tabItem: {
+    height: 64,
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tabIcon: {
+    flex: 0,
+    height: 'auto',
+    marginTop: 0,
+    marginBottom: 0,
   },
   tabButton: {
     alignItems: 'center',
     justifyContent: 'center',
+    width: 66,
   },
   iconWrap: {
-    width: 42,
-    height: 26,
+    width: 40,
+    height: 25,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -114,7 +167,8 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 10,
-    marginTop: 2,
+    lineHeight: 13,
+    marginTop: 3,
     color: INACTIVE,
     fontWeight: '500',
   },
