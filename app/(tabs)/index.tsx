@@ -37,6 +37,13 @@ interface RecentActivity {
   friendName?: string;
   locationLabel?: string;
   status?: string;
+  /**
+   * 'expense' or 'settlement'. This field was missing entirely, so the
+   * settlement check on the card always read undefined and every payment
+   * rendered as an ordinary expense — including the payments icon, which had
+   * never worked for the same reason.
+   */
+  type?: string;
 }
 
 export default function HomeScreen() {
@@ -238,7 +245,8 @@ export default function HomeScreen() {
           groupName,
           friendName,
           locationLabel,
-          status: tx.status || 'active'
+          status: tx.status || 'active',
+          type: (tx as any).type || 'expense'
         };
       });
 
