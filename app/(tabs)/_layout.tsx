@@ -1,77 +1,46 @@
-import { useEffect, useRef } from 'react';
 import { Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { View, Text, Platform, StyleSheet, Animated } from 'react-native';
+import { Pressable, Platform, StyleSheet } from 'react-native';
 
 const ACTIVE = '#004c22';
 const INACTIVE = '#707a6f';
-const ACTIVE_PILL = '#caead6';
 
 /**
  * Floating pill tab bar.
  *
- * Translucency comes from rgba + shadow rather than expo-blur, so no extra
- * native module is needed — matching the `liquidGlass` treatment used on the
- * cards elsewhere in the app.
+ * Translucency is rgba + shadow rather than expo-blur, so no extra native
+ * module is needed — matching the `liquidGlass` treatment on the cards.
  *
- * Layout notes, each of which was an actual bug:
- *  - Positioning uses margins, not left/right. The navigator's base style sets
- *    `start: 0 / end: 0`, and in React Native `start`/`end` are separate
- *    properties from `left`/`right`, so left/right never override them.
- *  - Icon and label stack vertically. Side-by-side made the focused item wide
- *    enough to overflow the bar and push the other icons out of view.
- *  - tabBarItemStyle centres each item over the full bar height. Without it
- *    the navigator reserves space for its own (hidden) label, which pushed the
- *    icons up against the top edge of the pill.
- *  - Every item is the same fixed width so the four tabs sit on an even pitch
- *    regardless of how long their labels are ("Home" vs "Insights").
+ * Two things about this navigator that cost several attempts to work out:
+ *
+ * 1. `tabBarItemStyle` is applied to an OUTER wrapper View, not to the
+ *    pressable that lays out the icon and label. That pressable carries the
+ *    library's `tabVerticalUiKit` style with `justifyContent: 'flex-start'`,
+ *    which no style option can reach — so the content sat pinned to the top
+ *    of the pill no matter what was passed. `tabBarButton` replaces that
+ *    pressable outright, which is the only way to centre it.
+ *
+ * 2. `tabBarIcon` renders inside a fixed 31x28 box (TabBarIcon's
+ *    `wrapperUikit`). Drawing a custom icon+label stack in there overflowed
+ *    the box and pushed everything upward. The icon slot gets only an icon;
+ *    the label is left to the navigator via `tabBarLabel`.
+ *
+ * Positioning uses margins, not left/right — the base style sets
+ * `start: 0 / end: 0`, and in React Native those are separate properties that
+ * left/right do not override.
  */
-function TabButton({ focused, icon, label }: { focused: boolean; icon: any; label: string }) {
-  // Springy pop when a tab becomes active. Transform only, so it can run on
-  // the native driver and stay smooth during the screen transition.
-  const scale = useRef(new Animated.Value(focused ? 1 : 0.92)).current;
-
-  useEffect(() => {
-    if (focused) {
-      Animated.sequence([
-        Animated.spring(scale, {
-          toValue: 1.22,
-          useNativeDriver: true,
-          speed: 40,
-          bounciness: 14,
-        }),
-        Animated.spring(scale, {
-          toValue: 1,
-          useNativeDriver: true,
-          speed: 18,
-          bounciness: 12,
-        }),
-      ]).start();
-    } else {
-      Animated.spring(scale, {
-        toValue: 0.92,
-        useNativeDriver: true,
-        speed: 20,
-        bounciness: 0,
-      }).start();
-    }
-  }, [focused, scale]);
-
+function TabBarButton({ children, onPress, onLongPress, style, accessibilityState, ...rest }: any) {
   return (
-    <View style={styles.tabButton}>
-      <Animated.View
-        style={[
-          styles.iconWrap,
-          focused && styles.iconWrapActive,
-          { transform: [{ scale }] },
-        ]}
-      >
-        <MaterialIcons name={icon} size={20} color={focused ? ACTIVE : INACTIVE} />
-      </Animated.View>
-      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
+    <Pressable
+      {...rest}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      accessibilityState={accessibilityState}
+      android_ripple={{ borderless: true }}
+      style={[style, styles.tabPressable]}
+    >
+      {children}
+    </Pressable>
   );
 }
 
@@ -80,34 +49,40 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
+        tabBarActiveTintColor: ACTIVE,
+        tabBarInactiveTintColor: INACTIVE,
         tabBarStyle: styles.tabBar,
-        tabBarItemStyle: styles.tabItem,
-        tabBarIconStyle: styles.tabIcon,
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarButton: (props) => <TabBarButton {...props} />,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ focused }) => <TabButton focused={focused} icon="home" label="Home" />,
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color }) => <MaterialIcons name="home" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="groups"
         options={{
-          tabBarIcon: ({ focused }) => <TabButton focused={focused} icon="group" label="Groups" />,
+          tabBarLabel: 'Groups',
+          tabBarIcon: ({ color }) => <MaterialIcons name="group" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="analytics"
         options={{
-          tabBarIcon: ({ focused }) => <TabButton focused={focused} icon="bar-chart" label="Insights" />,
+          tabBarLabel: 'Insights',
+          tabBarIcon: ({ color }) => <MaterialIcons name="bar-chart" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ focused }) => <TabButton focused={focused} icon="person" label="Profile" />,
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color }) => <MaterialIcons name="person" size={22} color={color} />,
         }}
       />
     </Tabs>
@@ -134,46 +109,20 @@ const styles = StyleSheet.create({
     elevation: 12,
     overflow: 'hidden',
   },
-  // Fills the bar's full height and centres its content, instead of the
-  // navigator's default top-aligned box that leaves room for a hidden label.
-  tabItem: {
-    height: 64,
-    paddingTop: 0,
-    paddingBottom: 0,
-    paddingHorizontal: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tabIcon: {
-    flex: 0,
-    height: 'auto',
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  tabButton: {
+  // Replaces the library's top-aligned pressable. flex:1 gives every tab the
+  // same width, so the four sit on an even pitch regardless of label length.
+  tabPressable: {
+    flex: 1,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 66,
-  },
-  iconWrap: {
-    width: 40,
-    height: 25,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWrapActive: {
-    backgroundColor: ACTIVE_PILL,
+    paddingVertical: 0,
   },
   tabLabel: {
     fontSize: 10,
     lineHeight: 13,
-    marginTop: 3,
-    color: INACTIVE,
-    fontWeight: '500',
-  },
-  tabLabelActive: {
-    color: ACTIVE,
-    fontWeight: '700',
+    marginTop: 2,
+    marginBottom: 0,
+    fontWeight: '600',
   },
 });
