@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Modal, Pressable, GestureResponderEvent } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -164,8 +164,24 @@ export default function ExpenseDetailsScreen() {
     router.push('/expense/picker');
   };
 
-  const handleOpenPayer = () => {
-    router.push('/expense/payer');
+  // Choosing the payer happens in a popup rather than on its own screen. It is
+  // a one-tap choice from a short list, so pushing a whole route for it lost
+  // the context of the expense being built.
+  const [payerModalOpen, setPayerModalOpen] = useState(false);
+
+  const payerOptions = participants.length > 0
+    ? participants
+    : [{ id: 'you', name: 'You', isYou: true, included: true } as Participant];
+
+  const choosePayer = (p: Participant) => {
+    setPayer({
+      id: p.id,
+      name: p.name,
+      image: p.image,
+      initials: p.initials,
+      isYou: p.isYou,
+    });
+    setPayerModalOpen(false);
   };
 
   const handleNextStep = () => {
@@ -309,43 +325,43 @@ export default function ExpenseDetailsScreen() {
               elevation: 2,
             }}
           >
-            {/* Paid By Row */}
-            <TouchableOpacity 
-              onPress={handleOpenPayer}
+            {/* Paid By Row. Spacing is explicit marginLeft rather than
+                `space-x-*`, which was not applying and left the avatar and the
+                text crowded together. */}
+            <TouchableOpacity
+              onPress={() => setPayerModalOpen(true)}
               className="flex-row items-center justify-between p-5 border-b border-outline-variant/20 active:bg-surface-container-lowest"
             >
-              <View className="flex-row items-center space-x-4">
-                <View className="w-10 h-10 rounded-full bg-primary-fixed items-center justify-center overflow-hidden">
+              <View className="flex-row items-center flex-1 mr-3">
+                <View className="w-11 h-11 rounded-full items-center justify-center overflow-hidden bg-secondary-container">
                   {selectedPayer?.image ? (
                     <Image source={{ uri: selectedPayer.image }} className="w-full h-full" />
                   ) : (
-                    <View className="w-full h-full bg-secondary-container items-center justify-center">
-                      <Text className="text-primary font-bold text-sm">
-                        {selectedPayer?.initials || selectedPayer?.name?.charAt(0) || 'Y'}
-                      </Text>
-                    </View>
+                    <Text className="text-primary font-bold text-sm">
+                      {selectedPayer?.initials || selectedPayer?.name?.charAt(0) || 'Y'}
+                    </Text>
                   )}
                 </View>
-                <View>
+                <View style={{ marginLeft: 14, flex: 1 }}>
                   <Text className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider mb-0.5">Paid by</Text>
-                  <Text className="font-body-md font-semibold text-on-surface text-base">
+                  <Text className="font-body-md font-semibold text-on-surface text-base" numberOfLines={1}>
                     {selectedPayer?.name || 'You'}
                   </Text>
                 </View>
               </View>
-              <MaterialIcons name="chevron-right" size={24} color="#707a6f" />
+              <MaterialIcons name="expand-more" size={24} color="#707a6f" />
             </TouchableOpacity>
 
             {/* With Row */}
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={handleOpenPicker}
               className="flex-row items-center justify-between p-5 active:bg-surface-container-lowest"
             >
-              <View className="flex-row items-center space-x-4">
+              <View className="flex-row items-center flex-1 mr-3">
                 {renderWithAvatar()}
-                <View>
-                  <Text className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider mb-0.5">With</Text>
-                  <Text className="font-body-md font-semibold text-on-surface text-base">
+                <View style={{ marginLeft: 14, flex: 1 }}>
+                  <Text className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider mb-0.5">Split between</Text>
+                  <Text className="font-body-md font-semibold text-on-surface text-base" numberOfLines={1}>
                     {getWithLabel()}
                   </Text>
                 </View>
@@ -353,6 +369,72 @@ export default function ExpenseDetailsScreen() {
               <MaterialIcons name="chevron-right" size={24} color="#707a6f" />
             </TouchableOpacity>
           </View>
+
+          {/* Paid-by popup */}
+          <Modal
+            visible={payerModalOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setPayerModalOpen(false)}
+          >
+            <Pressable
+              style={{ flex: 1, backgroundColor: 'rgba(28,28,25,0.45)', justifyContent: 'flex-end' }}
+              onPress={() => setPayerModalOpen(false)}
+            >
+              <Pressable
+                onPress={(e: GestureResponderEvent) => e.stopPropagation()}
+                style={{
+                  backgroundColor: '#fcf9f4',
+                  borderTopLeftRadius: 28,
+                  borderTopRightRadius: 28,
+                  paddingTop: 10,
+                  paddingBottom: 32,
+                  paddingHorizontal: 20,
+                }}
+              >
+                <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.15)', marginBottom: 16 }} />
+
+                <Text className="font-headline-md text-lg font-bold text-on-surface mb-1">Who paid the bill?</Text>
+                <Text className="text-sm text-on-surface-variant mb-4">
+                  Whoever paid is owed by everyone else in the split.
+                </Text>
+
+                {payerOptions.map((p) => {
+                  const active = selectedPayer?.id === p.id;
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      onPress={() => choosePayer(p)}
+                      className="flex-row items-center py-3 px-3 rounded-2xl mb-1"
+                      style={{
+                        backgroundColor: active ? '#caead6' : 'transparent',
+                        borderWidth: 1,
+                        borderColor: active ? '#004c22' : 'transparent',
+                      }}
+                    >
+                      <View className="w-10 h-10 rounded-full items-center justify-center overflow-hidden bg-secondary-container">
+                        {p.image ? (
+                          <Image source={{ uri: p.image }} className="w-full h-full" />
+                        ) : (
+                          <Text className="text-primary font-bold text-sm">
+                            {p.initials || p.name?.charAt(0) || '?'}
+                          </Text>
+                        )}
+                      </View>
+                      <Text
+                        className="font-semibold text-on-surface text-base"
+                        style={{ marginLeft: 14, flex: 1 }}
+                        numberOfLines={1}
+                      >
+                        {p.isYou ? 'You' : p.name}
+                      </Text>
+                      {active && <MaterialIcons name="check-circle" size={22} color="#004c22" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </Pressable>
+            </Pressable>
+          </Modal>
         </View>
       </ScrollView>
 

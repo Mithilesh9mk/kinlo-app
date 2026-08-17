@@ -292,46 +292,82 @@ export default function SplitExpenseScreen() {
             <View className="h-1.5 w-12 rounded-full bg-primary shadow-sm" />
           </View>
 
-          {/* Total Summary Header */}
-          <View className="items-center space-y-2">
-            <Text className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider">Total Expense</Text>
-            <Text className="font-display-lg text-4xl font-bold text-primary">₹{totalAmount.toFixed(2)}</Text>
-            
-            <View className="flex-row items-center space-x-4 mt-2">
-              <View className="flex-row items-center space-x-2 px-3 py-1 bg-surface-container rounded-full">
+          {/* Summary header. The chips previously sat in one crowded row with
+              `space-x-*` spacing that was not applying, so the description and
+              payer ran together. They now wrap with explicit margins. */}
+          <View className="items-center">
+            <Text className="font-label-sm text-xs font-semibold text-on-surface-variant mb-2">
+              Step 3 of 3 · How is it split?
+            </Text>
+            <Text className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider">Total expense</Text>
+            <Text className="font-display-lg text-4xl font-bold text-primary mt-1">₹{totalAmount.toFixed(2)}</Text>
+
+            <View className="flex-row flex-wrap items-center justify-center mt-3">
+              <View
+                className="flex-row items-center px-3 py-1.5 rounded-full"
+                style={{ backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginRight: 8, marginBottom: 8 }}
+              >
                 <MaterialIcons name={CATEGORY_ICONS[category] as any || 'receipt-long'} size={14} color="#4e6b5a" />
-                <Text className="font-label-sm text-xs text-on-secondary-container">{description}</Text>
+                <Text className="text-xs text-on-surface-variant font-medium" style={{ marginLeft: 6, maxWidth: 150 }} numberOfLines={1}>
+                  {description || 'No description'}
+                </Text>
               </View>
-              <View className="flex-row items-center space-x-2 px-3 py-1 bg-secondary-container/60 rounded-full">
+
+              <View
+                className="flex-row items-center px-3 py-1.5 rounded-full"
+                style={{ backgroundColor: '#caead6', borderWidth: 1, borderColor: 'rgba(0,76,34,0.2)', marginBottom: 8 }}
+              >
                 <MaterialIcons name="payments" size={14} color="#004c22" />
-                <Text className="font-label-sm text-xs text-primary font-semibold">
-                  Paid by {payer.isYou ? 'You' : payer.name.split(' ')[0]}
+                <Text className="text-xs text-primary font-bold" style={{ marginLeft: 6 }} numberOfLines={1}>
+                  {payer.isYou ? 'You paid' : `${payer.name.split(' ')[0]} paid`}
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* Split Mode Selector (Tabs) */}
-          <View className="flex-row p-1 bg-surface-container-low rounded-xl">
-            {(['equal', 'percent', 'exact'] as SplitMode[]).map((tab) => {
-              const isActive = splitMode === tab;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  onPress={() => setSplitMode(tab)}
-                  className="flex-1 py-3 rounded-lg items-center justify-center transition-all"
-                  style={{
-                    backgroundColor: isActive ? '#004c22' : 'transparent',
-                  }}
-                >
-                  <Text className={`font-label-md text-sm font-medium ${
-                    isActive ? 'text-white' : 'text-on-surface-variant'
-                  }`}>
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          {/* Split mode. Labels spell out what each mode does — "Equal /
+              Percent / Exact" alone did not say what would happen. */}
+          <View style={{ marginTop: 22 }}>
+            <Text className="font-label-md text-sm text-on-surface-variant font-semibold mb-2">
+              Split method
+            </Text>
+            <View
+              className="flex-row rounded-2xl"
+              style={{ padding: 4, backgroundColor: 'rgba(0,0,0,0.04)' }}
+            >
+              {([
+                { id: 'equal' as SplitMode, label: 'Equally' },
+                { id: 'percent' as SplitMode, label: 'By percent' },
+                { id: 'exact' as SplitMode, label: 'Exact ₹' },
+              ]).map((tab) => {
+                const isActive = splitMode === tab.id;
+                return (
+                  <TouchableOpacity
+                    key={tab.id}
+                    onPress={() => setSplitMode(tab.id)}
+                    activeOpacity={0.8}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 11,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isActive ? '#004c22' : 'transparent',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: isActive ? '700' : '500',
+                        color: isActive ? '#ffffff' : '#404940',
+                      }}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           {/* Participant List */}

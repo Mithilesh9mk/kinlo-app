@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, Pressable, ActivityIndicator, TextInput, ScrollView, Keyboard } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, ActivityIndicator, TextInput, ScrollView, Keyboard, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,10 +26,19 @@ export default function AmountScreen() {
     description, setDescription, category, setCategory,
   } = useExpense();
 
-  // Custom category input is revealed on demand rather than always shown, so
-  // the common case (one of the presets) stays a single tap.
+  // Custom category is edited in a dialog against a draft, so cancelling
+  // leaves the previously chosen category untouched.
   const [customOpen, setCustomOpen] = React.useState(false);
+  const [customDraft, setCustomDraft] = React.useState('');
   const isPreset = CATEGORIES.some(c => c.id === category);
+
+  const saveCustomCategory = () => {
+    const value = customDraft.trim();
+    if (!value) return;
+    setCategory(value);
+    setCustomOpen(false);
+    Keyboard.dismiss();
+  };
 
   const [isLoading, setIsLoading] = React.useState(false);
 
@@ -222,31 +231,43 @@ export default function AmountScreen() {
             />
           </View>
 
-          {/* Category */}
+          {/* Category. Spacing is explicit marginRight per chip rather than a
+              `gap` on the content container — gap was not being applied here,
+              so the chips ran together against the rounded backgrounds. */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            className="w-full mt-3"
-            contentContainerStyle={{ paddingHorizontal: 2, gap: 8 }}
+            className="w-full mt-4"
+            contentContainerStyle={{ paddingHorizontal: 2, paddingVertical: 2 }}
           >
             {CATEGORIES.map((c) => {
               const active = category === c.id;
               return (
                 <TouchableOpacity
                   key={c.id}
-                  onPress={() => { setCategory(c.id); setCustomOpen(false); }}
-                  className="flex-row items-center px-3 py-2 rounded-full"
+                  onPress={() => setCategory(c.id)}
+                  activeOpacity={0.7}
                   style={{
-                    backgroundColor: active ? '#caead6' : 'rgba(255,255,255,0.65)',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                    borderRadius: 999,
+                    marginRight: 10,
+                    backgroundColor: active ? '#caead6' : 'rgba(255,255,255,0.7)',
                     borderWidth: 1,
-                    borderColor: active ? '#004c22' : 'rgba(255,255,255,0.35)',
+                    borderColor: active ? '#004c22' : 'rgba(0,0,0,0.06)',
                   }}
                 >
-                  <MaterialIcons name={c.icon as any} size={15} color={active ? '#004c22' : '#707a6f'} />
+                  <MaterialIcons name={c.icon as any} size={16} color={active ? '#004c22' : '#707a6f'} />
                   <Text
-                    className="text-xs font-semibold ml-1.5"
-                    style={{ color: active ? '#004c22' : '#404940' }}
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      marginLeft: 7,
+                      color: active ? '#004c22' : '#404940',
+                    }}
                   >
                     {c.label}
                   </Text>
@@ -254,48 +275,104 @@ export default function AmountScreen() {
               );
             })}
 
-            {/* Custom */}
+            {/* Custom — opens a dialog. The inline input this replaced was
+                rendered inside a vertically-centred flex container and was
+                being pushed out of view by the keypad, so tapping Custom
+                appeared to do nothing. */}
             <TouchableOpacity
-              onPress={() => setCustomOpen(true)}
-              className="flex-row items-center px-3 py-2 rounded-full"
+              onPress={() => {
+                setCustomDraft(isPreset ? '' : category);
+                setCustomOpen(true);
+              }}
+              activeOpacity={0.7}
               style={{
-                backgroundColor: !isPreset && category ? '#caead6' : 'rgba(255,255,255,0.65)',
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                borderRadius: 999,
+                marginRight: 10,
+                backgroundColor: !isPreset ? '#caead6' : 'rgba(255,255,255,0.7)',
                 borderWidth: 1,
-                borderColor: !isPreset && category ? '#004c22' : 'rgba(255,255,255,0.35)',
+                borderColor: !isPreset ? '#004c22' : 'rgba(0,0,0,0.06)',
               }}
             >
-              <MaterialIcons name="add" size={15} color={!isPreset && category ? '#004c22' : '#707a6f'} />
+              <MaterialIcons name={!isPreset ? 'edit' : 'add'} size={16} color={!isPreset ? '#004c22' : '#707a6f'} />
               <Text
-                className="text-xs font-semibold ml-1.5"
-                style={{ color: !isPreset && category ? '#004c22' : '#404940' }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  marginLeft: 7,
+                  maxWidth: 130,
+                  color: !isPreset ? '#004c22' : '#404940',
+                }}
                 numberOfLines={1}
               >
-                {!isPreset && category ? category : 'Custom'}
+                {!isPreset ? category : 'Custom'}
               </Text>
             </TouchableOpacity>
           </ScrollView>
+        </View>
 
-          {customOpen && (
-            <View className="w-full mt-3">
+        {/* Custom category dialog */}
+        <Modal visible={customOpen} transparent animationType="fade" onRequestClose={() => setCustomOpen(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(28,28,25,0.45)', justifyContent: 'center', paddingHorizontal: 28 }}
+            onPress={() => setCustomOpen(false)}
+          >
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              style={{ backgroundColor: '#fcf9f4', borderRadius: 24, padding: 22 }}
+            >
+              <Text className="font-headline-md text-lg font-bold text-on-surface mb-1">Custom category</Text>
+              <Text className="text-sm text-on-surface-variant mb-4">Give this expense your own label.</Text>
+
               <TextInput
-                value={isPreset ? '' : category}
-                onChangeText={(t) => setCategory(t.slice(0, 40))}
-                placeholder="Name your category"
+                value={customDraft}
+                onChangeText={(t) => setCustomDraft(t.slice(0, 40))}
+                placeholder="e.g. Groceries, Rent, Gifts"
                 placeholderTextColor="rgba(64, 73, 64, 0.4)"
                 autoFocus
                 maxLength={40}
                 returnKeyType="done"
-                onSubmitEditing={() => { Keyboard.dismiss(); setCustomOpen(false); }}
-                className="w-full text-center text-sm font-semibold text-on-surface px-4 py-2.5 rounded-2xl"
+                onSubmitEditing={saveCustomCategory}
                 style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.65)',
+                  backgroundColor: 'rgba(255,255,255,0.9)',
                   borderWidth: 1,
                   borderColor: '#004c22',
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  fontWeight: '600',
+                  color: '#1c1c19',
                 }}
               />
-            </View>
-          )}
-        </View>
+
+              <View className="flex-row mt-5" style={{ gap: 10 }}>
+                <TouchableOpacity
+                  onPress={() => setCustomOpen(false)}
+                  style={{ flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}
+                >
+                  <Text className="font-semibold text-on-surface-variant">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={saveCustomCategory}
+                  disabled={customDraft.trim().length === 0}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 13,
+                    borderRadius: 14,
+                    alignItems: 'center',
+                    backgroundColor: customDraft.trim().length === 0 ? 'rgba(0,0,0,0.12)' : '#004c22',
+                  }}
+                >
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Use it</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* Liquid Glass Keypad Area */}
         <View className="w-full pb-8">
