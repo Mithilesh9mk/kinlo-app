@@ -507,6 +507,7 @@ export default function HomeScreen() {
             ) : (
               recentActivity.map((item) => {
                 const isVoided = item.status === 'voided';
+                const isSettlement = (item as any).type === 'settlement';
 
                 return (
                   <TouchableOpacity 
@@ -534,21 +535,38 @@ export default function HomeScreen() {
                       />
                     </View>
                     <View className="flex-1">
-                      <Text className={`font-semibold text-sm ${isVoided ? 'text-outline line-through' : 'text-on-surface'}`} numberOfLines={1}>{item.description}</Text>
-                      <Text className="text-xs text-on-surface-variant mt-0.5">
-                        {item.paidByName} paid ₹{item.amount.toFixed(0)}
-                        {item.locationLabel ? ` • ${item.locationLabel}` : ''}
-                        {` • ${item.date}`}
+                      <Text className={`font-semibold text-sm ${isVoided ? 'text-outline line-through' : 'text-on-surface'}`} numberOfLines={1}>
+                        {isSettlement
+                          ? (item.paidByName === 'You' ? `You paid ${item.friendName?.split(' ')[0] || 'a friend'}` : `${item.paidByName?.split(' ')[0]} paid you`)
+                          : item.description}
                       </Text>
-                      <Text className={`text-xs font-semibold mt-0.5 ${isVoided ? 'text-outline' : (item.status === 'settled' || item.displayAmount <= 0 ? 'text-[#1f6c3a]' : (item.isOwed ? 'text-[#1f6c3a]' : 'text-[#ba1a1a]'))}`}>
-                        {isVoided ? 'Voided' : (item.status === 'settled' || item.displayAmount <= 0
-                          ? 'Settled'
-                          : (item.isOwed ? `You get back ₹${item.displayAmount.toFixed(2)}` : `You owe ₹${item.displayAmount.toFixed(2)}`))}
+                      <Text className="text-xs text-on-surface-variant mt-0.5">
+                        {isSettlement
+                          ? `Payment • ${item.date}`
+                          : `${item.paidByName} paid ₹${item.amount.toFixed(0)}${item.locationLabel ? ` • ${item.locationLabel}` : ''} • ${item.date}`}
+                      </Text>
+                      {/* A settlement is money changing hands, not a new charge.
+                          Showing it with the same owe/owed wording made settling
+                          look like it had created another debt. */}
+                      <Text className={`text-xs font-semibold mt-0.5 ${isVoided ? 'text-outline' : (isSettlement || item.status === 'settled' || item.displayAmount <= 0 ? 'text-[#1f6c3a]' : (item.isOwed ? 'text-[#1f6c3a]' : 'text-[#ba1a1a]'))}`}>
+                        {isVoided
+                          ? 'Voided'
+                          : isSettlement
+                            ? 'Settled up'
+                            : (item.status === 'settled' || item.displayAmount <= 0
+                              ? 'Settled'
+                              : (item.isOwed ? `You get back ₹${item.displayAmount.toFixed(2)}` : `You owe ₹${item.displayAmount.toFixed(2)}`))}
                       </Text>
                     </View>
-                    <Text className={`font-bold text-base ${isVoided ? 'text-outline' : (item.displayAmount === 0 ? 'text-[#404940]' : (item.isOwed ? 'text-[#1f6c3a]' : 'text-[#ba1a1a]'))}`}>
-                      {item.displayAmount > 0 ? (item.isOwed ? '+' : '-') : ''}₹{item.displayAmount.toFixed(2)}
-                    </Text>
+                    {isSettlement ? (
+                      <Text className="font-bold text-base" style={{ color: isVoided ? '#9ca3af' : '#4d5a51' }}>
+                        ₹{item.amount.toFixed(2)}
+                      </Text>
+                    ) : (
+                      <Text className={`font-bold text-base ${isVoided ? 'text-outline' : (item.displayAmount === 0 ? 'text-[#404940]' : (item.isOwed ? 'text-[#1f6c3a]' : 'text-[#ba1a1a]'))}`}>
+                        {item.displayAmount > 0 ? (item.isOwed ? '+' : '-') : ''}₹{item.displayAmount.toFixed(2)}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 );
               })

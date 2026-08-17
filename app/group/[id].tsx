@@ -29,6 +29,8 @@ interface Transaction {
   icon: string;
   timestamp: number; // Unix Epoch timestamp (ms)
   status?: string;
+  /** 'expense' or 'settlement' — settlements are payments, not new charges. */
+  type?: string;
 }
 
 interface GroupData {
@@ -161,7 +163,8 @@ export default function GroupDetailScreen() {
                 time: new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
                 icon: isSettlement ? 'payments' : (categoryIcons[t.category] || 'receipt-long'),
                 timestamp: new Date(t.created_at).getTime(),
-                status: t.status
+                status: t.status,
+                type: (t as any).type || 'expense'
               };
             });
 
@@ -598,7 +601,15 @@ export default function GroupDetailScreen() {
               <View className="space-y-4">
                 {filteredTxs.map((tx) => {
                   const isVoided = tx.status === 'voided';
-                  const shareText = isVoided ? 'Voided' : (tx.share > 0 ? `You are owed ₹${tx.share.toFixed(2)}` : tx.share < 0 ? `You owe ₹${Math.abs(tx.share).toFixed(2)}` : 'Settled');
+                  const isSettlementRow = tx.type === 'settlement';
+                  // A settlement is money changing hands, not a new charge.
+                  // Describing it as "you are owed" / "you owe" made settling
+                  // look like it had created another debt.
+                  const shareText = isVoided
+                    ? 'Voided'
+                    : isSettlementRow
+                      ? 'Settled up'
+                      : (tx.share > 0 ? `You are owed ₹${tx.share.toFixed(2)}` : tx.share < 0 ? `You owe ₹${Math.abs(tx.share).toFixed(2)}` : 'Settled');
                   const isYouPaid = tx.paidBy === 'You';
                   
                   return (
@@ -624,11 +635,15 @@ export default function GroupDetailScreen() {
                           <MaterialIcons name={tx.icon as any} size={24} color={isVoided ? "#9ca3af" : "#004c22"} />
                         </View>
                         <View className="flex-1 mr-2" style={{ marginLeft: 8 }}>
-                          <Text className={`font-body-md font-semibold text-base ${isVoided ? 'text-outline line-through' : 'text-on-background'}`} numberOfLines={1}>{tx.description}</Text>
+                          <Text className={`font-body-md font-semibold text-base ${isVoided ? 'text-outline line-through' : 'text-on-background'}`} numberOfLines={1}>
+                            {isSettlementRow
+                              ? (isYouPaid ? 'You made a payment' : `${tx.paidBy.split(' ')[0]} made a payment`)
+                              : tx.description}
+                          </Text>
                           <Text className="font-label-sm text-xs text-on-surface-variant mt-1" numberOfLines={1}>
-                            {tx.time} • Paid by {tx.paidBy}
-                            {tx.status === 'settled' && ' • '}
-                            {tx.status === 'settled' && (
+                            {isSettlementRow ? `Payment • ${tx.time}` : `${tx.time} • Paid by ${tx.paidBy}`}
+                            {!isSettlementRow && tx.status === 'settled' && ' • '}
+                            {!isSettlementRow && tx.status === 'settled' && (
                               <Text className="text-primary font-bold">Settled</Text>
                             )}
                             {isVoided && ' • '}
@@ -641,7 +656,7 @@ export default function GroupDetailScreen() {
                       <View className="items-end justify-center">
                         <Text className={`font-body-md font-bold text-base ${isVoided ? 'text-outline' : 'text-on-background'}`}>₹{tx.totalAmount.toFixed(2)}</Text>
                         <Text className={`font-label-sm text-xs mt-1 font-semibold ${
-                          isVoided ? 'text-outline' : (tx.share > 0 ? 'text-primary' : tx.share < 0 ? 'text-error' : 'text-on-surface-variant')
+                          isVoided ? 'text-outline' : (isSettlementRow ? 'text-primary' : tx.share > 0 ? 'text-primary' : tx.share < 0 ? 'text-error' : 'text-on-surface-variant')
                         }`}>
                           {shareText}
                         </Text>
