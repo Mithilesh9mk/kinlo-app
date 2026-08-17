@@ -512,19 +512,11 @@ export default function HomeScreen() {
                   <TouchableOpacity 
                     key={item.id}
                     onPress={() => {
-                      if (isVoided) return;
-                      if (item.groupId) {
-                        router.push({
-                          pathname: `/group/${item.groupId}`
-                        });
-                      } else if (item.counterpartyId) {
-                        router.push({
-                          pathname: `/friend/${item.counterpartyId}`,
-                          params: { friendName: item.friendName || 'Friend' }
-                        });
-                      } else {
-                        Alert.alert("Incomplete Transaction", "This transaction is missing the friend's data in the database. It was likely created before the recent bug fixes. Please delete it and create a new one.");
-                      }
+                      // Open the expense itself, not one of its participants.
+                      // This used to jump to a single counterpartyId, so a
+                      // three-person expense landed you in one friend's history
+                      // with no sign the others were involved.
+                      router.push({ pathname: `/transaction/${item.id}` });
                     }}
                     className={`rounded-2xl p-4 flex-row items-center gap-3 ${isVoided ? 'opacity-50' : ''}`}
                     style={{

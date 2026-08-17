@@ -115,6 +115,7 @@ export default function RootLayout() {
           <Stack.Screen name="expense" options={{ presentation: 'modal', headerShown: false }} />
           <Stack.Screen name="group" options={{ headerShown: false }} />
           <Stack.Screen name="friend" options={{ headerShown: false }} />
+          <Stack.Screen name="transaction" options={{ headerShown: false }} />
           <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false }} />
         </Stack>
       </GlobalBalancesProvider>

@@ -685,6 +685,22 @@ export default function FriendDetailScreen() {
             )}
 
             <View className="space-y-4">
+              {selectedTx && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsActionSheetOpen(false);
+                    router.push({ pathname: `/transaction/${selectedTx.id}` });
+                  }}
+                  className="w-full h-14 rounded-2xl flex-row items-center px-4"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.05)', marginBottom: 10 }}
+                >
+                  <MaterialIcons name="receipt-long" size={22} color="#004c22" />
+                  <Text className="text-primary font-semibold text-base" style={{ marginLeft: 10 }}>
+                    View full expense
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               {selectedTx && Math.abs(selectedTx.share) > 0 && selectedTx.status !== 'settled' && (
                 <TouchableOpacity
                   onPress={() => {

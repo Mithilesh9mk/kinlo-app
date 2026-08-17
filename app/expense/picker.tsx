@@ -30,6 +30,7 @@ export default function FriendGroupPickerScreen() {
   const { participants, setParticipants, groupId, setGroupId, payer } = useExpense();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'friends' | 'groups'>('friends');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
@@ -45,13 +46,20 @@ export default function FriendGroupPickerScreen() {
       try {
         const { supabase } = await import('../../lib/supabase');
         const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) return;
+        if (!authData?.user) {
+          setLoadError('You appear to be signed out.');
+          return;
+        }
         const myId = authData.user.id;
         setMyId(myId);
 
-        // Fetch users (friends)
+        // Everyone you are connected to: friends you added, people you share a
+        // group with, and anyone you have split an expense with. This came back
+        // empty for a while because it reads transactions, which the RLS
+        // recursion bug was breaking — an empty list looked identical to
+        // having no friends.
         const users = await getRelatedUsers(myId, 'id, full_name, avatar_url');
-        
+
         if (users) {
           setFriendsList(users.map((u: any) => ({
             id: u.id,
@@ -98,8 +106,11 @@ export default function FriendGroupPickerScreen() {
           }
           setGroupsList(groupsFormatted);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        // Surface it. An empty friend list is indistinguishable from a failed
+        // one, and the failed case used to look like "you have no friends".
+        setLoadError(err?.message || 'Could not load your friends and groups.');
       } finally {
         setLoading(false);
       }
