@@ -91,8 +91,18 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    marginHorizontal: 26,
-    marginBottom: Platform.OS === 'ios' ? 26 : 16,
+    // Absolutely positioned so the bar floats over the screen instead of
+    // occupying a row at the bottom. With margins alone the bar still took up
+    // layout space, and the strip around the pill showed the navigator's own
+    // background — reading as a full-width bar with the pill sitting on it.
+    //
+    // start/end rather than left/right: the library's base style sets
+    // `start: 0 / end: 0`, and in React Native those are distinct properties
+    // that left/right will not override.
+    position: 'absolute',
+    start: 26,
+    end: 26,
+    bottom: Platform.OS === 'ios' ? 26 : 16,
     height: 64,
     borderRadius: 999,
     backgroundColor: 'rgba(252, 249, 244, 0.94)',
