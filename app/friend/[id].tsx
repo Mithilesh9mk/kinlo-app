@@ -20,6 +20,8 @@ interface Transaction {
   icon: string;
   timestamp: number; // Unix Epoch timestamp (ms)
   status?: string;
+  /** 'expense' or 'settlement' — settlements are payments, not new charges. */
+  type?: string;
 }
 
 interface FriendData {
@@ -189,7 +191,8 @@ export default function FriendDetailScreen() {
               time: new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
               icon: hasSettlementIcon ? 'payments' : (categoryIcons[t.category] || 'receipt-long'),
               timestamp: new Date(t.created_at).getTime(),
-              status: t.status || 'active'
+              status: t.status || 'active',
+              type: (t as any).type || 'expense'
             };
           });
 
@@ -537,6 +540,7 @@ export default function FriendDetailScreen() {
                 filteredTxs.map((tx) => {
                   const isPositive = tx.share > 0;
                   const isVoided = tx.status === 'voided' || tx.status === 'rejected' || tx.status === 'disputed';
+                  const isSettlement = tx.type === 'settlement';
                   
                   return (
                     <View
@@ -569,12 +573,16 @@ export default function FriendDetailScreen() {
                           </View>
                            <View className="flex-1 mr-2" style={{ marginLeft: 8 }}>
                              <Text className={`font-semibold text-base ${isVoided ? 'text-outline line-through' : 'text-on-surface'}`} numberOfLines={1}>
-                               {tx.description}
+                               {isSettlement
+                                 ? (tx.paidBy === 'You' ? `You paid ${friend.name.split(' ')[0]}` : `${tx.paidBy.split(' ')[0]} paid you`)
+                                 : tx.description}
                              </Text>
                              <Text className="text-xs text-on-surface-variant mt-0.5" numberOfLines={1}>
-                               {tx.paidBy} paid ₹{tx.totalAmount.toFixed(2)} • {tx.time}
-                               {tx.status === 'settled' && ' • '}
-                               {tx.status === 'settled' && (
+                               {isSettlement
+                                 ? `Payment · ${tx.time}`
+                                 : `${tx.paidBy} paid ₹${tx.totalAmount.toFixed(2)} • ${tx.time}`}
+                               {!isSettlement && tx.status === 'settled' && ' • '}
+                               {!isSettlement && tx.status === 'settled' && (
                                  <Text className="text-primary font-bold">Settled</Text>
                                )}
                                {isVoided && ' • '}
@@ -585,9 +593,28 @@ export default function FriendDetailScreen() {
                            </View>
                         </View>
                         <View className="items-end justify-center">
-                          <Text className={`font-headline-md font-bold text-base ${isVoided ? 'text-outline' : (isPositive ? 'text-primary' : 'text-error')}`}>
-                            {isPositive ? '+' : '-'}₹{Math.abs(tx.share).toFixed(2)}
-                          </Text>
+                          {/* A settlement is money changing hands, not a new
+                              charge. Showing it with the same +/- owe colouring
+                              as an expense made settling look like it had added
+                              another debt. */}
+                          {isSettlement ? (
+                            <View className="items-end">
+                              <Text className="font-headline-md font-bold text-base" style={{ color: isVoided ? '#9ca3af' : '#4d5a51' }}>
+                                ₹{Math.abs(tx.share).toFixed(2)}
+                              </Text>
+                              <View
+                                className="flex-row items-center px-2 py-0.5 rounded-full mt-1"
+                                style={{ backgroundColor: '#caead6' }}
+                              >
+                                <MaterialIcons name="check" size={11} color="#004c22" />
+                                <Text className="text-[10px] font-bold text-primary" style={{ marginLeft: 3 }}>SETTLED</Text>
+                              </View>
+                            </View>
+                          ) : (
+                            <Text className={`font-headline-md font-bold text-base ${isVoided ? 'text-outline' : (isPositive ? 'text-primary' : 'text-error')}`}>
+                              {isPositive ? '+' : '-'}₹{Math.abs(tx.share).toFixed(2)}
+                            </Text>
+                          )}
                         </View>
                       </TouchableOpacity>
                     </View>

@@ -3,6 +3,22 @@ import { supabase } from './supabase';
 export async function getRelatedUsers(userId: string, columns: string = 'id, full_name, avatar_url, phone_number, email'): Promise<any[]> {
   if (!userId) return [];
 
+  // One round trip instead of nine. The fallback below builds the same list
+  // with a chain of dependent queries — each waiting on the one before — which
+  // is most of the delay before Home shows anything. Kept as a fallback so the
+  // app still works if migration 0011 has not been applied yet.
+  try {
+    const { data, error } = await supabase.rpc('get_related_users');
+    if (!error && data) {
+      return data;
+    }
+    if (error) {
+      console.warn('get_related_users RPC unavailable, falling back:', error.message);
+    }
+  } catch (rpcErr) {
+    console.warn('get_related_users RPC threw, falling back:', rpcErr);
+  }
+
   try {
     const relatedUserIds = new Set<string>();
 

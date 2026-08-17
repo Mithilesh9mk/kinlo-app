@@ -117,6 +117,7 @@ export default function RootLayout() {
           <Stack.Screen name="friend" options={{ headerShown: false }} />
           <Stack.Screen name="transaction" options={{ headerShown: false }} />
           <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false }} />
+          <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false }} />
         </Stack>
       </GlobalBalancesProvider>
     </SafeAreaProvider>

@@ -271,16 +271,20 @@ export default function SettleUpScreen() {
       return;
     }
 
-    if (groupId) {
-      router.replace(`/group/${groupId}`);
-    } else if (selectedFriendId && selectedFriendId !== 'unknown') {
-      router.replace({
-        pathname: `/friend/${selectedFriendId}`,
-        params: { friendName: selectedFriendName }
-      });
-    } else {
-      router.replace('/');
-    }
+    // Confirm what just happened rather than dropping the user back onto the
+    // previous screen with no acknowledgement. Adding an expense already ends
+    // on a success screen; recording a payment now does too.
+    router.replace({
+      pathname: '/settle-success',
+      params: {
+        amount: amount.toFixed(2),
+        friendName: selectedFriendName,
+        youPaid: currentStatus !== 'owed' ? 'true' : 'false',
+        remaining: Math.max(0, currentBalance - amount).toFixed(2),
+        groupId: groupId || '',
+        friendId: selectedFriendId || '',
+      },
+    });
     // Note: No need to setIsSubmitting(false) on success since we are navigating away.
   };
 
