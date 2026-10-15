@@ -1,0 +1,150 @@
+# Kinlo — Automated Architecture & Graph Report
+> **Last Generated:** 15/10/2026, 1:10:00 pm
+
+## 📊 Repository Summary
+- **Total Tracked System Nodes:** 146
+- **UI Screens (`app/`):** 45
+- **Components (`components/`):** 12
+- **Business Logic (`lib/` & `context/`):** 26
+- **SQL Migrations (`supabase/migrations/`):** 59
+- **Edge Functions (`supabase/functions/`):** 4
+
+---
+
+## 📱 Active App Routes & Screens
+- `app/(tabs)/analytics.tsx`
+- `app/(tabs)/groups.tsx`
+- `app/(tabs)/index.tsx`
+- `app/(tabs)/profile.tsx`
+- `app/(tabs)/_layout.tsx`
+- `app/+native-intent.ts`
+- `app/activity.tsx`
+- `app/connect/[id].tsx`
+- `app/connect/_layout.tsx`
+- `app/expense/amount.tsx`
+- `app/expense/details.tsx`
+- `app/expense/payer.tsx`
+- `app/expense/picker.tsx`
+- `app/expense/split.tsx`
+- `app/expense/success.tsx`
+- `app/expense/_layout.tsx`
+- `app/finance/entry.tsx`
+- `app/finance/index.tsx`
+- `app/finance/share.tsx`
+- `app/finance/[id].tsx`
+- `app/finance/_layout.tsx`
+- `app/friend/[id].tsx`
+- `app/friends/index.tsx`
+- `app/group/create-members.tsx`
+- `app/group/create.tsx`
+- `app/group/[id].tsx`
+- `app/group/_layout.tsx`
+- `app/legal/[doc].tsx`
+- `app/legal/_layout.tsx`
+- `app/onboarding/avatar.tsx`
+- `app/onboarding/first-action.tsx`
+- `app/onboarding/login.tsx`
+- `app/onboarding/name-setup.tsx`
+- `app/onboarding/permissions.tsx`
+- `app/onboarding/reset-password.tsx`
+- `app/onboarding/splash.tsx`
+- `app/onboarding/sync.tsx`
+- `app/onboarding/value.tsx`
+- `app/onboarding/_layout.tsx`
+- `app/search.tsx`
+- `app/settle-success.tsx`
+- `app/settle-up.tsx`
+- `app/statement.tsx`
+- `app/transaction/[id].tsx`
+- `app/_layout.tsx`
+
+---
+
+## ⚡ Core Business Logic & Math Libraries
+- `lib/accountDeletion.ts`
+- `lib/activity.ts`
+- `lib/analytics.ts`
+- `lib/balances.ts`
+- `lib/categories.ts`
+- `lib/connections.ts`
+- `lib/contactsSync.ts`
+- `lib/crashLog.ts`
+- `lib/debtNudges.ts`
+- `lib/drafts.ts`
+- `lib/friendFetcher.ts`
+- `lib/groups.ts`
+- `lib/idempotency.ts`
+- `lib/imagePrep.ts`
+- `lib/legal.ts`
+- `lib/offlineCache.ts`
+- `lib/pendingReceiptImage.ts`
+- `lib/personalTransactions.ts`
+- `lib/pushDispatcher.ts`
+- `lib/recalculateSettlements.ts`
+- `lib/recurrence.ts`
+- `lib/reminders.ts`
+- `lib/splitCalculator.ts`
+- `lib/supabase.ts`
+
+---
+
+## 📜 Database Migrations Timeline (0001 - 0050)
+- `supabase/migrations/0001_reconcile_schema.sql`
+- `supabase/migrations/0002_user_isolation.sql`
+- `supabase/migrations/0003_settlements_rpc.sql`
+- `supabase/migrations/0004_split_uniqueness.sql`
+- `supabase/migrations/0005_record_settlement.sql`
+- `supabase/migrations/0006_settled_status_is_display_only.sql`
+- `supabase/migrations/0007_admin_rebuild_settlements.sql`
+- `supabase/migrations/0008_fix_rls_recursion.sql`
+- `supabase/migrations/0009_record_expense.sql`
+- `supabase/migrations/0010_flexible_categories.sql`
+- `supabase/migrations/0011_get_related_users.sql`
+- `supabase/migrations/0012_settlements_link_to_expense.sql`
+- `supabase/migrations/0013_capture_undeclared_objects.sql`
+- `supabase/migrations/0014_revoke_anon_from_admin_rebuild.sql`
+- `supabase/migrations/0015_void_transaction.sql`
+- `supabase/migrations/0016_record_expense_full_rebuild_scope.sql`
+- `supabase/migrations/0017_settlement_cannot_exceed_debt.sql`
+- `supabase/migrations/0018_group_settlement_guard.sql`
+- `supabase/migrations/0019_split_sum_must_be_exact.sql`
+- `supabase/migrations/0020_transaction_payers.sql`
+- `supabase/migrations/0021_pair_ledger_multi_payer.sql`
+- `supabase/migrations/0022_record_expense_multi_payer.sql`
+- `supabase/migrations/0023_group_ledger_multi_payer.sql`
+- `supabase/migrations/0024_grant_tidy_and_drop_orphans.sql`
+- `supabase/migrations/0025_widen_description_and_category.sql`
+- `supabase/migrations/0026_drop_approval_flow_and_dead_columns.sql`
+- `supabase/migrations/0027_expense_drafts.sql`
+- `supabase/migrations/0028_optimistic_concurrency.sql`
+- `supabase/migrations/0029_guard_member_removal.sql`
+- `supabase/migrations/0030_constraint_hygiene.sql`
+- `supabase/migrations/0031_group_simplification_toggle.sql`
+- `supabase/migrations/0032_activity_events.sql`
+- `supabase/migrations/0033_create_group.sql`
+- `supabase/migrations/0034_activity_read_tracking.sql`
+- `supabase/migrations/0035_remove_group_member.sql`
+- `supabase/migrations/0036_personal_transactions.sql`
+- `supabase/migrations/0037_receipts_bucket.sql`
+- `supabase/migrations/0038_match_contacts_by_phone.sql`
+- `supabase/migrations/0039_resolve_user_by_phone.sql`
+- `supabase/migrations/0040_phone_uniqueness_excludes_placeholders.sql`
+- `supabase/migrations/0041_connection_requests.sql`
+- `supabase/migrations/0042_claim_placeholder.sql`
+- `supabase/migrations/0043_connection_request_fixes.sql`
+- `supabase/migrations/0044_account_deletion.sql`
+- `supabase/migrations/0045_receipt_rate_limit.sql`
+- `supabase/migrations/0046_delete_account_rate_limit.sql`
+- `supabase/migrations/0047_push_notify_rate_limit.sql`
+- `supabase/migrations/0048_settlement_lock_and_multipayer_guard.sql`
+- `supabase/migrations/0049_fix_settlement_cap_message_format.sql`
+- `supabase/migrations/0051_simplification_activity_log.sql`
+- `supabase/migrations/0052_debt_nudges.sql`
+- `supabase/migrations/0053_personal_reminders.sql`
+- `supabase/migrations/0054_account_deletion_covers_reminders.sql`
+- `supabase/migrations/0055_settlement_tolerance_clamp.sql`
+- `supabase/migrations/0056_account_deletion_covers_rate_limit_tables.sql`
+- `supabase/migrations/0057_rolling_rate_limits.sql`
+- `supabase/migrations/0058_merge_paid_by_suppressed_from_activity.sql`
+- `supabase/migrations/0059_resplit_activity_event.sql`
+- `supabase/migrations/0060_personal_log_streak.sql`

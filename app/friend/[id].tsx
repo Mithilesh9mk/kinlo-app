@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Modal, StyleSheet, Animated } from 'react-native';
+import { View, Text, ScrollView, Modal } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Avatar } from '../../components/Avatar';
+import { Skeleton, SkeletonListRow } from '../../components/Skeleton';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { SwipeableRow } from '../../components/SwipeableRow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useGlobalBalances } from '../../context/GlobalBalancesContext';
+import { useToast } from '../../components/Toast';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
-import { fetchBalanceMap, statusFor } from '../../lib/balances';
+import { fetchBalanceMap, fetchBalanceRows, balanceMapForScope, statusFor } from '../../lib/balances';
+import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCache';
+import { OfflineBanner } from '../../components/OfflineBanner';
+import { sendDebtNudge, describeNudgeResult } from '../../lib/debtNudges';
 
 // Transaction with exact Date tags for mindful timeline filtering
 interface Transaction {
@@ -22,16 +31,21 @@ interface Transaction {
   status?: string;
   /** 'expense' or 'settlement' — settlements are payments, not new charges. */
   type?: string;
+  /** null = a direct 1-on-1 expense; otherwise the group this was created in. */
+  group_id?: string | null;
+  groupName?: string | null;
 }
 
 interface FriendData {
   name: string;
-  email: string;
+  phone: string;
   avatarUrl?: string;
   initials?: string;
   balance: number;
   status: 'owed' | 'owes' | 'settled';
   transactions: Transaction[];
+  /** null/undefined = live. An ISO timestamp = this is a cached fallback. */
+  cachedAt?: string | null;
 }
 
 
@@ -43,7 +57,7 @@ type TimelineFilter = '30days' | '6months' | '1year' | 'all';
 export default function FriendDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { id, friendName, friendEmail } = useLocalSearchParams<{ id: string; friendName?: string; friendEmail?: string }>();
+  const { id, friendName, friendPhone } = useLocalSearchParams<{ id: string; friendName?: string; friendPhone?: string }>();
   const { refreshBalances } = useGlobalBalances();
 
   const friendId = id as string;
@@ -62,10 +76,29 @@ export default function FriendDetailScreen() {
   const [timeline, setTimeline] = useState<TimelineFilter>('1year');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
+  // The signed-in user's id, needed outside the fetch closure below to
+  // compute a per-scope (direct vs. each shared group) balance breakdown
+  // when Settle Up is pressed.
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  // Settle Up must target one scope at a time — group debt and direct debt
+  // are independently reconciled ledgers that the settlement RPC will not
+  // net together. When a friend has more than one non-zero scope, this
+  // sheet lets the user pick which one to settle.
+  interface SettleScope {
+    groupId: string | null;
+    label: string;
+    balance: number;
+  }
+  const [settleScopes, setSettleScopes] = useState<SettleScope[]>([]);
+  const [isSettleScopeSheetOpen, setIsSettleScopeSheetOpen] = useState(false);
+
   // Collaborative Permission Sheets
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   const [isRequestPopupOpen, setIsRequestPopupOpen] = useState(false);
+
+  const [nudgeSending, setNudgeSending] = useState(false);
 
   // Load real transactions from Supabase
   useFocusEffect(
@@ -76,10 +109,9 @@ export default function FriendDetailScreen() {
         const { data: authData } = await supabase.auth.getUser();
         const userId = authData?.user?.id;
         if (!userId) {
-          setLoadState('error');
-          setLoadError('You appear to be signed out. Sign in again to see this balance.');
-          return;
+          throw new Error('You appear to be signed out. Sign in again to see this balance.');
         }
+        setMyUserId(userId);
 
         const finalFriendId = friendId;
 
@@ -95,8 +127,9 @@ export default function FriendDetailScreen() {
             created_at,
             status,
             type,
+            group_id,
             transaction_splits (user_id, share_amount)
-          `)
+          `);
           // No .or() on transaction_splits here. Filtering an embedded table
           // inside a top-level .or() only works in PostgREST when the embed is
           // an inner join; without that it can fail outright, and a failed
@@ -104,13 +137,15 @@ export default function FriendDetailScreen() {
           // RLS (transactions_select, migrations/0002) already restricts rows
           // to ones the caller paid for, is a member of, or has a split in,
           // and the code below re-filters to this specific friend anyway.
-          .is('group_id', null);
+          //
+          // No .is('group_id', null) here anymore either — that used to
+          // exclude every group-originated expense between this pair, even
+          // when both people are participants in the same group expense.
+          // That's why a group expense could be invisible on this screen
+          // while still showing up in the combined balance below.
 
         if (error) {
-          console.error('Error fetching live transactions:', error.message);
-          setLoadState('error');
-          setLoadError(error.message);
-          return;
+          throw new Error(error.message);
         }
 
         if (txs) {
@@ -126,6 +161,22 @@ export default function FriendDetailScreen() {
 
             return involvesMe && involvesFriend;
           });
+
+          // Resolve group titles for any group-originated rows so they can
+          // be labeled below, mirroring the groupMap pattern in statement.tsx.
+          const groupIds = Array.from(
+            new Set(matched.map(t => (t as any).group_id).filter(Boolean) as string[])
+          );
+          const groupTitleMap: Record<string, string> = {};
+          if (groupIds.length > 0) {
+            const { data: groups } = await supabase
+              .from('groups')
+              .select('id, title')
+              .in('id', groupIds);
+            if (groups) {
+              for (const g of groups) groupTitleMap[g.id] = g.title || 'Group';
+            }
+          }
 
           // Format transactions to fit UI structure
           const formatted: Transaction[] = matched.map(t => {
@@ -192,7 +243,9 @@ export default function FriendDetailScreen() {
               icon: hasSettlementIcon ? 'payments' : (categoryIcons[t.category] || 'receipt-long'),
               timestamp: new Date(t.created_at).getTime(),
               status: t.status || 'active',
-              type: (t as any).type || 'expense'
+              type: (t as any).type || 'expense',
+              group_id: (t as any).group_id ?? null,
+              groupName: (t as any).group_id ? (groupTitleMap[(t as any).group_id] || 'Group') : null,
             };
           });
 
@@ -204,65 +257,67 @@ export default function FriendDetailScreen() {
           const balanceMap = await fetchBalanceMap(userId);
           const totalBalance = balanceMap[finalFriendId] || 0;
 
+          const cacheKey = `friendDetail.${friendId}`;
+          let nextFriend: FriendData | null = null;
           setFriendsData(prev => {
-            const baseFriend = prev[friendId] || { name: friendName || 'Unknown', email: '' };
-            return {
-              ...prev,
-              [friendId]: {
-                ...baseFriend,
-                // Newest first. Nothing sorted these before, so rows arrived in
-                // whatever order Postgres returned and a just-added expense
-                // could appear part-way down the list.
-                transactions: [...formatted].sort((a, b) => b.timestamp - a.timestamp),
-                balance: Math.abs(totalBalance),
-                status: totalBalance > 0 ? 'owed' : totalBalance < 0 ? 'owes' : 'settled'
-              }
+            const baseFriend = prev[friendId] || { name: friendName || 'Unknown', phone: friendPhone || '' };
+            nextFriend = {
+              ...baseFriend,
+              // Newest first. Nothing sorted these before, so rows arrived in
+              // whatever order Postgres returned and a just-added expense
+              // could appear part-way down the list.
+              transactions: [...formatted].sort((a, b) => b.timestamp - a.timestamp),
+              balance: Math.abs(totalBalance),
+              status: totalBalance > 0 ? 'owed' : totalBalance < 0 ? 'owes' : 'settled',
+              cachedAt: null,
             };
+            return { ...prev, [friendId]: nextFriend };
           });
+          if (nextFriend) await writeCache(cacheKey, nextFriend);
           setLoadState('ready');
           setLoadError(null);
         }
       } catch (err: any) {
         console.error('Error loading dynamic transactions:', err);
-        setLoadState('error');
-        setLoadError(err?.message || 'Could not load this balance.');
+        const cached = isLikelyNetworkError(err)
+          ? await readCache<FriendData>(`friendDetail.${friendId}`)
+          : null;
+        if (cached) {
+          setFriendsData(prev => ({
+            ...prev,
+            [friendId]: { ...cached.data, cachedAt: cached.cachedAt },
+          }));
+          setLoadState('ready');
+          setLoadError(null);
+        } else {
+          setLoadState('error');
+          setLoadError(err?.message || 'Could not load this balance.');
+        }
       }
     }
 
     fetchLiveTransactions();
   }, [friendId, friendName]));
 
-  // Toast animations
-  const [toastMessage, setToastMessage] = useState('');
-  const [showToast, setShowToast] = useState(false);
-  const toastOpacity = React.useRef(new Animated.Value(0)).current;
+  const { showToast: triggerToast } = useToast();
 
   // Resolve current active friend data
   let friend = friendsData[friendId];
   if (!friend) {
-    const name = friendName || (id ? id.charAt(0).toUpperCase() + id.slice(1) : 'New Friend');
-    const email = friendEmail || `${friendId}@example.com`;
-    const initials = name.split(' ').map(n => n.charAt(0)).join('').toUpperCase().slice(0, 2);
+    // No UUID-derived guess here — a wrong-looking name is worse than none.
+    // The header renders a skeleton instead of this until loadState settles.
+    const name = friendName || '';
+    const phone = friendPhone || '';
+    const initials = name ? name.split(' ').map(n => n.charAt(0)).join('').toUpperCase().slice(0, 2) : '';
     friend = {
       name,
-      email,
+      phone,
       balance: 0,
       status: 'settled',
       transactions: [],
       initials
     };
   }
-
-  // Display Toast helper
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setShowToast(true);
-    Animated.sequence([
-      Animated.timing(toastOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.delay(2000),
-      Animated.timing(toastOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start(() => setShowToast(false));
-  };
 
   const handleAddExpense = () => {
     router.push({
@@ -274,7 +329,22 @@ export default function FriendDetailScreen() {
     });
   };
 
-  const handleSettleUp = () => {
+  const navigateToSettleUp = (scope: { groupId: string | null; label: string; balance: number }) => {
+    setIsSettleScopeSheetOpen(false);
+    router.push({
+      pathname: '/settle-up',
+      params: {
+        friendId: friendId,
+        friendName: friend.name,
+        balance: Math.abs(scope.balance).toFixed(2),
+        status: scope.balance > 0 ? 'owed' : 'owes',
+        groupId: scope.groupId || undefined,
+        groupName: scope.groupId ? scope.label : undefined,
+      }
+    });
+  };
+
+  const handleSettleUp = async () => {
     // Never report "settled" on the strength of data we don't have. The
     // fallback friend object is balance: 0 / status: 'settled', so without
     // these two guards an unfinished or failed load is reported to the user
@@ -292,15 +362,94 @@ export default function FriendDetailScreen() {
       triggerToast('All settled up! No outstanding balance.');
       return;
     }
-    router.push({
-      pathname: '/settle-up',
-      params: {
-        friendId: friendId,
-        friendName: friend.name,
-        balance: Math.abs(friend.balance).toFixed(2),
-        status: friend.status
+
+    if (!myUserId) {
+      triggerToast('Still loading — try again in a moment.');
+      return;
+    }
+
+    // The balance shown above sums every scope together (direct + each
+    // shared group), but the settlement RPC only ever settles one scope per
+    // call — group debt and direct debt are independently reconciled
+    // ledgers that are never netted against each other. Settling straight
+    // off the combined total (as this used to do) tried to clear a scope
+    // that was often still zero, which the DB correctly rejected as
+    // "already square" even though the friend genuinely owed money in a
+    // different scope.
+    try {
+      const rows = await fetchBalanceRows(myUserId);
+
+      const scopes: { groupId: string | null; label: string; balance: number }[] = [];
+
+      const directBal = balanceMapForScope(rows, myUserId, null)[friendId] || 0;
+      if (Math.abs(directBal) > 0.005) {
+        scopes.push({ groupId: null, label: 'Direct', balance: directBal });
       }
-    });
+
+      const groupIds = Array.from(
+        new Set(rows.filter(r => r.group_id).map(r => r.group_id as string))
+      );
+      const groupBalances = groupIds
+        .map(gid => ({ gid, bal: balanceMapForScope(rows, myUserId, gid)[friendId] || 0 }))
+        .filter(g => Math.abs(g.bal) > 0.005);
+
+      if (groupBalances.length > 0) {
+        const { supabase } = await import('../../lib/supabase');
+        const { data: groups } = await supabase
+          .from('groups')
+          .select('id, title')
+          .in('id', groupBalances.map(g => g.gid));
+        const groupTitleMap: Record<string, string> = {};
+        if (groups) for (const g of groups) groupTitleMap[g.id] = g.title || 'Group';
+        for (const g of groupBalances) {
+          scopes.push({ groupId: g.gid, label: groupTitleMap[g.gid] || 'Group', balance: g.bal });
+        }
+      }
+
+      if (scopes.length === 0) {
+        // The combined total said non-zero, but every individual scope
+        // rounds to zero (a rounding edge case) — treat as settled rather
+        // than showing an empty chooser.
+        triggerToast('All settled up! No outstanding balance.');
+        return;
+      }
+
+      if (scopes.length === 1) {
+        navigateToSettleUp(scopes[0]);
+        return;
+      }
+
+      setSettleScopes(scopes);
+      setIsSettleScopeSheetOpen(true);
+    } catch (err) {
+      console.error('Could not compute settle-up scopes:', err);
+      triggerToast('Could not check this balance. Please try again.');
+    }
+  };
+
+  // Core Functionality Audit's payment-reminder gap (P1 #5) / engagement
+  // audit feature A. send_debt_nudge() (0052) already proves the debt and
+  // enforces the per-pair cooldown; this just calls it and surfaces the
+  // result. Gated on friend.status === 'owed' in the JSX below, but the RPC
+  // re-derives the debt itself from simplified_settlements — the same
+  // source lib/balances.ts reads — so a stale client-side status can never
+  // send a reminder for a debt that no longer exists.
+  const handleSendReminder = async () => {
+    if (nudgeSending || !friendId) return;
+    setNudgeSending(true);
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data: authData } = await supabase.auth.getUser();
+      const senderName = authData?.user?.user_metadata?.full_name || 'Someone';
+
+      const result = await sendDebtNudge(friendId, senderName);
+      triggerToast(describeNudgeResult(result, friend.name || 'this friend'));
+    } catch (err: any) {
+      console.error('Could not send reminder:', err);
+      triggerToast('Could not send a reminder right now.');
+    } finally {
+      setNudgeSending(false);
+    }
   };
 
   // Timeline Filtering math
@@ -325,33 +474,42 @@ export default function FriendDetailScreen() {
   };
 
   // Perform Delete / Request permission
-  const handleDeleteTx = async () => {
+  const handleDeleteTx = async (txOverride?: Transaction) => {
+    const tx = txOverride ?? selectedTx;
     setIsActionSheetOpen(false);
-    if (!selectedTx) return;
+    if (!tx) return;
 
-    if (selectedTx.addedBy === 'You') {
+    if (tx.addedBy === 'You') {
       try {
-        // Void transaction instead of hard delete
         const { supabase } = await import('../../lib/supabase');
         const { data: authData } = await supabase.auth.getUser();
         const currentUserId = authData?.user?.id;
-        await supabase.from('transactions').update({ status: 'voided' }).eq('id', selectedTx.id);
 
-        // Phase 2C: recalculate 1-on-1 settlements from scratch. The delete and
-        // the rebuild now happen inside one Postgres transaction.
-        if (currentUserId) {
-          try {
-            const { recalculatePairSettlements } = await import('../../lib/recalculateSettlements');
-            await recalculatePairSettlements(friendId as string);
-            await refreshBalances();
-          } catch (debtErr) {
-            console.warn('Post-void debt recalculation error (non-critical):', debtErr);
-          }
+        // One call: the status change and the rebuild of every affected pair
+        // happen in a single database transaction.
+        //
+        // This used to be an update() followed by a separate
+        // recalculatePairSettlements(friendId), with the rebuild in a catch
+        // that logged "non-critical" and fell through to a success toast. Two
+        // things were wrong with that. A failure between the two left the
+        // expense voided and the ledger stale, permanently and silently. And
+        // the scope came from this screen rather than from the expense: on a
+        // three-person expense the third party kept their share of something
+        // that no longer counted. See migrations/0015_void_transaction.sql.
+        const { voidTransaction } = await import('../../lib/recalculateSettlements');
+        const voidError = await voidTransaction(tx.id);
+
+        if (voidError) {
+          console.error('Void failed:', voidError.message);
+          triggerToast('Could not void this transaction. Please try again.');
+          return;
         }
+
+        await refreshBalances();
 
         // Direct action permitted: mark item as voided
         const updatedTxs = friend.transactions.map(t =>
-          t.id === selectedTx.id ? { ...t, status: 'voided' } : t
+          t.id === tx.id ? { ...t, status: 'voided' } : t
         );
 
         // Re-read the balance from the ledger the RPC above just rebuilt,
@@ -378,12 +536,12 @@ export default function FriendDetailScreen() {
         triggerToast('Transaction voided successfully!');
         
         // P-6: Notify friend about deleted expense
-        if (selectedTx.paidByUserId) {
-          const counterpartyId = selectedTx.paidByUserId === currentUserId ? friendId : selectedTx.paidByUserId;
+        if (tx.paidByUserId) {
+          const counterpartyId = tx.paidByUserId === currentUserId ? friendId : tx.paidByUserId;
           dispatchPushNotification(
             [counterpartyId],
             'Expense Deleted',
-            `${authData?.user?.user_metadata?.full_name || 'Someone'} deleted the expense: ${selectedTx.description}.`
+            `${authData?.user?.user_metadata?.full_name || 'Someone'} deleted the expense: ${tx.description}.`
           );
         }
       } catch (err) {
@@ -391,7 +549,11 @@ export default function FriendDetailScreen() {
         triggerToast('Failed to void transaction.');
       }
     } else {
-      // Intercept with Collaborative Permission Modal
+      // Intercept with Collaborative Permission Modal. If this was triggered
+      // from a swipe (tx passed explicitly, not via the tap-driven Actions
+      // Sheet), selectedTx won't be populated yet — the request popup and
+      // handleSendRequest below both read it for display/notification.
+      if (tx !== selectedTx) setSelectedTx(tx);
       setIsRequestPopupOpen(true);
     }
   };
@@ -424,23 +586,25 @@ export default function FriendDetailScreen() {
           backgroundColor: 'rgba(252, 249, 244, 0.72)' 
         }}
       >
-        <View className="flex-row items-center space-x-4">
-          <TouchableOpacity 
+        <View className="flex-row items-center gap-4">
+          <AnimatedPressable 
             onPress={() => router.back()}
             className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
           >
             <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-          </TouchableOpacity>
-          <Text className="font-headline-md font-bold text-primary text-xl">ZenSplit</Text>
+          </AnimatedPressable>
+          <Text className="font-headline-md font-bold text-primary text-xl">Kinlo</Text>
         </View>
         <View className="w-10 h-10 rounded-full border border-outline-variant bg-surface-container items-center justify-center overflow-hidden">
-          {friend.avatarUrl ? (
-            <Image source={{ uri: friend.avatarUrl }} className="w-full h-full" />
-          ) : (
-            <Text className="text-primary font-bold text-sm">{friend.initials}</Text>
-          )}
+          <Avatar
+            uri={friend.avatarUrl}
+            initials={friend.initials}
+            textClassName="text-primary font-bold text-sm"
+          />
         </View>
       </View>
+
+      <OfflineBanner cachedAt={friend.cachedAt} />
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 120 }}>
         <View className="px-5 pt-8 max-w-xl mx-auto w-full flex-col items-center">
@@ -448,29 +612,45 @@ export default function FriendDetailScreen() {
           {/* Friend Profile Header */}
           <View className="items-center mb-6 w-full">
             <View className="w-20 h-20 rounded-full border-2 border-white shadow-sm mb-4 bg-secondary-container items-center justify-center overflow-hidden">
-              {friend.avatarUrl ? (
-                <Image source={{ uri: friend.avatarUrl }} className="w-full h-full" />
-              ) : (
-                <Text className="text-primary font-bold text-2xl">{friend.initials}</Text>
-              )}
+              <Avatar
+                uri={friend.avatarUrl}
+                initials={friend.initials}
+                textClassName="text-primary font-bold text-2xl"
+              />
             </View>
-            <Text className="text-2xl font-bold text-on-surface mb-1">{friend.name}</Text>
-            <Text className="text-sm text-on-surface-variant mb-4">{friend.email}</Text>
+            {friend.name
+              ? <Text className="text-2xl font-bold text-on-surface mb-1">{friend.name}</Text>
+              : <Skeleton width={140} height={22} radius={6} style={{ marginBottom: 4 }} />}
+            {friend.phone ? (
+              <Text className="text-sm text-on-surface-variant mb-4">{friend.phone}</Text>
+            ) : (
+              <View className="mb-4" />
+            )}
 
             {/* Net Balance Status Badge */}
             {friend.status === 'owed' && (
               <View className="flex-col items-center">
-                <View className="flex-row items-center space-x-2 bg-[#DCFCE7] px-4 py-1.5 rounded-full mb-2">
+                <View className="flex-row items-center gap-2 bg-[#DCFCE7] px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-primary" />
                   <Text className="text-primary font-semibold text-xs uppercase tracking-wider">You are owed</Text>
                 </View>
                 <Text className="text-4xl font-bold text-primary">+₹{friend.balance.toFixed(2)}</Text>
+                <AnimatedPressable
+                  onPress={handleSendReminder}
+                  disabled={nudgeSending}
+                  className="flex-row items-center gap-1.5 mt-3 px-4 py-2 rounded-full bg-primary-container active:scale-95 duration-100"
+                >
+                  <MaterialIcons name="notifications-none" size={16} color="white" />
+                  <Text className="text-white font-semibold text-xs">
+                    {nudgeSending ? 'Sending…' : 'Send Reminder'}
+                  </Text>
+                </AnimatedPressable>
               </View>
             )}
 
             {friend.status === 'owes' && (
               <View className="flex-col items-center">
-                <View className="flex-row items-center space-x-2 bg-error-container px-4 py-1.5 rounded-full mb-2">
+                <View className="flex-row items-center gap-2 bg-error-container px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-error" />
                   <Text className="text-error font-semibold text-xs uppercase tracking-wider">You owe</Text>
                 </View>
@@ -480,7 +660,7 @@ export default function FriendDetailScreen() {
 
             {friend.status === 'settled' && (
               <View className="flex-col items-center">
-                <View className="flex-row items-center space-x-2 bg-surface-container-highest px-4 py-1.5 rounded-full mb-2">
+                <View className="flex-row items-center gap-2 bg-surface-container-highest px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-outline" />
                   <Text className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider">Settled up</Text>
                 </View>
@@ -491,13 +671,13 @@ export default function FriendDetailScreen() {
 
           {/* Action Buttons */}
           <View className="flex-row gap-3 w-full mb-8">
-            <TouchableOpacity 
+            <AnimatedPressable 
               onPress={handleAddExpense}
               className="flex-1 bg-primary py-3.5 rounded-2xl items-center shadow-md shadow-primary/20 active:scale-95 duration-100"
             >
               <Text className="text-white font-semibold text-base">Add Expense</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
+            </AnimatedPressable>
+            <AnimatedPressable 
               onPress={handleSettleUp}
               className="flex-1 py-3.5 rounded-2xl items-center border active:scale-95 duration-100"
               style={{
@@ -506,7 +686,7 @@ export default function FriendDetailScreen() {
               }}
             >
               <Text className="text-primary font-semibold text-base">Settle Up</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
           <View className="w-full h-px bg-outline-variant/30 mb-6" />
@@ -517,37 +697,59 @@ export default function FriendDetailScreen() {
               <Text className="font-headline-md text-lg font-semibold text-on-surface">Transaction History</Text>
               
               {/* Timeline Filter Trigger Badge */}
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsFilterSheetOpen(true)}
-                className="flex-row items-center space-x-1 bg-surface-container-high px-3 py-1.5 rounded-full border border-outline-variant/30 active:scale-95"
+                className="flex-row items-center gap-1 bg-surface-container-high px-3 py-1.5 rounded-full border border-outline-variant/30 active:scale-95"
               >
                 <MaterialIcons name="calendar-today" size={12} color="#004c22" />
                 <Text className="text-primary text-[10px] font-bold uppercase tracking-wider pl-1">
                   {timeline === '30days' ? '30 Days' : timeline === '6months' ? '6 Months' : timeline === '1year' ? '1 Year' : 'All Time'}
                 </Text>
                 <MaterialIcons name="keyboard-arrow-down" size={14} color="#004c22" />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
             
             {/* Stateful Transaction Card Feeds */}
-            <View className="space-y-4">
-              {filteredTxs.length === 0 ? (
+            <View className="gap-4">
+              {loadState === 'loading' ? (
+                // Distinct from the empty state below on purpose. "No
+                // transactions" and "not loaded yet" mean opposite things, and
+                // this screen already guards against conflating them elsewhere.
+                [0, 1, 2, 3].map(i => (
+                  <View
+                    key={`skeleton-${i}`}
+                    className="p-4 rounded-2xl"
+                    style={{
+                      backgroundColor: 'rgba(255,255,255,0.72)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(0,0,0,0.05)',
+                      marginBottom: 12,
+                    }}
+                  >
+                    <SkeletonListRow avatarSize={44} />
+                  </View>
+                ))
+              ) : filteredTxs.length === 0 ? (
                 <View className="py-12 items-center justify-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl">
                   <MaterialIcons name="event-busy" size={32} color="#707a6f" className="mb-2" />
                   <Text className="text-on-surface-variant font-medium text-sm">No transactions in selected timeline</Text>
                 </View>
               ) : (
-                filteredTxs.map((tx) => {
+                filteredTxs.map((tx, txIndex) => {
                   const isPositive = tx.share > 0;
                   const isVoided = tx.status === 'voided' || tx.status === 'rejected' || tx.status === 'disputed';
                   const isSettlement = tx.type === 'settlement';
-                  
+
                   return (
+                    <AnimatedListItem index={txIndex} key={tx.id}>
                     <View
-                      key={tx.id}
                       className={`p-4 rounded-2xl flex-col ${isVoided ? 'opacity-50' : ''}`}
                       style={{
-                        backgroundColor: 'rgba(255, 255, 255, 0.72)',
+                        // Opaque, not translucent — a semi-transparent
+                        // background paired with Android's `elevation` is a
+                        // known rendering bug there. Same color, precomputed
+                        // opaque over this app's #fcf9f4 page background.
+                        backgroundColor: '#fefdfc',
                         borderWidth: 1,
                         borderColor: 'rgba(255, 255, 255, 0.35)',
                         shadowColor: '#1c1917',
@@ -558,12 +760,21 @@ export default function FriendDetailScreen() {
                         marginBottom: 12
                       }}
                     >
-                      <TouchableOpacity 
+                      <SwipeableRow
+                        onDelete={() => handleDeleteTx(tx)}
+                        disabled={isVoided}
+                        confirmTitle="Void this expense?"
+                        // Same dual-outcome caveat as the group screen: a
+                        // non-creator's delete sends a request rather than
+                        // voting anything, so the copy must hold for both.
+                        confirmMessage="If you added this, it will be voided and your balance updated. If your friend did, they'll be asked to approve."
+                        confirmLabel="Continue"
+                      >
+                      <AnimatedPressable
                         onPress={() => !isVoided && handleTxPress(tx)}
-                        activeOpacity={0.8}
                         className="flex-row items-center justify-between"
                       >
-                        <View className="flex-row items-center space-x-4 flex-1">
+                        <View className="flex-row items-center gap-4 flex-1">
                           <View className={`w-12 h-12 bg-surface rounded-full items-center justify-center overflow-hidden ${isVoided ? 'bg-outline-variant/30' : ''}`}>
                             <MaterialIcons 
                               name={tx.icon as any} 
@@ -571,7 +782,7 @@ export default function FriendDetailScreen() {
                               color={isVoided ? "#9ca3af" : (isPositive ? "#004c22" : "#707a6f")} 
                             />
                           </View>
-                           <View className="flex-1 mr-2" style={{ marginLeft: 8 }}>
+                           <View className="flex-1 mr-2">
                              <Text className={`font-semibold text-base ${isVoided ? 'text-outline line-through' : 'text-on-surface'}`} numberOfLines={1}>
                                {isSettlement
                                  ? (tx.paidBy === 'You' ? `You paid ${friend.name.split(' ')[0]}` : `${tx.paidBy.split(' ')[0]} paid you`)
@@ -580,7 +791,7 @@ export default function FriendDetailScreen() {
                              <Text className="text-xs text-on-surface-variant mt-0.5" numberOfLines={1}>
                                {isSettlement
                                  ? `Payment · ${tx.time}`
-                                 : `${tx.paidBy} paid ₹${tx.totalAmount.toFixed(2)} • ${tx.time}`}
+                                 : `${tx.paidBy} paid ₹${tx.totalAmount.toFixed(2)} • ${tx.time}${tx.groupName ? ' • ' + tx.groupName : ''}`}
                                {!isSettlement && tx.status === 'settled' && ' • '}
                                {!isSettlement && tx.status === 'settled' && (
                                  <Text className="text-primary font-bold">Settled</Text>
@@ -616,8 +827,10 @@ export default function FriendDetailScreen() {
                             </Text>
                           )}
                         </View>
-                      </TouchableOpacity>
+                      </AnimatedPressable>
+                      </SwipeableRow>
                     </View>
+                    </AnimatedListItem>
                   );
                 })
               )}
@@ -634,9 +847,8 @@ export default function FriendDetailScreen() {
         animationType="fade"
         onRequestClose={() => setIsFilterSheetOpen(false)}
       >
-        <TouchableOpacity 
+        <AnimatedPressable
           className="flex-1 bg-black/40 justify-end"
-          activeOpacity={1}
           onPress={() => setIsFilterSheetOpen(false)}
         >
           <View 
@@ -649,7 +861,7 @@ export default function FriendDetailScreen() {
             <Text className="font-headline text-lg font-bold text-on-surface mb-2">Timeline Filter</Text>
             <Text className="text-sm text-on-surface-variant mb-6">Select a period to display transaction histories</Text>
 
-            <View className="space-y-3">
+            <View className="gap-3">
               {([
                 { key: '30days', label: 'Past 30 Days' },
                 { key: '6months', label: 'Past 6 Months' },
@@ -658,7 +870,7 @@ export default function FriendDetailScreen() {
               ] as const).map((opt) => {
                 const isActive = timeline === opt.key;
                 return (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={opt.key}
                     onPress={() => {
                       setTimeline(opt.key);
@@ -676,12 +888,12 @@ export default function FriendDetailScreen() {
                       {opt.label}
                     </Text>
                     {isActive && <MaterialIcons name="check-circle" size={20} color="#004c22" />}
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 );
               })}
             </View>
           </View>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </Modal>
 
       {/* 2. Collaborative Actions Sheet (Edit / Delete) */}
@@ -691,9 +903,8 @@ export default function FriendDetailScreen() {
         animationType="fade"
         onRequestClose={() => setIsActionSheetOpen(false)}
       >
-        <TouchableOpacity 
+        <AnimatedPressable
           className="flex-1 bg-black/40 justify-end"
-          activeOpacity={1}
           onPress={() => setIsActionSheetOpen(false)}
         >
           <View 
@@ -711,9 +922,9 @@ export default function FriendDetailScreen() {
               </View>
             )}
 
-            <View className="space-y-4">
+            <View className="gap-4">
               {selectedTx && (
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={() => {
                     setIsActionSheetOpen(false);
                     router.push({ pathname: `/transaction/${selectedTx.id}` });
@@ -725,11 +936,11 @@ export default function FriendDetailScreen() {
                   <Text className="text-primary font-semibold text-base" style={{ marginLeft: 10 }}>
                     View full expense
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               )}
 
               {selectedTx && Math.abs(selectedTx.share) > 0 && selectedTx.status !== 'settled' && (
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={() => {
                     setIsActionSheetOpen(false);
                     router.push({
@@ -739,6 +950,8 @@ export default function FriendDetailScreen() {
                         friendName: friend.name,
                         balance: Math.abs(selectedTx.share).toFixed(2),
                         status: selectedTx.share > 0 ? 'owed' : 'owes',
+                        groupId: selectedTx.group_id || undefined,
+                        groupName: selectedTx.groupName || undefined,
                         transactionId: selectedTx.id,
                         transactionDescription: selectedTx.description
                       }
@@ -751,10 +964,10 @@ export default function FriendDetailScreen() {
                   <Text className="text-white font-semibold text-base pl-3" style={{ marginLeft: 8 }}>
                     Settle this Expense (₹{Math.abs(selectedTx.share).toFixed(2)})
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               )}
 
-              <TouchableOpacity
+              <AnimatedPressable
                 onPress={() => {
                   setIsActionSheetOpen(false);
                   if (selectedTx) {
@@ -771,20 +984,20 @@ export default function FriendDetailScreen() {
                 <Text className="text-on-surface font-semibold text-base pl-3" style={{ marginLeft: 8 }}>
                   Edit Expense
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
-              <TouchableOpacity
-                onPress={handleDeleteTx}
+              <AnimatedPressable
+                onPress={() => handleDeleteTx()}
                 className="w-full h-14 bg-[#FEE2E2] rounded-2xl flex-row items-center px-4"
               >
                 <MaterialIcons name="delete" size={22} color="#DC2626" />
                 <Text className="text-error font-semibold text-base pl-3" style={{ marginLeft: 8 }}>
                   Delete Transaction
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </Modal>
 
       {/* 3. Intercept Collaborative Permissions (Edit/Delete Request Popup) */}
@@ -814,45 +1027,76 @@ export default function FriendDetailScreen() {
             </Text>
 
             <View className="flex-row gap-3">
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsRequestPopupOpen(false)}
                 className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center active:scale-95 bg-white/40"
               >
                 <Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
+              </AnimatedPressable>
+              <AnimatedPressable 
                 onPress={handleSendRequest}
                 className="flex-1 h-12 bg-primary rounded-xl items-center justify-center active:scale-95 shadow-sm"
               >
                 <Text className="text-white font-semibold text-sm">Send Request</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Bottom Floating Toast Banner */}
-      {showToast && (
-        <Animated.View 
-          style={[
-            styles.toastContainer,
-            { opacity: toastOpacity }
-          ]}
-          className="absolute bottom-10 left-6 right-6 bg-[#1C1C19] py-3.5 px-5 rounded-2xl flex-row items-center justify-between shadow-lg z-50"
+      {/* 4. Settle Scope Chooser — shown only when this friend's balance spans
+             more than one scope (direct + one or more shared groups). Each
+             scope is an independently reconciled ledger and the settle-up
+             RPC will not net them together, so the user picks one. */}
+      <Modal
+        visible={isSettleScopeSheetOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsSettleScopeSheetOpen(false)}
+      >
+        <AnimatedPressable
+          className="flex-1 bg-black/40 justify-end"
+          onPress={() => setIsSettleScopeSheetOpen(false)}
         >
-          <Text className="text-white font-medium text-sm flex-1">{toastMessage}</Text>
-          <MaterialIcons name="info" size={18} color="#8bd79b" />
-        </Animated.View>
-      )}
+          <View
+            className="w-full rounded-t-3xl p-6"
+            style={{ backgroundColor: '#fcf9f4', borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.4)' }}
+          >
+            <View className="w-10 h-1 bg-outline-variant/60 rounded-full self-center mb-6" />
+            <Text className="font-headline text-lg font-bold text-on-surface mb-2">Settle which balance?</Text>
+            <Text className="text-sm text-on-surface-variant mb-6">
+              You and {friend.name.split(' ')[0]} have separate balances in different places — pick one to settle.
+            </Text>
+
+            <View className="gap-3">
+              {settleScopes.map((scope) => {
+                const owed = scope.balance > 0;
+                return (
+                  <AnimatedPressable
+                    key={scope.groupId ?? 'direct'}
+                    onPress={() => navigateToSettleUp(scope)}
+                    className="p-4 rounded-2xl flex-row justify-between items-center"
+                    style={{
+                      backgroundColor: 'rgba(255,255,255,0.6)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255, 255, 255, 0.35)',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <View>
+                      <Text className="font-semibold text-base text-on-surface">{scope.label}</Text>
+                      <Text className="text-xs text-on-surface-variant mt-0.5">{owed ? 'You are owed' : 'You owe'}</Text>
+                    </View>
+                    <Text className={`font-headline-md font-bold text-base ${owed ? 'text-primary' : 'text-error'}`}>
+                      {owed ? '+' : '-'}₹{Math.abs(scope.balance).toFixed(2)}
+                    </Text>
+                  </AnimatedPressable>
+                );
+              })}
+            </View>
+          </View>
+        </AnimatedPressable>
+      </Modal>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  toastContainer: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  }
-});

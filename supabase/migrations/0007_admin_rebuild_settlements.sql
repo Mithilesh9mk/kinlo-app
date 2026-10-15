@@ -194,3 +194,5 @@ REVOKE ALL ON FUNCTION public.admin_rebuild_pair_settlements(UUID, UUID) FROM PU
 REVOKE ALL ON FUNCTION public.admin_rebuild_all_settlements()            FROM PUBLIC;
 
 COMMIT;
+
+

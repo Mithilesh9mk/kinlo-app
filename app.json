@@ -40,7 +40,7 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Kinlo uses your contacts so you can add friends by picking them from your phone instead of typing their name and number by hand. Your contacts are read on your device only and are never uploaded."
+          "contactsPermission": "Kinlo uses your contacts in two ways. When you add a friend, you pick one contact and only that person is used. If you turn on contact sync, Kinlo also checks your contacts against people who already use Kinlo so it can suggest them — for that, phone numbers from your contacts are sent to Kinlo's servers to look for matches. You can turn contact sync off any time in your Profile."
         }
       ],
       [
@@ -48,6 +48,23 @@
         {
           "icon": "./assets/icon.png",
           "color": "#004c22"
+        }
+      ],
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["image/*"],
+            "multipleShareMimeTypes": ["image/*"]
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kinlo needs access to your photos so you can pick a payment screenshot to scan into an expense.",
+          "cameraPermission": "Kinlo needs camera access so you can photograph a receipt to scan into an expense."
         }
       ]
     ],

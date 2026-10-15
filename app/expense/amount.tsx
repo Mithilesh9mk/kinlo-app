@@ -1,30 +1,57 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, Pressable, ActivityIndicator, TextInput, ScrollView, Keyboard, Modal } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, TextInput, ScrollView, Keyboard, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useExpense, Payer, Participant, SplitMode } from '../../context/ExpenseContext';
 import { supabase } from '../../lib/supabase';
+import { loadDraft, isDraftMeaningful } from '../../lib/drafts';
+import { useAlert } from '../../components/AppAlert';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { CATEGORIES, MAX_CATEGORY_LENGTH } from '../../lib/categories';
 
-// 'utilities' used to be offered here while the database CHECK only allowed
-// food/travel/home/other, so picking it failed on save. Migration 0010
-// replaced that whitelist with a length bound, so any label is now valid —
-// which is also what makes Custom possible.
-const CATEGORIES = [
-  { id: 'food', icon: 'restaurant', label: 'Food' },
-  { id: 'travel', icon: 'flight', label: 'Travel' },
-  { id: 'home', icon: 'home', label: 'Home' },
-  { id: 'utilities', icon: 'bolt', label: 'Utilities' },
-  { id: 'other', icon: 'category', label: 'Other' },
-];
+/**
+ * Module scope, NOT inside AmountScreen.
+ *
+ * It used to be declared in the component body, which makes a brand-new
+ * component *type* on every render — so every keypad tap unmounted all
+ * twelve buttons and mounted twelve replacements, each destroying and
+ * recreating a Reanimated shared value and its mapper. Churning worklet
+ * mappers at that rate is the suspected trigger for the
+ * "Maximum call stack size exceeded" crash inside Reanimated's isAnimated
+ * that took this screen down. Hoisting it makes the type stable, so the
+ * buttons are reused instead of rebuilt.
+ */
+const KeypadButton = ({ value, onPress, icon }: { value?: string; onPress: () => void; icon?: React.ReactNode }) => (
+  <AnimatedPressable
+    onPress={onPress}
+    className="w-full aspect-square rounded-full flex items-center justify-center border border-white/35 active:scale-90 active:bg-white/90"
+    style={{
+      backgroundColor: 'rgba(255, 255, 255, 0.65)',
+      shadowColor: '#1c1917',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.06,
+      shadowRadius: 32,
+      elevation: 2,
+    }}
+  >
+    {value ? (
+      <Text className="font-headline-md text-2xl text-on-surface">{value}</Text>
+    ) : (
+      icon
+    )}
+  </AnimatedPressable>
+);
 
 export default function AmountScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const {
     amount, setAmount, setGroupId, setEditModeData, editTransactionId,
-    description, setDescription, category, setCategory,
+    description, setDescription, category, setCategory, restoreDraft, discardDraft,
   } = useExpense();
+  const { showAlert } = useAlert();
 
   // Custom category is edited in a dialog against a draft, so cancelling
   // leaves the previously chosen category untouched.
@@ -52,6 +79,41 @@ export default function AmountScreen() {
     }
   }, [groupId]);
 
+  // Offer to pick up an unfinished expense.
+  //
+  // Runs once, on entering the flow fresh — not when editing an existing
+  // transaction, and not when arriving with an amount already typed, since in
+  // both cases there is something in progress that restoring would overwrite.
+  //
+  // isDraftMeaningful filters out the noise: a draft created by opening this
+  // screen and immediately backing out holds nothing worth resuming, and
+  // offering it would train people to dismiss the prompt.
+  const draftChecked = React.useRef(false);
+  useEffect(() => {
+    if (draftChecked.current) return;
+    if (params.editTxId || editTransactionId) return;
+    if (parseFloat(amount || '0') > 0) return;
+    draftChecked.current = true;
+
+    (async () => {
+      const draft = await loadDraft();
+      if (!isDraftMeaningful(draft)) return;
+
+      const label = draft!.description?.trim()
+        ? `"${draft!.description.trim()}"`
+        : `₹${parseFloat(draft!.amount || '0').toFixed(2)}`;
+
+      showAlert(
+        'Unfinished expense',
+        `You were adding ${label} and did not finish. Pick up where you left off?`,
+        [
+          { text: 'Discard', style: 'destructive', onPress: () => discardDraft() },
+          { text: 'Resume', onPress: () => restoreDraft(draft!) },
+        ],
+      );
+    })();
+  }, [params.editTxId, editTransactionId]);
+
   useEffect(() => {
     const editTxId = params.editTxId as string;
     if (editTxId && editTxId !== editTransactionId) {
@@ -64,8 +126,8 @@ export default function AmountScreen() {
           const { data: tx, error: txError } = await supabase
             .from('transactions')
             .select(`
-              id, amount, description, category, paid_by, status, group_id,
-              transaction_splits (user_id, share_amount, percentage_share)
+              id, amount, description, category, paid_by, status, group_id, updated_at,
+              transaction_splits (user_id, share_amount)
             `)
             .eq('id', editTxId)
             .single();
@@ -86,10 +148,20 @@ export default function AmountScreen() {
             included: true,
             isYou: s.user_id === user.id,
             exactAmount: Number(s.share_amount),
-            percentageShare: s.percentage_share ? Number(s.percentage_share) : undefined
           }));
 
-          const splitMode: SplitMode = tx.transaction_splits.some((s: any) => s.percentage_share) ? 'percent' : 'exact';
+          // Always reopen as exact amounts.
+          //
+          // This used to check transaction_splits.percentage_share and restore
+          // 'percent' mode when it was set — but that column was never
+          // written by anything, so it was NULL on every row and this test
+          // always took the 'exact' branch anyway. Migration 0026 drops it.
+          //
+          // Nothing is lost either way. A percentage split is stored as the
+          // amounts it produced, and reopening those as exact amounts
+          // reproduces the identical shares. The percentages themselves were
+          // never persisted, so no column could have restored them.
+          const splitMode: SplitMode = 'exact';
 
           setEditModeData(
             tx.id,
@@ -100,7 +172,11 @@ export default function AmountScreen() {
             payerP,
             parts,
             splitMode,
-            tx.group_id
+            tx.group_id,
+            // The concurrency token. Whatever updated_at reads now is what this
+            // edit is based on; record_expense() refuses the save if the stored
+            // row has moved on since. See migration 0028.
+            (tx as any).updated_at
           );
         } catch (e) {
           console.error("Failed to load tx for edit", e);
@@ -135,7 +211,7 @@ export default function AmountScreen() {
     }
   };
 
-  const isNextDisabled = parseFloat(amount) <= 0 || amount === '0' || amount === '0.';
+  const isNextDisabled = parseFloat(amount) <= 0 || amount === '0' || amount === '0.' || !description.trim();
 
   const handleNext = () => {
     if (!isNextDisabled) {
@@ -151,27 +227,6 @@ export default function AmountScreen() {
     }
   };
 
-  const KeypadButton = ({ value, onPress, icon }: { value?: string, onPress: () => void, icon?: React.ReactNode }) => (
-    <Pressable
-      onPress={onPress}
-      className="w-full aspect-square rounded-full flex items-center justify-center border border-white/35 active:scale-90 active:bg-white/90"
-      style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.65)',
-        shadowColor: '#1c1917',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.06,
-        shadowRadius: 32,
-        elevation: 2,
-      }}
-    >
-      {value ? (
-        <Text className="font-headline-md text-2xl text-on-surface">{value}</Text>
-      ) : (
-        icon
-      )}
-    </Pressable>
-  );
-
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       {/* Decorative Blur Orbs */}
@@ -180,12 +235,12 @@ export default function AmountScreen() {
 
       {/* Header */}
       <View className="flex-row items-center justify-between px-5 h-16 w-full z-50">
-        <TouchableOpacity 
+        <AnimatedPressable
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full hover:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="font-headline-md text-xl text-primary font-semibold">
           {editTransactionId ? 'Edit Expense' : 'Add Expense'}
         </Text>
@@ -229,6 +284,15 @@ export default function AmountScreen() {
                 borderColor: 'rgba(255, 255, 255, 0.35)',
               }}
             />
+            {/* This used to be enforced on the details screen, one page after
+                the description field itself — so leaving it blank let you
+                proceed, pick a group or friend, and only then get turned back
+                with an alert. The requirement now shows where the field is. */}
+            {!description.trim() && parseFloat(amount) > 0 && (
+              <Text className="text-error text-xs mt-2 text-center">
+                Add a description to continue
+              </Text>
+            )}
           </View>
 
           {/* Category. Spacing is explicit marginRight per chip rather than a
@@ -241,37 +305,37 @@ export default function AmountScreen() {
             className="w-full mt-4"
             contentContainerStyle={{ paddingHorizontal: 2, paddingVertical: 2 }}
           >
-            {CATEGORIES.map((c) => {
+            {CATEGORIES.map((c, index) => {
               const active = category === c.id;
               return (
-                <TouchableOpacity
-                  key={c.id}
-                  onPress={() => setCategory(c.id)}
-                  activeOpacity={0.7}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 14,
-                    paddingVertical: 9,
-                    borderRadius: 999,
-                    marginRight: 10,
-                    backgroundColor: active ? '#caead6' : 'rgba(255,255,255,0.7)',
-                    borderWidth: 1,
-                    borderColor: active ? '#004c22' : 'rgba(0,0,0,0.06)',
-                  }}
-                >
-                  <MaterialIcons name={c.icon as any} size={16} color={active ? '#004c22' : '#707a6f'} />
-                  <Text
+                <AnimatedListItem key={c.id} index={index}>
+                  <AnimatedPressable
+                    onPress={() => setCategory(c.id)}
                     style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      marginLeft: 7,
-                      color: active ? '#004c22' : '#404940',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 14,
+                      paddingVertical: 9,
+                      borderRadius: 999,
+                      marginRight: 10,
+                      backgroundColor: active ? '#caead6' : 'rgba(255,255,255,0.7)',
+                      borderWidth: 1,
+                      borderColor: active ? '#004c22' : 'rgba(0,0,0,0.06)',
                     }}
                   >
-                    {c.label}
-                  </Text>
-                </TouchableOpacity>
+                    <MaterialIcons name={c.icon as any} size={16} color={active ? '#004c22' : '#707a6f'} />
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '600',
+                        marginLeft: 7,
+                        color: active ? '#004c22' : '#404940',
+                      }}
+                    >
+                      {c.label}
+                    </Text>
+                  </AnimatedPressable>
+                </AnimatedListItem>
               );
             })}
 
@@ -279,12 +343,11 @@ export default function AmountScreen() {
                 rendered inside a vertically-centred flex container and was
                 being pushed out of view by the keypad, so tapping Custom
                 appeared to do nothing. */}
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={() => {
                 setCustomDraft(isPreset ? '' : category);
                 setCustomOpen(true);
               }}
-              activeOpacity={0.7}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -310,7 +373,7 @@ export default function AmountScreen() {
               >
                 {!isPreset ? category : 'Custom'}
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </ScrollView>
         </View>
 
@@ -329,11 +392,11 @@ export default function AmountScreen() {
 
               <TextInput
                 value={customDraft}
-                onChangeText={(t) => setCustomDraft(t.slice(0, 40))}
+                onChangeText={(t) => setCustomDraft(t.slice(0, MAX_CATEGORY_LENGTH))}
                 placeholder="e.g. Groceries, Rent, Gifts"
                 placeholderTextColor="rgba(64, 73, 64, 0.4)"
                 autoFocus
-                maxLength={40}
+                maxLength={MAX_CATEGORY_LENGTH}
                 returnKeyType="done"
                 onSubmitEditing={saveCustomCategory}
                 style={{
@@ -350,13 +413,13 @@ export default function AmountScreen() {
               />
 
               <View className="flex-row mt-5" style={{ gap: 10 }}>
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={() => setCustomOpen(false)}
                   style={{ flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}
                 >
                   <Text className="font-semibold text-on-surface-variant">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </AnimatedPressable>
+                <AnimatedPressable
                   onPress={saveCustomCategory}
                   disabled={customDraft.trim().length === 0}
                   style={{
@@ -368,7 +431,7 @@ export default function AmountScreen() {
                   }}
                 >
                   <Text style={{ color: 'white', fontWeight: '700' }}>Use it</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </Pressable>
           </Pressable>
@@ -418,22 +481,23 @@ export default function AmountScreen() {
           </View>
 
           {/* Primary Action */}
-          <TouchableOpacity
+          <AnimatedPressable
+            scaleTo={0.9}
             disabled={isNextDisabled}
             onPress={handleNext}
-            className={`w-full h-16 rounded-xl flex-row items-center justify-center space-x-2 transition-all duration-300 active:scale-95 ${
+            className={`w-full h-16 rounded-xl flex-row items-center justify-center space-x-2 transition-all duration-300 ${
               isNextDisabled ? 'bg-outline-variant/30' : 'bg-primary'
             }`}
           >
             <Text className={`font-headline-md text-xl font-semibold ${isNextDisabled ? 'text-on-surface-variant/40' : 'text-on-primary'}`}>
               Next
             </Text>
-            <MaterialIcons 
-              name="chevron-right" 
-              size={24} 
-              color={isNextDisabled ? "rgba(64, 73, 64, 0.4)" : "#ffffff"} 
+            <MaterialIcons
+              name="chevron-right"
+              size={24}
+              color={isNextDisabled ? "rgba(64, 73, 64, 0.4)" : "#ffffff"}
             />
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
     </SafeAreaView>

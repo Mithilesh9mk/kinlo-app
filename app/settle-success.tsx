@@ -1,8 +1,9 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Animated, Easing } from 'react-native';
+import { View, Text, Animated, Easing } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 
 /**
  * Confirmation after recording a payment.
@@ -134,23 +135,21 @@ export default function SettleSuccessScreen() {
           </View>
 
           <View className="w-full mt-8" style={{ gap: 12 }}>
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={goBack}
-              activeOpacity={0.85}
               className="w-full rounded-2xl items-center justify-center"
               style={{ backgroundColor: '#004c22', paddingVertical: 16 }}
             >
               <Text className="text-white font-bold text-base">Done</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
 
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={() => router.replace('/')}
-              activeOpacity={0.85}
               className="w-full rounded-2xl items-center justify-center"
               style={{ backgroundColor: 'rgba(0,0,0,0.05)', paddingVertical: 16 }}
             >
               <Text className="font-semibold text-on-surface-variant text-base">Back to home</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </Animated.View>
       </View>

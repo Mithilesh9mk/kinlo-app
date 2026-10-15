@@ -37,6 +37,63 @@ export async function recalculatePairSettlements(otherUserId: string) {
 }
 
 /**
+ * Switches a group between simplified and direct debts, and rebuilds its ledger.
+ *
+ * Both happen in one database call on purpose. Updating the setting without
+ * rebuilding would leave the stored ledger contradicting the convention the
+ * group just chose, and the settle sheet offering transfers from the mode they
+ * turned off.
+ *
+ * The setting belongs to the group, not the person — simplified and direct
+ * disagree about who pays whom, and two members acting on different views would
+ * settle inconsistently.
+ *
+ * See supabase/migrations/0031_group_simplification_toggle.sql.
+ */
+export async function setGroupSimplification(groupId: string, simplify: boolean) {
+  const { error } = await supabase.rpc('set_group_simplification', {
+    p_group_id: groupId,
+    p_simplify: simplify,
+  });
+  if (error) {
+    console.error('Failed to change group simplification:', error.message);
+  }
+  return error ?? null;
+}
+
+/**
+ * Voids a transaction and rebuilds every ledger relationship it touched, in one
+ * database transaction.
+ *
+ * Replaces the two-step void the screens used to do: an `update({ status:
+ * 'voided' })` followed by a separate `recalculate*` call, with the second
+ * wrapped in a catch that logged "non-critical" and let the UI report success
+ * anyway. If that second call failed the expense was voided, the ledger was
+ * not, and nothing ever noticed.
+ *
+ * It also fixes the scope. The old code rebuilt whichever counterparty's screen
+ * the user happened to be on, so on a three-person expense the other party kept
+ * a share of an expense that no longer counted. The RPC reads the transaction's
+ * own splits, so every affected pair is rebuilt — including pairs the caller is
+ * not part of, which `recalculate_pair_settlements` cannot reach at all because
+ * it resolves the counterparty through auth.uid().
+ *
+ * Idempotent: voiding an already-voided transaction is a no-op, so a retry
+ * after a dropped response is safe.
+ *
+ * See supabase/migrations/0015_void_transaction.sql.
+ */
+export async function voidTransaction(transactionId: string) {
+  const { error } = await supabase.rpc('void_transaction', {
+    p_transaction_id: transactionId,
+  });
+  if (error) {
+    console.error('Failed to void transaction:', error.message);
+  }
+  return error ?? null;
+}
+
+/**
  * Records an expense — transaction, splits and ledger rebuild in one call.
  *
  * The client cannot write this directly when the payer is someone else: 0002's
@@ -61,6 +118,28 @@ export async function recordExpense(params: {
   splitType: string;
   splits: { user_id: string; share_amount: number }[];
   groupId?: string | null;
+  /**
+   * Who actually put money in, when more than one person did. Omit for the
+   * ordinary single-payer expense — the RPC then treats `paidBy` as having
+   * covered the whole amount, which is what it has always done implicitly.
+   *
+   * Contributions must sum to the expense total exactly (§4.1), the same rule
+   * the shares already obey. When several people pay, `paidBy` becomes the
+   * largest contributor and is what screens show as "X paid".
+   *
+   * See supabase/migrations/0022_record_expense_multi_payer.sql.
+   */
+  payers?: { user_id: string; amount_paid: number }[] | null;
+  /**
+   * The transaction's updated_at as it was when this edit began.
+   *
+   * Sent only when editing. If the stored row has moved on since, someone else
+   * changed it and saving would erase their work — the RPC rejects with
+   * SQLSTATE 40001 rather than letting last-write-win silently.
+   *
+   * See supabase/migrations/0028_optimistic_concurrency.sql.
+   */
+  expectedUpdatedAt?: string | null;
 }) {
   const { error } = await supabase.rpc('record_expense', {
     p_transaction_id: params.transactionId,
@@ -71,6 +150,8 @@ export async function recordExpense(params: {
     p_split_type: params.splitType,
     p_splits: params.splits,
     p_group_id: params.groupId ?? null,
+    p_payers: params.payers ?? null,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
   if (error) {
     console.error('Failed to record expense:', error.message);
@@ -91,9 +172,15 @@ export async function recordExpense(params: {
  * transaction and its split, and rebuilds the ledger, all in one round trip
  * and one database transaction.
  *
- * See supabase/migrations/0005_record_settlement.sql.
+ * See supabase/migrations/0005_record_settlement.sql and
+ * 0012_settlements_link_to_expense.sql.
  *
  * @param payerIsMe true when the signed-in user handed over the money.
+ * @param settlesTransactionId the expense this pays down, when the user
+ *   settled one specific expense rather than a whole balance. The RPC records
+ *   the link so the expense detail screen can tell which participants are
+ *   already settled — without it, that screen re-offers the same Settle button
+ *   forever and each press writes another offsetting row.
  */
 export async function recordSettlement(params: {
   transactionId: string;
@@ -102,6 +189,7 @@ export async function recordSettlement(params: {
   payerIsMe: boolean;
   description: string;
   groupId?: string | null;
+  settlesTransactionId?: string | null;
 }) {
   const { error } = await supabase.rpc('record_settlement', {
     p_transaction_id: params.transactionId,
@@ -110,6 +198,7 @@ export async function recordSettlement(params: {
     p_payer_is_me: params.payerIsMe,
     p_description: params.description,
     p_group_id: params.groupId ?? null,
+    p_settles: params.settlesTransactionId ?? null,
   });
   if (error) {
     console.error('Failed to record settlement:', error.message);

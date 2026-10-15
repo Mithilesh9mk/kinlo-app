@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, Modal, AppState, Linking, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, TextInput, Modal, AppState, Linking, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Avatar } from '../components/Avatar';
 import { useGlobalBalances } from '../context/GlobalBalancesContext';
+import { useAlert } from '../components/AppAlert';
 import { dispatchPushNotification } from '../lib/pushDispatcher';
 import { recordSettlement } from '../lib/recalculateSettlements';
 import { newTransactionId } from '../lib/idempotency';
 import { fetchBalances } from '../lib/balances';
+import { Skeleton, SkeletonListRow } from '../components/Skeleton';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import { AnimatedListItem } from '../components/AnimatedListItem';
 
 interface PaymentMethod {
   id: string;
@@ -26,6 +31,7 @@ export default function SettleUpScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { refreshBalances } = useGlobalBalances();
+  const { showAlert } = useAlert();
 
   // Route Parameters
   const friendId = (params.friendId as string) || 'unknown';
@@ -65,11 +71,11 @@ export default function SettleUpScreen() {
   const handleSaveAmount = () => {
     const val = parseFloat(tempAmount);
     if (isNaN(val) || val <= 0) {
-      alert('Please enter a valid amount.');
+      showAlert('Invalid amount', 'Please enter a valid amount.');
       return;
     }
     if (val > currentBalance) {
-      alert(`You cannot settle more than the outstanding balance of ₹${currentBalance.toFixed(2)}`);
+      showAlert('Amount too high', `You cannot settle more than the outstanding balance of ₹${currentBalance.toFixed(2)}`);
       return;
     }
     setAmount(val);
@@ -168,34 +174,48 @@ export default function SettleUpScreen() {
         // 1-on-1 row. See migrations/0005_record_settlement.sql.
         const payerIsMe = currentStatus !== 'owed';
 
-        // Calculate remaining balance
-        const remaining = Math.max(0, currentBalance - amount);
-        const formattedRemaining = remaining === 0 ? 'Settled' : `₹${remaining.toFixed(2)}`;
+        // What this settlement says about itself, kept short and kept true.
+        //
+        // The previous version composed:
+        //
+        //   You settled ₹418.67 for "<whole original description>" with
+        //   Sarvesh. Remaining balance: ₹0.00 • 18 Aug 2026 at 12:04 (<note>)
+        //
+        // Three problems. It embedded an unbounded description inside another
+        // unbounded description, which on a settlement-of-a-settlement grew
+        // past the varchar(255) column and made Postgres reject the write with
+        // 22001 — a valid payment failing on an opaque database error. It
+        // baked a *timestamp* into a row that already has created_at, which
+        // every screen renders from. And it froze a "Remaining balance"
+        // snapshot into permanent text: true for a moment, misleading forever
+        // after, which is exactly what §27 warns against — a derived balance
+        // stored as though it were a fact.
+        //
+        // Now: who, how much, with whom, and what it was for. The column is
+        // `text` as of migration 0025, so length is no longer a hard failure —
+        // but a description nobody can read is its own kind of broken, so the
+        // quoted part is still capped.
+        const MAX_QUOTED = 40;
+        const MAX_NOTE = 60;
 
-        // Formulate date and time string
-        const now = new Date();
-        const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const formattedTime = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        const dateTimeStr = `${formattedDate} at ${formattedTime}`;
+        const quoted = transactionDescription
+          ? (transactionDescription.length > MAX_QUOTED
+              ? `${transactionDescription.slice(0, MAX_QUOTED - 1).trimEnd()}…`
+              : transactionDescription)
+          : null;
 
-        // Determine base description
-        let baseDesc = '';
-        if (transactionDescription) {
-          if (currentStatus === 'owed') {
-            baseDesc = `${selectedFriendName} settled ₹${amount.toFixed(2)} for "${transactionDescription}" with You.`;
-          } else {
-            baseDesc = `You settled ₹${amount.toFixed(2)} for "${transactionDescription}" with ${selectedFriendName}.`;
-          }
-        } else {
-          if (currentStatus === 'owed') {
-            baseDesc = `${selectedFriendName} settled ₹${amount.toFixed(2)} with You.`;
-          } else {
-            baseDesc = `You settled ₹${amount.toFixed(2)} with ${selectedFriendName}.`;
-          }
-        }
+        const who = currentStatus === 'owed'
+          ? `${selectedFriendName} settled ₹${amount.toFixed(2)} with You`
+          : `You settled ₹${amount.toFixed(2)} with ${selectedFriendName}`;
 
-        // Append remaining balance and timestamp
-        const fullDescription = `${baseDesc} Remaining balance: ${formattedRemaining} • ${dateTimeStr}${note ? ` (${note})` : ''}`;
+        const trimmedNote = note.trim();
+        const notePart = trimmedNote
+          ? ` (${trimmedNote.length > MAX_NOTE ? `${trimmedNote.slice(0, MAX_NOTE - 1).trimEnd()}…` : trimmedNote})`
+          : '';
+
+        const fullDescription = quoted
+          ? `${who} for "${quoted}"${notePart}`
+          : `${who}${notePart}`;
 
         // Use the stable idempotency key generated on mount
         const txId = idempotencyKey.current;
@@ -209,33 +229,42 @@ export default function SettleUpScreen() {
           payerIsMe,
           description: fullDescription,
           groupId: groupId ?? null,
+          // Which expense this pays down, when we arrived from one. The
+          // expense detail screen subtracts linked settlements per participant
+          // to decide whose Settle button to keep showing.
+          settlesTransactionId: transactionId ?? null,
         });
 
         if (settlementError) {
-          Alert.alert('Database Error', `Failed to record settlement: ${settlementError.message}`);
+          // The ledger refuses a settlement larger than the debt it would
+          // clear, raising SQLSTATE 23514 (see migrations/0017). That is a
+          // correct outcome — the two of you are already square — not a
+          // malfunction, and presenting it as "Database Error" told the user
+          // something was broken when nothing was.
+          const isNothingOwed =
+            settlementError.code === '23514' ||
+            /already square|more than is outstanding/i.test(settlementError.message || '');
+
+          if (isNothingOwed) {
+            showAlert('Nothing to settle', settlementError.message);
+          } else {
+            showAlert(
+              'Could not record payment',
+              `${settlementError.message}\n\nNothing was saved. Please try again.`
+            );
+          }
+
           submitInFlight.current = false;
           setIsSubmitting(false);
           return;
         }
 
-        // Badge the original expense as settled when this was the
-        // settle-one-expense flow. Purely cosmetic — 0006 stopped the ledger
-        // functions honouring this status, because excluding it from the
-        // balance on top of the offsetting settlement above cancelled the
-        // debt twice and flipped it negative.
-        if (transactionId) {
-          try {
-            const { error: updateError } = await supabase
-              .from('transactions')
-              .update({ status: 'settled' })
-              .eq('id', transactionId);
-            if (updateError) {
-              console.warn('Error updating transaction status:', updateError.message);
-            }
-          } catch (updateErr) {
-            console.warn('Failed to update transaction status:', updateErr);
-          }
-        }
+        // The original expense's 'settled' badge is maintained server-side now
+        // (0012), inside the same database transaction as the settlement. This
+        // screen used to stamp status='settled' here on the first settlement,
+        // which on a three-way expense marked the whole thing settled and hid
+        // the participants who still owed. The RPC flips it only once every
+        // share is covered.
 
         // No recalculation here: record_settlement() already rebuilt the
         // ledger inside the same database transaction as the write.
@@ -265,7 +294,7 @@ export default function SettleUpScreen() {
       }
     } catch (e) {
       console.log('Error processing settlement', e);
-      Alert.alert('Error', 'There was a problem recording the payment. Please try again.');
+      showAlert('Error', 'There was a problem recording the payment. Please try again.');
       submitInFlight.current = false;
       setIsSubmitting(false); // Only allow retry if it explicitly failed
       return;
@@ -295,20 +324,31 @@ export default function SettleUpScreen() {
     if (activeMethod.id === 'upi') {
       try {
         const { supabase } = await import('../lib/supabase');
-        let upiId = 'test@upi';
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(selectedFriendId)) {
-          const { data } = await supabase.from('users').select('upi_address').eq('id', selectedFriendId).single();
-          if (data && data.upi_address) upiId = data.upi_address;
+
+        // No hardcoded fallback address: if we can't resolve a real UPI ID
+        // for this friend, abort loudly instead of silently opening a
+        // payment intent against a placeholder that can't receive money.
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(selectedFriendId)) {
+          showAlert('No UPI ID on file', `${selectedFriendName} doesn't have a UPI ID saved yet. Ask them to add one, or record this as Cash/Other instead.`);
+          return;
         }
 
-        const uri = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(selectedFriendName)}&am=${amount}&cu=INR&tn=Kinlo`;
+        const { data, error } = await supabase.from('users').select('upi_address').eq('id', selectedFriendId).single();
+        if (error || !data?.upi_address) {
+          showAlert('No UPI ID on file', `${selectedFriendName} doesn't have a UPI ID saved yet. Ask them to add one, or record this as Cash/Other instead.`);
+          return;
+        }
+        const upiId = data.upi_address;
+
+        const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(selectedFriendName)}&am=${amount}&cu=INR&tn=Kinlo`;
         const canOpen = await Linking.canOpenURL(uri);
-        
-        pendingUpiPayment.current = true;
+
         if (canOpen) {
+          pendingUpiPayment.current = true;
           await Linking.openURL(uri);
         } else {
-          alert(`No UPI app found. Simulator mode: Pretend you paid ${upiId}!`);
+          showAlert('No UPI app found', `We couldn't find a UPI app on this device. If you already paid ${selectedFriendName} another way, confirm below — or record it as Cash/Other.`);
+          pendingUpiPayment.current = true;
           setTimeout(() => setShowUpiConfirm(true), 1500);
         }
       } catch (e) {
@@ -328,20 +368,34 @@ export default function SettleUpScreen() {
       <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
         {/* Header */}
         <View className="flex-row items-center justify-between px-5 h-16 w-full z-50">
-          <TouchableOpacity 
+          <AnimatedPressable 
             onPress={() => router.back()}
             className="w-10 h-10 items-center justify-center rounded-full hover:bg-surface-container active:bg-surface-container"
           >
             <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
-          </TouchableOpacity>
+          </AnimatedPressable>
           <Text className="font-headline-md text-xl text-primary font-semibold">Select Friend</Text>
           <View className="w-10" />
         </View>
 
         {loadingFriends ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#004c22" />
-            <Text className="text-on-surface-variant mt-3 font-medium">Loading balances...</Text>
+          // Shaped like the outstanding-balances list underneath, so the rows
+          // do not shift position when the real ones arrive.
+          <View className="flex-1 px-5 pt-2">
+            <Skeleton width="42%" height={11} style={{ marginBottom: 16 }} />
+            {[0, 1, 2, 3].map(i => (
+              <View
+                key={i}
+                className="p-4 rounded-2xl mb-3"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.72)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.05)',
+                }}
+              >
+                <SkeletonListRow avatarSize={48} />
+              </View>
+            ))}
           </View>
         ) : friendsError ? (
           // Never fall through to "All Settled Up!" on a failed load — that
@@ -350,9 +404,9 @@ export default function SettleUpScreen() {
             <MaterialIcons name="error-outline" size={40} color="#b91c1c" />
             <Text className="text-on-surface font-bold text-lg mb-1 mt-3">Could not load balances</Text>
             <Text className="text-on-surface-variant text-center max-w-xs text-sm">{friendsError}</Text>
-            <TouchableOpacity onPress={fetchActiveFriends} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+            <AnimatedPressable onPress={fetchActiveFriends} className="mt-5 bg-primary px-6 py-3 rounded-xl">
               <Text className="text-white font-semibold">Try Again</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         ) : friendsList.length === 0 ? (
           <View className="flex-1 items-center justify-center px-6">
@@ -363,52 +417,53 @@ export default function SettleUpScreen() {
             <Text className="text-on-surface-variant text-center max-w-xs text-sm">
               You don't have any outstanding balances with your friends.
             </Text>
-            <TouchableOpacity 
+            <AnimatedPressable 
               onPress={() => router.back()}
               className="mt-6 bg-primary px-6 py-3 rounded-xl active:scale-95"
             >
               <Text className="text-white font-semibold">Go Back</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         ) : (
           <ScrollView className="flex-1 px-5 pt-2" contentContainerStyle={{ paddingBottom: 40 }}>
             <Text className="font-label-md text-xs font-bold text-on-surface-variant uppercase tracking-wider pl-1 mb-4">
               Outstanding Balances
             </Text>
-            {friendsList.map(friend => (
-              <TouchableOpacity
-                key={friend.id}
-                onPress={() => selectFriend(friend)}
-                className="p-4 rounded-2xl flex-row items-center justify-between bg-white border border-outline-variant/20 mb-3"
-                style={{
-                  shadowColor: '#1c1917',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.04,
-                  shadowRadius: 8,
-                  elevation: 1,
-                }}
-              >
-                <View className="flex-row items-center space-x-3">
-                  <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center overflow-hidden">
-                    {friend.avatarUrl ? (
-                      <Image source={{ uri: friend.avatarUrl }} className="w-full h-full" />
-                    ) : (
-                      <Text className="text-primary font-bold text-base">{friend.initials}</Text>
-                    )}
+            {friendsList.map((friend, index) => (
+              <AnimatedListItem key={friend.id} index={index}>
+                <AnimatedPressable
+                  onPress={() => selectFriend(friend)}
+                  className="p-4 rounded-2xl flex-row items-center justify-between bg-white border border-outline-variant/20 mb-3"
+                  style={{
+                    shadowColor: '#1c1917',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.04,
+                    shadowRadius: 8,
+                    elevation: 1,
+                  }}
+                >
+                  <View className="flex-row items-center space-x-3">
+                    <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center overflow-hidden">
+                      <Avatar
+                        uri={friend.avatarUrl}
+                        initials={friend.initials}
+                        textClassName="text-primary font-bold text-base"
+                      />
+                    </View>
+                    <Text className="font-semibold text-on-surface text-base" style={{ marginLeft: 8 }}>
+                      {friend.name}
+                    </Text>
                   </View>
-                  <Text className="font-semibold text-on-surface text-base" style={{ marginLeft: 8 }}>
-                    {friend.name}
-                  </Text>
-                </View>
-                <View className="items-end">
-                  <Text className={`font-bold text-base ${friend.status === 'owed' ? 'text-primary' : 'text-error'}`}>
-                    {friend.status === 'owed' ? '+' : '-'}₹{friend.balance.toFixed(2)}
-                  </Text>
-                  <Text className="text-xs text-on-surface-variant">
-                    {friend.status === 'owed' ? 'owes you' : 'you owe'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+                  <View className="items-end">
+                    <Text className={`font-bold text-base ${friend.status === 'owed' ? 'text-primary' : 'text-error'}`}>
+                      {friend.status === 'owed' ? '+' : '-'}₹{friend.balance.toFixed(2)}
+                    </Text>
+                    <Text className="text-xs text-on-surface-variant">
+                      {friend.status === 'owed' ? 'owes you' : 'you owe'}
+                    </Text>
+                  </View>
+                </AnimatedPressable>
+              </AnimatedListItem>
             ))}
           </ScrollView>
         )}
@@ -420,19 +475,19 @@ export default function SettleUpScreen() {
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       {/* Top Header */}
       <View className="flex-row items-center justify-between px-5 h-16 w-full z-50">
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full hover:bg-surface-container active:bg-surface-container"
         >
           <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="font-headline-md text-xl text-primary font-semibold">Settle Up</Text>
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full hover:bg-surface-container active:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
       <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingBottom: 140 }}>
@@ -476,9 +531,16 @@ export default function SettleUpScreen() {
 
                   {/* You */}
                   <View className="items-center">
-                    <Image 
-                      source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDEP19bOMfvzau5jsJe8y0nOXgzOPs4n9padqgNcno1mc61wqugcfWuCuK98uHbLmrjmlS56rUvVTVwjejrgVPnuXdMAIh5le7SPf7N0edXNl2o8pksG9Xl3zKLyocsN7f6zfDG4BJy9LFuXTFmITKQTSQqtCoxofKC268TYCxDGtU81MKxuK2It0qZSWvpaxLIHiLFCAMfmvGn1u2hWciUkg_0S33thA9CT49sMrHYP_Ye6gmRgION6h2ULBHdpCjGZf3clBBC0Lk' }} 
-                      className="w-14 h-14 rounded-full border-2 border-primary-fixed-dim"
+                    {/* Was a hardcoded lh3.googleusercontent.com/aida-public
+                        URL — one of the expiring generated-image links — so
+                        this rendered as a blank circle once it lapsed. It was
+                        never the signed-in user's real avatar anyway, so it
+                        now just falls back to a "Y" initial. */}
+                    <Avatar
+                      uri={null}
+                      initials="Y"
+                      size={56}
+                      style={{ borderWidth: 2, borderColor: '#8bd79b' }}
                     />
                     <Text className="text-xs font-semibold text-on-surface-variant mt-1.5">You</Text>
                   </View>
@@ -487,9 +549,16 @@ export default function SettleUpScreen() {
                 <>
                   {/* You */}
                   <View className="items-center">
-                    <Image 
-                      source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDEP19bOMfvzau5jsJe8y0nOXgzOPs4n9padqgNcno1mc61wqugcfWuCuK98uHbLmrjmlS56rUvVTVwjejrgVPnuXdMAIh5le7SPf7N0edXNl2o8pksG9Xl3zKLyocsN7f6zfDG4BJy9LFuXTFmITKQTSQqtCoxofKC268TYCxDGtU81MKxuK2It0qZSWvpaxLIHiLFCAMfmvGn1u2hWciUkg_0S33thA9CT49sMrHYP_Ye6gmRgION6h2ULBHdpCjGZf3clBBC0Lk' }} 
-                      className="w-14 h-14 rounded-full border-2 border-primary-fixed-dim"
+                    {/* Was a hardcoded lh3.googleusercontent.com/aida-public
+                        URL — one of the expiring generated-image links — so
+                        this rendered as a blank circle once it lapsed. It was
+                        never the signed-in user's real avatar anyway, so it
+                        now just falls back to a "Y" initial. */}
+                    <Avatar
+                      uri={null}
+                      initials="Y"
+                      size={56}
+                      style={{ borderWidth: 2, borderColor: '#8bd79b' }}
                     />
                     <Text className="text-xs font-semibold text-on-surface-variant mt-1.5">You</Text>
                   </View>
@@ -521,7 +590,7 @@ export default function SettleUpScreen() {
             {/* Display recorded sum */}
             <View className="flex-row items-center justify-center space-x-2">
               <Text className="font-display-lg text-4xl font-bold text-primary">₹{amount.toFixed(2)}</Text>
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => {
                   setTempAmount(amount.toFixed(2));
                   setIsEditOpen(true);
@@ -529,7 +598,7 @@ export default function SettleUpScreen() {
                 className="w-8 h-8 rounded-full bg-surface-container-high items-center justify-center active:scale-90"
               >
                 <MaterialIcons name="edit" size={16} color="#404940" />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             {/* Status settlement badge */}
@@ -551,7 +620,7 @@ export default function SettleUpScreen() {
               {METHODS.map(method => {
                 const isActive = activeMethod.id === method.id;
                 return (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={method.id}
                     onPress={() => setActiveMethod(method)}
                     className="p-4 flex-col items-center justify-center rounded-2xl w-[48%] h-24 mb-4 border transition-all"
@@ -574,7 +643,7 @@ export default function SettleUpScreen() {
                     <Text className={`font-semibold text-sm ${isActive ? 'text-primary font-bold' : 'text-on-surface'}`}>
                       {method.label}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 );
               })}
             </View>
@@ -604,7 +673,7 @@ export default function SettleUpScreen() {
 
       {/* Fixed bottom action CTA */}
       <View className="absolute bottom-0 left-0 w-full px-5 pb-8 pt-4 bg-gradient-to-t from-surface via-surface/95 to-transparent">
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={handleRecord}
           className="w-full h-14 bg-primary rounded-xl flex-row items-center justify-center shadow-md active:scale-95 duration-100 mb-3"
         >
@@ -612,7 +681,7 @@ export default function SettleUpScreen() {
           <Text className="text-white font-semibold text-base" style={{ marginLeft: 6 }}>
             Record Payment
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="text-xs text-on-surface-variant text-center leading-relaxed">
           This doesn't send money. It records that a payment was made.
         </Text>
@@ -653,18 +722,18 @@ export default function SettleUpScreen() {
             </View>
 
             <View className="flex-row gap-3">
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsEditOpen(false)}
                 className="flex-1 h-11 rounded-xl border border-outline-variant items-center justify-center active:scale-95 bg-white/40"
               >
                 <Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
+              </AnimatedPressable>
+              <AnimatedPressable 
                 onPress={handleSaveAmount}
                 className="flex-1 h-11 bg-primary rounded-xl items-center justify-center active:scale-95 shadow-sm"
               >
                 <Text className="text-white font-semibold text-sm">Save</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         </View>
@@ -687,13 +756,13 @@ export default function SettleUpScreen() {
               You returned from your UPI app. If you successfully sent the money to {selectedFriendName.split(' ')[0]}, we will record the settlement.
             </Text>
             <View className="flex-row gap-3">
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => { setShowUpiConfirm(false); pendingUpiPayment.current = false; }}
                 className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"
               >
                 <Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
+              </AnimatedPressable>
+              <AnimatedPressable 
                 onPress={() => {
                   setShowUpiConfirm(false);
                   pendingUpiPayment.current = false;
@@ -702,7 +771,7 @@ export default function SettleUpScreen() {
                 className="flex-1 h-12 bg-primary rounded-xl items-center justify-center shadow-sm"
               >
                 <Text className="text-white font-semibold text-sm">Yes, Paid</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         </View>

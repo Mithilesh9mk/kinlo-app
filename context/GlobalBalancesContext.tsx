@@ -18,6 +18,8 @@ export interface GlobalBalancesState {
   outstanding: FriendBalance[];
   loading: boolean;
   error: string | null;
+  /** null when the current snapshot is live; an ISO timestamp when it's a cached fallback. */
+  cachedAt: string | null;
   refreshBalances: () => Promise<void>;
 }
 
@@ -29,6 +31,7 @@ export const GlobalBalancesProvider = ({ children }: { children: ReactNode }) =>
   const [outstanding, setOutstanding] = useState<FriendBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
   const refreshBalances = useCallback(async () => {
     try {
@@ -36,6 +39,7 @@ export const GlobalBalancesProvider = ({ children }: { children: ReactNode }) =>
       setTotalBalance(snapshot.totalBalance);
       setFriends(snapshot.friends);
       setOutstanding(snapshot.outstanding);
+      setCachedAt(snapshot.cachedAt ?? null);
       setError(null);
     } catch (err: any) {
       console.warn('Balance refresh error:', err);
@@ -70,7 +74,7 @@ export const GlobalBalancesProvider = ({ children }: { children: ReactNode }) =>
 
   return (
     <GlobalBalancesContext.Provider
-      value={{ totalBalance, friends, outstanding, loading, error, refreshBalances }}
+      value={{ totalBalance, friends, outstanding, loading, error, cachedAt, refreshBalances }}
     >
       {children}
     </GlobalBalancesContext.Provider>

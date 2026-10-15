@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useToast } from '../../components/Toast';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
 
 interface Category {
   id: string;
@@ -55,10 +58,11 @@ export default function CreateCircleIdentityScreen() {
   const [groupName, setGroupName] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category>(CATEGORIES[0]);
   const [isFocused, setIsFocused] = useState(false);
+  const { showToast } = useToast();
 
   const handleNext = () => {
     if (!groupName.trim()) {
-      alert('Please enter a group name');
+      showToast('Please enter a group name');
       return;
     }
     router.push({
@@ -79,12 +83,12 @@ export default function CreateCircleIdentityScreen() {
 
       {/* Top Header */}
       <View className="flex-row items-center justify-between px-5 h-16 w-full z-50">
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full hover:bg-surface-container active:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="font-headline-md text-xl text-primary font-bold">New Circle</Text>
         <View className="w-10" />
       </View>
@@ -144,15 +148,15 @@ export default function CreateCircleIdentityScreen() {
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-5 px-5">
               <View className="flex-row space-x-3 pb-2 pr-5">
-                {CATEGORIES.map(cat => {
+                {CATEGORIES.map((cat, index) => {
                   const isActive = activeCategory.id === cat.id;
                   return (
-                    <TouchableOpacity
-                      key={cat.id}
+                    <AnimatedListItem key={cat.id} index={index} style={{ flexDirection: 'row' }}>
+                    <AnimatedPressable
                       onPress={() => setActiveCategory(cat)}
                       className={`flex-row items-center h-12 px-5 rounded-full border ${
-                        isActive 
-                          ? 'bg-[#DCFCE7] border-primary/20 shadow-sm' 
+                        isActive
+                          ? 'bg-[#DCFCE7] border-primary/20 shadow-sm'
                           : 'bg-white/40 border-outline-variant/30'
                       }`}
                       style={{
@@ -162,19 +166,20 @@ export default function CreateCircleIdentityScreen() {
                         shadowRadius: 12,
                       }}
                     >
-                      <MaterialIcons 
-                        name={cat.icon as any} 
-                        size={20} 
-                        color={isActive ? "#004c22" : "#404940"} 
+                      <MaterialIcons
+                        name={cat.icon as any}
+                        size={20}
+                        color={isActive ? "#004c22" : "#404940"}
                         className="mr-2"
                       />
-                      <Text 
+                      <Text
                         className={`font-semibold text-sm ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
                         style={{ marginLeft: 6 }}
                       >
                         {cat.label}
                       </Text>
-                    </TouchableOpacity>
+                    </AnimatedPressable>
+                    </AnimatedListItem>
                   );
                 })}
               </View>
@@ -208,9 +213,10 @@ export default function CreateCircleIdentityScreen() {
 
           {/* Action CTA Button */}
           <View className="pt-4">
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={handleNext}
               disabled={!groupName.trim()}
+              scaleTo={0.9}
               className={`w-full h-14 rounded-xl flex-row items-center justify-center space-x-2 active:scale-95 duration-100 shadow-md ${
                 !groupName.trim() ? 'bg-outline-variant/30 opacity-50' : 'bg-primary'
               }`}
@@ -223,7 +229,7 @@ export default function CreateCircleIdentityScreen() {
                 size={20} 
                 color={!groupName.trim() ? "rgba(64, 73, 64, 0.4)" : "white"} 
               />
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
         </View>

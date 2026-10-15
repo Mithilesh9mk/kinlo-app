@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Avatar } from '../../components/Avatar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useExpense, Participant } from '../../context/ExpenseContext';
 import { getRelatedUsers } from '../../lib/friendFetcher';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
 
 interface Friend {
   id: string;
@@ -233,12 +236,12 @@ export default function FriendGroupPickerScreen() {
       {/* Title & Close */}
       <View className="flex-row items-center justify-between px-5 py-3">
         <Text className="font-headline text-2xl font-bold text-on-surface">Split with</Text>
-        <TouchableOpacity 
+        <AnimatedPressable
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
       {/* Search Input */}
@@ -260,22 +263,22 @@ export default function FriendGroupPickerScreen() {
       {/* Tabs */}
       <View className="px-5 mb-4">
         <View className="flex-row p-1 bg-surface-container rounded-xl">
-          <TouchableOpacity 
+          <AnimatedPressable
             onPress={() => setActiveTab('friends')}
             className={`flex-1 py-2.5 rounded-lg items-center ${activeTab === 'friends' ? 'bg-white shadow-sm' : ''}`}
           >
             <Text className={`font-semibold text-sm ${activeTab === 'friends' ? 'text-primary' : 'text-on-surface-variant'}`}>
               Friends
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
+          </AnimatedPressable>
+          <AnimatedPressable
             onPress={() => setActiveTab('groups')}
             className={`flex-1 py-2.5 rounded-lg items-center ${activeTab === 'groups' ? 'bg-white shadow-sm' : ''}`}
           >
             <Text className={`font-semibold text-sm ${activeTab === 'groups' ? 'text-primary' : 'text-on-surface-variant'}`}>
               Groups
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
 
@@ -288,16 +291,17 @@ export default function FriendGroupPickerScreen() {
             className="pl-5"
             contentContainerStyle={{ gap: 8, paddingRight: 20 }}
           >
-            {selectedFriends.map(friend => (
-              <View 
-                key={friend.id}
-                className="flex-row items-center bg-secondary-container px-3 py-1.5 rounded-full"
-              >
-                <Text className="text-primary font-semibold text-xs mr-1">{friend.name.split(' ')[0]}</Text>
-                <TouchableOpacity onPress={() => handleRemoveFriendChip(friend.id)}>
-                  <MaterialIcons name="close" size={14} color="#004c22" />
-                </TouchableOpacity>
-              </View>
+            {selectedFriends.map((friend, index) => (
+              <AnimatedListItem key={friend.id} index={index}>
+                <View
+                  className="flex-row items-center bg-secondary-container px-3 py-1.5 rounded-full"
+                >
+                  <Text className="text-primary font-semibold text-xs mr-1">{friend.name.split(' ')[0]}</Text>
+                  <AnimatedPressable onPress={() => handleRemoveFriendChip(friend.id)}>
+                    <MaterialIcons name="close" size={14} color="#004c22" />
+                  </AnimatedPressable>
+                </View>
+              </AnimatedListItem>
             ))}
           </ScrollView>
         </View>
@@ -307,9 +311,9 @@ export default function FriendGroupPickerScreen() {
         <View className="px-5 mb-3">
           <View className="flex-row items-center bg-primary self-start px-4 py-1.5 rounded-full">
             <Text className="text-white font-semibold text-xs mr-2">{selectedGroup.title}</Text>
-            <TouchableOpacity onPress={() => setSelectedGroup(null)}>
+            <AnimatedPressable onPress={() => setSelectedGroup(null)}>
               <MaterialIcons name="close" size={14} color="white" />
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </View>
       )}
@@ -324,38 +328,38 @@ export default function FriendGroupPickerScreen() {
                 Frequently Split With
               </Text>
               <View className="gap-2">
-                {filteredFriends.slice(0, 2).map(friend => {
+                {filteredFriends.slice(0, 2).map((friend, index) => {
                   const isChecked = selectedFriends.some(f => f.id === friend.id);
                   return (
-                    <TouchableOpacity
-                      key={`freq-${friend.id}`}
-                      onPress={() => handleToggleFriend(friend)}
-                      className="p-3 rounded-2xl flex-row items-center justify-between"
-                      style={{
-                        backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
-                        borderWidth: 1,
-                        borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
-                      }}
-                    >
-                      <View className="flex-row items-center space-x-3">
-                        {friend.image ? (
-                          <Image source={{ uri: friend.image }} className="w-10 h-10 rounded-full" />
-                        ) : (
-                          <View className="w-10 h-10 rounded-full bg-secondary-container items-center justify-center">
-                            <Text className="text-primary font-bold text-sm">{friend.initials}</Text>
+                    <AnimatedListItem key={`freq-${friend.id}`} index={index}>
+                      <AnimatedPressable
+                        onPress={() => handleToggleFriend(friend)}
+                        className="p-3 rounded-2xl flex-row items-center justify-between"
+                        style={{
+                          backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
+                          borderWidth: 1,
+                          borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
+                        }}
+                      >
+                        <View className="flex-row items-center space-x-3">
+                          <Avatar
+                            uri={friend.image}
+                            initials={friend.initials}
+                            size={40}
+                            textClassName="text-primary font-bold text-sm"
+                          />
+                          <View>
+                            <Text className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
+                            <Text className="text-xs text-on-surface-variant mt-0.5">{friend.email}</Text>
                           </View>
-                        )}
-                        <View>
-                          <Text className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
-                          <Text className="text-xs text-on-surface-variant mt-0.5">{friend.email}</Text>
                         </View>
-                      </View>
-                      <MaterialIcons 
-                        name={isChecked ? "check-circle" : "radio-button-unchecked"} 
-                        size={24} 
-                        color={isChecked ? "#004c22" : "#bfc9bd"} 
-                      />
-                    </TouchableOpacity>
+                        <MaterialIcons
+                          name={isChecked ? "check-circle" : "radio-button-unchecked"}
+                          size={24}
+                          color={isChecked ? "#004c22" : "#bfc9bd"}
+                        />
+                      </AnimatedPressable>
+                    </AnimatedListItem>
                   );
                 })}
               </View>
@@ -367,38 +371,38 @@ export default function FriendGroupPickerScreen() {
                 All Contacts
               </Text>
               <View className="gap-2">
-                {filteredFriends.slice(2).map(friend => {
+                {filteredFriends.slice(2).map((friend, index) => {
                   const isChecked = selectedFriends.some(f => f.id === friend.id);
                   return (
-                    <TouchableOpacity
-                      key={`all-${friend.id}`}
-                      onPress={() => handleToggleFriend(friend)}
-                      className="p-3 rounded-2xl flex-row items-center justify-between"
-                      style={{
-                        backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
-                        borderWidth: 1,
-                        borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
-                      }}
-                    >
-                      <View className="flex-row items-center space-x-3">
-                        {friend.image ? (
-                          <Image source={{ uri: friend.image }} className="w-10 h-10 rounded-full" />
-                        ) : (
-                          <View className="w-10 h-10 rounded-full bg-secondary-container items-center justify-center">
-                            <Text className="text-primary font-bold text-sm">{friend.initials}</Text>
+                    <AnimatedListItem key={`all-${friend.id}`} index={index}>
+                      <AnimatedPressable
+                        onPress={() => handleToggleFriend(friend)}
+                        className="p-3 rounded-2xl flex-row items-center justify-between"
+                        style={{
+                          backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
+                          borderWidth: 1,
+                          borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
+                        }}
+                      >
+                        <View className="flex-row items-center space-x-3">
+                          <Avatar
+                            uri={friend.image}
+                            initials={friend.initials}
+                            size={40}
+                            textClassName="text-primary font-bold text-sm"
+                          />
+                          <View>
+                            <Text className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
+                            <Text className="text-xs text-on-surface-variant mt-0.5">{friend.email}</Text>
                           </View>
-                        )}
-                        <View>
-                          <Text className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
-                          <Text className="text-xs text-on-surface-variant mt-0.5">{friend.email}</Text>
                         </View>
-                      </View>
-                      <MaterialIcons 
-                        name={isChecked ? "check-circle" : "radio-button-unchecked"} 
-                        size={24} 
-                        color={isChecked ? "#004c22" : "#bfc9bd"} 
-                      />
-                    </TouchableOpacity>
+                        <MaterialIcons
+                          name={isChecked ? "check-circle" : "radio-button-unchecked"}
+                          size={24}
+                          color={isChecked ? "#004c22" : "#bfc9bd"}
+                        />
+                      </AnimatedPressable>
+                    </AnimatedListItem>
                   );
                 })}
               </View>
@@ -407,34 +411,35 @@ export default function FriendGroupPickerScreen() {
         ) : (
           // Groups list content
           <View className="gap-3 pt-2">
-            {filteredGroups.map(group => {
+            {filteredGroups.map((group, index) => {
               const isChecked = selectedGroup?.id === group.id;
               return (
-                <TouchableOpacity
-                  key={group.id}
-                  onPress={() => handleSelectGroup(group)}
-                  className="p-3 rounded-2xl flex-row items-center justify-between"
-                  style={{
-                    backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
-                    borderWidth: 1,
-                    borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
-                  }}
-                >
-                  <View className="flex-row items-center space-x-4">
-                    <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center">
-                      <MaterialIcons name={group.icon as any} size={24} color="#004c22" />
+                <AnimatedListItem key={group.id} index={index}>
+                  <AnimatedPressable
+                    onPress={() => handleSelectGroup(group)}
+                    className="p-3 rounded-2xl flex-row items-center justify-between"
+                    style={{
+                      backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
+                      borderWidth: 1,
+                      borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
+                    }}
+                  >
+                    <View className="flex-row items-center space-x-4">
+                      <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center">
+                        <MaterialIcons name={group.icon as any} size={24} color="#004c22" />
+                      </View>
+                      <View>
+                        <Text className="font-semibold text-on-surface text-lg leading-tight">{group.title}</Text>
+                        <Text className="text-sm text-on-surface-variant mt-0.5">{group.memberCount} members</Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text className="font-semibold text-on-surface text-lg leading-tight">{group.title}</Text>
-                      <Text className="text-sm text-on-surface-variant mt-0.5">{group.memberCount} members</Text>
-                    </View>
-                  </View>
-                  <MaterialIcons 
-                    name={isChecked ? "check-circle" : "radio-button-unchecked"} 
-                    size={24} 
-                    color={isChecked ? "#004c22" : "#bfc9bd"} 
-                  />
-                </TouchableOpacity>
+                    <MaterialIcons
+                      name={isChecked ? "check-circle" : "radio-button-unchecked"}
+                      size={24}
+                      color={isChecked ? "#004c22" : "#bfc9bd"}
+                    />
+                  </AnimatedPressable>
+                </AnimatedListItem>
               );
             })}
           </View>
@@ -451,10 +456,10 @@ export default function FriendGroupPickerScreen() {
         className="absolute bottom-0 left-0 w-full px-5 pt-6 pb-6"
         style={{ backgroundColor: 'rgba(252, 249, 244, 0.94)' }}
       >
-        <TouchableOpacity
+        <AnimatedPressable
+          scaleTo={0.9}
           disabled={isConfirmDisabled}
           onPress={handleConfirm}
-          activeOpacity={0.85}
           style={{
             width: '100%',
             height: 56,
@@ -479,7 +484,7 @@ export default function FriendGroupPickerScreen() {
                 : `Continue with ${selectedFriends.length} ${selectedFriends.length === 1 ? 'person' : 'people'}`
             }
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </SafeAreaView>
   );

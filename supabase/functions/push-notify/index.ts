@@ -42,6 +42,21 @@ serve(async (req) => {
       return json({ error: 'Invalid or expired session' }, 401)
     }
 
+    // 60 calls / rolling 1h per caller (0047_push_notify_rate_limit.sql).
+    // Counts invocations, not recipients — a single call fanning out to a
+    // whole group is intended behaviour, not what this guards against.
+    // Atomic on the DB side, safe under concurrent calls from the same user.
+    const { data: rateLimit, error: rateLimitError } = await callerClient
+      .rpc('check_and_increment_push_notify_rate_limit')
+      .single()
+    if (rateLimitError) {
+      console.error('Rate limit check failed:', rateLimitError.message)
+      return json({ error: 'Could not process request right now' }, 500)
+    }
+    if (!rateLimit.allowed) {
+      return json({ error: 'Too many notification requests — try again later' }, 429)
+    }
+
     const { userIds, title, body, data } = await req.json()
 
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
@@ -79,7 +94,7 @@ serve(async (req) => {
 
     const { data: users, error } = await supabaseClient
       .from('users')
-      .select('push_token')
+      .select('id, push_token')
       .in('id', allowedIds)
       .not('push_token', 'is', null)
 
@@ -89,15 +104,22 @@ serve(async (req) => {
       return json({ message: 'No tokens found' }, 200)
     }
 
-    const messages = users
-      .filter(u => u.push_token && u.push_token.startsWith('ExponentPushToken'))
-      .map(u => ({
-        to: u.push_token,
-        sound: 'default',
-        title,
-        body,
-        data: data || {},
-      }))
+    // Kept alongside its owning user id, index-for-index with `messages`
+    // below — Expo's response array (ticket[i]) corresponds to request
+    // array (messages[i]) by position, and that's the only way to trace a
+    // DeviceNotRegistered ticket back to whose token to clear.
+    const tokenRows = users.filter(
+      (u): u is { id: string; push_token: string } =>
+        !!u.push_token && u.push_token.startsWith('ExponentPushToken')
+    )
+
+    const messages = tokenRows.map(u => ({
+      to: u.push_token,
+      sound: 'default',
+      title,
+      body,
+      data: data || {},
+    }))
 
     if (messages.length === 0) {
       return json({ message: 'No valid expo tokens found' }, 200)
@@ -115,7 +137,38 @@ serve(async (req) => {
 
     const expResponse = await response.json()
 
-    return json({ success: true, messagesSent: messages.length, expResponse })
+    // Core Functionality Audit 2026-08-31 P2 §4.6: this function never
+    // looked at what Expo's own tickets said, so a token gone bad on the
+    // provider's side (uninstalled app, revoked notification permission)
+    // stayed in users.push_token forever and silently ate every future
+    // send. DeviceNotRegistered is Expo's own signal that the token will
+    // never work again — see
+    // https://docs.expo.dev/push-notifications/sending-notifications/#individual-errors.
+    // Any other error status (rate limits, malformed message) says nothing
+    // about the token's validity and must not clear it.
+    const tickets = Array.isArray(expResponse?.data) ? expResponse.data : []
+    const deadUserIds = tickets
+      .map((ticket: any, i: number) =>
+        ticket?.status === 'error' && ticket?.details?.error === 'DeviceNotRegistered'
+          ? tokenRows[i]?.id
+          : null
+      )
+      .filter((id: string | null): id is string => !!id)
+
+    if (deadUserIds.length > 0) {
+      const { error: clearErr } = await supabaseClient
+        .from('users')
+        .update({ push_token: null })
+        .in('id', deadUserIds)
+      if (clearErr) {
+        // Best-effort: the notification itself already sent successfully to
+        // everyone else. A failure to clear a dead token just means it gets
+        // retried (and re-cleared) on the next send to that same user.
+        console.error('Could not clear dead push tokens:', clearErr.message)
+      }
+    }
+
+    return json({ success: true, messagesSent: messages.length, expResponse, clearedTokens: deadUserIds.length })
   } catch (error) {
     return json({ error: (error as Error).message }, 400)
   }

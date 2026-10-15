@@ -1,0 +1,100 @@
+-- Kinlo · 0014 · close the anon exposure on the admin rebuild functions
+--
+-- THE DEFECT
+--
+-- Migration 0007 states in its own header:
+--
+--   "Skipping the membership check is exactly why these must never be callable
+--    by the app. They are granted to nobody: no PUBLIC, no authenticated, no
+--    anon. Only a superuser / service_role connection (i.e. the SQL editor)
+--    can execute them. Do not add a GRANT here."
+--
+-- The Phase 0.5 grant capture on 18 Aug 2026 found all three executable by
+-- anon, authenticated and service_role.
+--
+-- WHY IT MATTERS MORE HERE THAN ELSEWHERE
+--
+-- Every other RPC in this schema opens with
+--
+--   IF me IS NULL THEN RAISE EXCEPTION 'authentication required' ...
+--
+-- so an unauthenticated caller is rejected on the first line and the stray
+-- grant is harmless defence-in-depth. 0007 deliberately removed that guard —
+-- these functions take every identity as an explicit argument and perform no
+-- membership check at all, because they were only ever meant to be reachable
+-- from the SQL editor.
+--
+-- The result is that an unauthenticated caller can invoke
+-- admin_rebuild_all_settlements(), which loops every group and every 1-on-1
+-- pair in the database, as often as it likes. admin_rebuild_pair_settlements(
+-- a, b) likewise lets any caller force a rebuild on two users they have no
+-- relationship with.
+--
+-- Data integrity is not at risk: these functions recompute the ledger from
+-- transactions and produce correct results. The exposure is availability, and
+-- a security boundary the repository claims and does not have.
+--
+-- ROOT CAUSE
+--
+-- `REVOKE ALL ON FUNCTION ... FROM PUBLIC` — the idiom every migration in this
+-- project uses — does not remove the separate, explicit grant that Supabase's
+-- default privileges give to anon and authenticated when a function is
+-- created:
+--
+--   ALTER DEFAULT PRIVILEGES IN SCHEMA public
+--     GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+--
+-- PUBLIC and anon are different grantees. Only REVOKE ... FROM anon removes it.
+--
+-- SCOPE OF THIS MIGRATION
+--
+-- Three functions, both roles. Deliberately narrow.
+--
+-- authenticated is revoked as well as anon: 0007 is explicit that these are for
+-- superuser/service_role only, and a signed-in user has no more business
+-- rebuilding another pair's ledger than an anonymous one does. service_role
+-- retains EXECUTE, which is what the SQL editor connects as, so the recovery
+-- path this project depends on is unaffected.
+--
+-- WHAT THIS MIGRATION DOES NOT DO
+--
+-- The same stray anon grant exists on almost every other function in the
+-- schema. It is not swept here, for two reasons:
+--
+--   1. Six of them — is_group_member, is_friend_of, shares_group_with,
+--      shares_transaction_with, user_has_split_in, can_write_transaction — are
+--      invoked from inside RLS policies. Postgres checks EXECUTE against the
+--      *calling* role when a policy is evaluated, so revoking anon would turn
+--      an anonymous query into a hard permission error rather than an empty
+--      result. That is arguably an improvement, but it is a behaviour change
+--      and needs its own analysis and its own migration.
+--
+--   2. The rest (record_expense, get_related_users, get_group_members,
+--      recalculate_*) all reject anon on their first line already, so the grant
+--      is untidy rather than dangerous. Cleaning them up is worth doing and is
+--      not urgent; mixing it into this file would obscure the one change that
+--      actually closes a hole.
+--
+-- VERIFICATION
+--
+-- Do not trust the editor's success message — this project has twice had DDL
+-- report success without persisting. Confirm with:
+--
+--   SELECT p.oid::regprocedure::text AS f,
+--          has_function_privilege('anon',          p.oid, 'EXECUTE') AS anon,
+--          has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
+--          has_function_privilege('service_role',  p.oid, 'EXECUTE') AS svc
+--   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--   WHERE n.nspname = 'public' AND p.proname LIKE 'admin_rebuild%'
+--   ORDER BY 1;
+--
+-- Expected: anon false, auth false, svc true, for all three rows.
+
+REVOKE EXECUTE ON FUNCTION public.admin_rebuild_all_settlements()
+  FROM anon, authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.admin_rebuild_group_settlements(UUID)
+  FROM anon, authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.admin_rebuild_pair_settlements(UUID, UUID)
+  FROM anon, authenticated;

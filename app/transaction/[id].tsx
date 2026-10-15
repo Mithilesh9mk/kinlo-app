@@ -1,9 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { fetchBalanceRows, balanceMapForScope, LedgerRow } from '../../lib/balances';
+import { Skeleton, SkeletonCircle, SkeletonListRow } from '../../components/Skeleton';
+import { fetchTransactionHistory, describeEvent, relativeTime, ActivityEvent } from '../../lib/activity';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { Avatar } from '../../components/Avatar';
 
 /**
  * One expense, in full.
@@ -32,8 +38,21 @@ interface Line {
    * Signed, from your point of view. Positive: they owe you. Negative: you
    * owe them. Zero: nothing moves between you (either it is you, or a third
    * party who owes the payer rather than you).
+   *
+   * This is the *original* position on the bill and never changes.
    */
   betweenUs: number;
+  /**
+   * What is still outstanding between you and this person on this expense,
+   * after subtracting settlements already recorded against it. Same sign
+   * convention as betweenUs.
+   *
+   * The two used to be the same number, because nothing subtracted prior
+   * settlements — so the Settle button came back every time the screen was
+   * reopened and each press wrote another offsetting row, driving the balance
+   * negative. See migration 0012.
+   */
+  remaining: number;
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -55,30 +74,77 @@ export default function TransactionDetailScreen() {
   const [lines, setLines] = useState<Line[]>([]);
   const [payerName, setPayerName] = useState('');
   const [payerIsYou, setPayerIsYou] = useState(false);
+  // Edits and voids recorded against this expense. Without this the screen
+  // shows whatever it currently says, with no sign anyone changed it — which
+  // on a shared expense is exactly when you want to know.
+  const [history, setHistory] = useState<ActivityEvent[]>([]);
 
   const load = useCallback(async () => {
     if (!txId) return;
     setLoading(true);
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const me = authData?.user?.id;
+      // getSession reads the session already cached in storage. getUser makes a
+      // network call to /auth/v1/user on every single load, and this screen sat
+      // waiting on it before it could even begin fetching anything.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const me = sessionData?.session?.user?.id;
       if (!me) {
         setError('You appear to be signed out.');
         return;
       }
 
-      const { data, error: txError } = await supabase
-        .from('transactions')
-        .select('id, amount, description, category, created_at, status, type, paid_by, group_id, transaction_splits (user_id, share_amount)')
-        .eq('id', txId)
-        .single();
+      // These three need only values known up front — the route param and the
+      // user id — so they go out together rather than one after another. This
+      // screen used to make five sequential round trips before it could render,
+      // which is what made opening an expense take several seconds.
+      const [txResult, settlementResult, balanceResult, historyResult] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('id, amount, description, category, created_at, status, type, paid_by, group_id, transaction_splits (user_id, share_amount)')
+          .eq('id', txId)
+          .single(),
+        // Settlements recorded against this expense.
+        supabase
+          .from('transactions')
+          .select('id, paid_by, transaction_splits (user_id, share_amount)')
+          .eq('settles_transaction_id', txId)
+          .eq('type', 'settlement')
+          .in('status', ['active', 'settled']),
+        // The raw ledger rows, not a collapsed map — this expense's scope is
+        // not known until it loads, and a group debt must never offset a
+        // 1-on-1 debt with the same person. A failed read must not silently
+        // unlock the buttons, so it degrades to "everyone is settled" rather
+        // than "everyone is owed".
+        fetchBalanceRows(me).catch(balErr => {
+          console.warn('Could not read ledger; suppressing settle actions:', balErr);
+          return [] as LedgerRow[];
+        }),
+        // History is presentational — a failure here must not stop the expense
+        // rendering, so it degrades to "no history known" rather than an error.
+        fetchTransactionHistory(txId).catch(histErr => {
+          console.warn('Could not read expense history:', histErr);
+          return [] as ActivityEvent[];
+        }),
+      ]);
 
+      const { data, error: txError } = txResult;
       if (txError) throw new Error(txError.message);
       if (!data) throw new Error('This expense could not be found.');
 
+      const settlements = settlementResult.data;
+      setHistory(historyResult);
+
+      // Scoped to this expense: a group expense is measured against the group
+      // ledger, a 1-on-1 expense against the 1-on-1 ledger. Mixing them lets a
+      // separate debt with the same person unlock a settle that should not be
+      // offered, or hide one that should.
+      const pairBalance: Record<string, number> =
+        balanceMapForScope(balanceResult, me, (data as any).group_id ?? null);
+
       const splits = (data as any).transaction_splits || [];
 
-      // Resolve names for everyone named on the expense.
+      // Names for everyone on the expense. This one genuinely depends on the
+      // splits, so it cannot join the batch above.
       const ids = new Set<string>([data.paid_by, ...splits.map((s: any) => s.user_id)]);
       const { data: users } = await supabase
         .from('users')
@@ -92,6 +158,42 @@ export default function TransactionDetailScreen() {
 
       const isPayerMe = data.paid_by === me;
 
+      // Settlements against this expense, keyed by counterparty in the same
+      // sign convention as betweenUs so it can simply be added.
+      //
+      // A settlement where they paid me cancels what they owed me (negative);
+      // one where I paid them cancels what I owed (positive). Rows written
+      // before migration 0012 carry no link at all, which is why the pair
+      // balance below — not this map — is what actually keeps the screen honest.
+      const settledOff: Record<string, number> = {};
+      for (const st of settlements ?? []) {
+        for (const leg of ((st as any).transaction_splits ?? [])) {
+          const paidAmount = Number(leg.share_amount) || 0;
+          if (st.paid_by === me) {
+            // I paid the counterparty, clearing what I owed them.
+            settledOff[leg.user_id] = (settledOff[leg.user_id] ?? 0) + paidAmount;
+          } else if (leg.user_id === me) {
+            // They paid me, clearing what they owed.
+            settledOff[st.paid_by] = (settledOff[st.paid_by] ?? 0) - paidAmount;
+          }
+        }
+      }
+
+      // pairBalance (fetched above) is the backstop, and the thing that makes
+      // this screen safe.
+      //
+      // The per-expense link only sees settlements that name THIS expense. It
+      // cannot see a settle-up done from the friend screen, which clears a
+      // whole balance and has no single expense to point at — and it cannot see
+      // any settlement recorded before 0012, which is all of them. With only
+      // that check, a fully-settled friend still gets a Settle button on every
+      // historical expense.
+      //
+      // simplified_settlements knows what is genuinely outstanding with each
+      // person, from every source. Clamping to it enforces the rule that
+      // matters: you can never be offered more to settle than you owe. Signed
+      // the same way as betweenUs — positive means they owe you.
+
       const built: Line[] = splits.map((s: any) => {
         const uid = s.user_id;
         const share = Number(s.share_amount) || 0;
@@ -99,12 +201,40 @@ export default function TransactionDetailScreen() {
         const isPayer = uid === data.paid_by;
         const full = isYou ? 'You' : (nameOf[uid]?.name || 'Unknown');
 
-        // What moves between this person and me, specifically.
+        // What moves between this person and me, specifically, and who the
+        // counterparty is for that flow.
         let betweenUs = 0;
+        let counterparty: string | null = null;
         if (!isYou && isPayerMe) {
           betweenUs = share;            // they owe me their share
+          counterparty = uid;
         } else if (isYou && !isPayerMe) {
           betweenUs = -share;           // I owe the payer my share
+          counterparty = data.paid_by;
+        }
+
+        // Subtract what has already been settled against this expense. Clamped
+        // at zero rather than allowed to cross it: an overpayment is a
+        // balance-level matter, and letting it go negative here would re-offer
+        // a Settle button pointing the wrong way.
+        let remaining = betweenUs + (counterparty ? (settledOff[counterparty] ?? 0) : 0);
+        if (betweenUs > 0) remaining = Math.max(0, Math.min(betweenUs, remaining));
+        else if (betweenUs < 0) remaining = Math.min(0, Math.max(betweenUs, remaining));
+        else remaining = 0;
+
+        // Then clamp to what is actually outstanding with this person overall.
+        // This is what catches settlements the link cannot see. If the ledger
+        // says you are square with them, nothing on this expense is settleable
+        // no matter what its splits say.
+        if (counterparty) {
+          const owedOverall = pairBalance[counterparty] ?? 0;
+          if (remaining > 0) {
+            // They owe me here; cap at what they still owe me in total.
+            remaining = Math.min(remaining, Math.max(0, owedOverall));
+          } else if (remaining < 0) {
+            // I owe them here; cap at what I still owe them in total.
+            remaining = Math.max(remaining, Math.min(0, owedOverall));
+          }
         }
 
         return {
@@ -116,6 +246,7 @@ export default function TransactionDetailScreen() {
           isYou,
           isPayer,
           betweenUs,
+          remaining,
         };
       });
 
@@ -138,10 +269,11 @@ export default function TransactionDetailScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const settleWith = (line: Line) => {
-    // Only this person's amount travels to settle-up, so settling one
-    // participant leaves the others outstanding.
-    const amount = Math.abs(line.betweenUs);
-    const theyOweMe = line.betweenUs > 0;
+    // Only this person's *outstanding* amount travels to settle-up, so
+    // settling one participant leaves the others untouched and a partial
+    // payment leaves the rest.
+    const amount = Math.abs(line.remaining);
+    const theyOweMe = line.remaining > 0;
 
     router.push({
       pathname: '/settle-up',
@@ -159,23 +291,110 @@ export default function TransactionDetailScreen() {
 
   const Header = (
     <View className="flex-row items-center px-5 h-16 w-full border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.9)' }}>
-      <TouchableOpacity
+      <AnimatedPressable
         onPress={() => router.back()}
         className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
       >
         <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-      </TouchableOpacity>
+      </AnimatedPressable>
       <Text className="font-headline-md text-xl text-primary font-semibold" style={{ marginLeft: 6 }}>Expense</Text>
     </View>
   );
 
   if (loading) {
+    // Shaped like the screen it is standing in for — summary card, position
+    // panel, then a participant per row — so nothing jumps when the data
+    // lands. A spinner would say "wait"; this says what is arriving.
     return (
       <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
         {Header}
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#004c22" />
-        </View>
+        <ScrollView className="flex-1 px-5 pt-6" scrollEnabled={false}>
+          <View className="max-w-xl mx-auto w-full">
+
+            {/* Summary card */}
+            <View
+              className="rounded-3xl p-6 items-center"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.72)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.4)',
+              }}
+            >
+              <SkeletonCircle size={48} />
+              <Skeleton width="58%" height={17} radius={8} style={{ marginTop: 14 }} />
+              <Skeleton width="38%" height={28} radius={9} style={{ marginTop: 10 }} />
+              <View className="flex-row items-center justify-center mt-4">
+                <Skeleton width={96} height={26} radius={13} style={{ marginRight: 8 }} />
+                <Skeleton width={112} height={26} radius={13} />
+              </View>
+            </View>
+
+            {/* What has happened to this expense since it was created.
+              Only shown when something actually has — an expense nobody has
+              touched needs no history section, and rendering "created by X"
+              on every screen would be noise. */}
+          {history.filter(h => h.eventType !== 'expense_created'
+                            && h.eventType !== 'settlement_recorded').length > 0 && (
+            <View
+              className="rounded-2xl px-5 py-4 mt-4"
+              style={{ backgroundColor: 'rgba(248,235,220,0.5)', borderWidth: 1, borderColor: 'rgba(154,85,17,0.2)' }}
+            >
+              <View className="flex-row items-center mb-2">
+                <MaterialIcons name="history" size={14} color="#9a5511" />
+                <Text
+                  className="font-label-sm text-[11px] uppercase tracking-wider font-bold"
+                  style={{ color: '#9a5511', marginLeft: 6 }}
+                >
+                  This expense has changed
+                </Text>
+              </View>
+              {history
+                .filter(h => h.eventType !== 'expense_created' && h.eventType !== 'settlement_recorded')
+                .map(h => {
+                  const d = describeEvent(h);
+                  return (
+                    <View key={h.id} className="flex-row items-baseline mt-1">
+                      <Text className="text-sm text-on-surface flex-1" numberOfLines={2}>
+                        {d.title}
+                        {d.detail ? <Text className="font-semibold">{`  ${d.detail}`}</Text> : null}
+                      </Text>
+                      <Text className="text-[11px] text-on-surface-variant" style={{ marginLeft: 8 }}>
+                        {relativeTime(h.createdAt)}
+                      </Text>
+                    </View>
+                  );
+                })}
+            </View>
+          )}
+
+          {/* Your position */}
+            <View
+              className="rounded-2xl px-5 py-4 mt-4"
+              style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
+            >
+              <Skeleton width="30%" height={10} />
+              <Skeleton width="80%" height={13} style={{ marginTop: 10 }} />
+            </View>
+
+            {/* Participants */}
+            <Skeleton width="46%" height={12} style={{ marginTop: 26, marginBottom: 10 }} />
+
+            {[0, 1, 2].map(i => (
+              <View
+                key={i}
+                className="rounded-2xl p-4 mb-3"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.72)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.4)',
+                }}
+              >
+                <SkeletonListRow avatarSize={44} />
+              </View>
+            ))}
+
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -188,9 +407,9 @@ export default function TransactionDetailScreen() {
           <MaterialIcons name="error-outline" size={44} color="#b91c1c" />
           <Text className="font-headline-md text-lg font-bold text-on-surface mt-3 text-center">Could not load this expense</Text>
           <Text className="text-sm text-on-surface-variant mt-2 text-center">{error}</Text>
-          <TouchableOpacity onPress={load} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+          <AnimatedPressable onPress={load} className="mt-5 bg-primary px-6 py-3 rounded-xl">
             <Text className="text-white font-semibold">Try Again</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </SafeAreaView>
     );
@@ -198,9 +417,11 @@ export default function TransactionDetailScreen() {
 
   const isVoided = tx.status === 'voided';
   const isSettlement = tx.type === 'settlement';
-  const settleable = lines.filter(l => Math.abs(l.betweenUs) > 0.005);
-  const totalToYou = settleable.reduce((sum, l) => sum + (l.betweenUs > 0 ? l.betweenUs : 0), 0);
-  const totalFromYou = settleable.reduce((sum, l) => sum + (l.betweenUs < 0 ? -l.betweenUs : 0), 0);
+  const settleable = lines.filter(l => Math.abs(l.remaining) > 0.005);
+  const totalToYou = settleable.reduce((sum, l) => sum + (l.remaining > 0 ? l.remaining : 0), 0);
+  const totalFromYou = settleable.reduce((sum, l) => sum + (l.remaining < 0 ? -l.remaining : 0), 0);
+  // Had a position on this expense, and it has been cleared.
+  const fullySettled = lines.some(l => Math.abs(l.betweenUs) > 0.005) && settleable.length === 0;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
@@ -290,11 +511,16 @@ export default function TransactionDetailScreen() {
             Split between {lines.length} {lines.length === 1 ? 'person' : 'people'}
           </Text>
 
-          {lines.map((l) => {
-            const canSettle = !isVoided && Math.abs(l.betweenUs) > 0.005;
+          {lines.map((l, index) => {
+            // isSettlement matters: a settlement row has a payer and a split
+            // like any other, so without this check the screen offered a
+            // Settle button on a payment. The live data contained the result —
+            // "You settled ₹81.66 for 'Vaishnavi settled ₹81.66 with You'".
+            const canSettle = !isVoided && !isSettlement && Math.abs(l.remaining) > 0.005;
+            const clearedWithThisPerson = Math.abs(l.betweenUs) > 0.005 && Math.abs(l.remaining) <= 0.005;
             return (
+              <AnimatedListItem key={l.userId} index={index}>
               <View
-                key={l.userId}
                 className="rounded-2xl p-4 mb-3"
                 style={{
                   backgroundColor: 'rgba(255,255,255,0.72)',
@@ -304,11 +530,7 @@ export default function TransactionDetailScreen() {
               >
                 <View className="flex-row items-center">
                   <View className="w-11 h-11 rounded-full items-center justify-center overflow-hidden" style={{ backgroundColor: '#caead6' }}>
-                    {l.avatarUrl ? (
-                      <Image source={{ uri: l.avatarUrl }} className="w-full h-full" />
-                    ) : (
-                      <Text className="text-primary font-bold text-sm">{l.initials}</Text>
-                    )}
+                    <Avatar uri={l.avatarUrl} initials={l.initials} textClassName="text-primary font-bold text-sm" />
                   </View>
 
                   <View style={{ marginLeft: 13, flex: 1 }}>
@@ -324,44 +546,56 @@ export default function TransactionDetailScreen() {
 
                   <View className="items-end">
                     <Text className="font-bold text-on-surface text-base">₹{l.share.toFixed(2)}</Text>
-                    {Math.abs(l.betweenUs) > 0.005 && (
+                    {clearedWithThisPerson ? (
+                      <View className="flex-row items-center mt-0.5">
+                        <MaterialIcons name="check-circle" size={12} color="#1f6c3a" />
+                        <Text className="text-[11px] font-bold" style={{ color: '#1f6c3a', marginLeft: 3 }}>
+                          settled
+                        </Text>
+                      </View>
+                    ) : Math.abs(l.remaining) > 0.005 ? (
                       <Text
                         className="text-[11px] font-bold mt-0.5"
-                        style={{ color: l.betweenUs > 0 ? '#1f6c3a' : '#ba1a1a' }}
+                        style={{ color: l.remaining > 0 ? '#1f6c3a' : '#ba1a1a' }}
                       >
-                        {l.betweenUs > 0 ? 'owes you' : 'you owe'}
+                        {l.remaining > 0 ? 'owes you' : 'you owe'}
+                        {Math.abs(l.remaining) < Math.abs(l.betweenUs) && ' (part paid)'}
                       </Text>
-                    )}
+                    ) : null}
                   </View>
                 </View>
 
                 {canSettle && (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     onPress={() => settleWith(l)}
-                    activeOpacity={0.85}
                     className="flex-row items-center justify-center rounded-xl mt-3"
                     style={{ backgroundColor: '#004c22', paddingVertical: 11 }}
                   >
                     <MaterialIcons name="check-circle" size={17} color="white" />
                     <Text className="text-white font-bold text-sm" style={{ marginLeft: 7 }}>
-                      {l.betweenUs > 0
-                        ? `Settle ₹${Math.abs(l.betweenUs).toFixed(2)} with ${l.name.split(' ')[0]}`
-                        : `Pay ${payerName.split(' ')[0]} ₹${Math.abs(l.betweenUs).toFixed(2)}`}
+                      {l.remaining > 0
+                        ? `Settle ₹${Math.abs(l.remaining).toFixed(2)} with ${l.name.split(' ')[0]}`
+                        : `Pay ${payerName.split(' ')[0]} ₹${Math.abs(l.remaining).toFixed(2)}`}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 )}
               </View>
+              </AnimatedListItem>
             );
           })}
 
-          {!isVoided && settleable.length === 0 && (
+          {!isVoided && (isSettlement || settleable.length === 0) && (
             <View
               className="rounded-2xl px-5 py-5 items-center"
               style={{ backgroundColor: 'rgba(255,255,255,0.5)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
             >
               <MaterialIcons name="done-all" size={26} color="#004c22" />
               <Text className="text-sm text-on-surface-variant text-center mt-2">
-                Nothing to settle here — this expense does not move money between you and anyone else.
+                {fullySettled
+                  ? 'All settled — every share on this expense has been paid back.'
+                  : isSettlement
+                    ? 'This is a payment, not an expense. There is nothing to settle on it.'
+                    : 'Nothing to settle here — this expense does not move money between you and anyone else.'}
               </Text>
             </View>
           )}

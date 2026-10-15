@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
+﻿import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, Image, TextInput, Platform, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Skeleton, SkeletonCircle } from '../../components/Skeleton';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { fetchBalanceRows, groupBalanceMap, formatBalanceLabel } from '../../lib/balances';
+import { withOfflineFallback } from '../../lib/offlineCache';
+import { OfflineBanner } from '../../components/OfflineBanner';
 
 interface Group {
   id: string;
@@ -24,58 +30,100 @@ export default function GroupsScreen() {
   const params = useLocalSearchParams();
 
   const [groups, setGroups] = useState<Group[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
-  // Fetch real groups from Supabase on mount
-  useEffect(() => {
-    async function fetchGroups() {
-      try {
-        const { supabase } = await import('../../lib/supabase');
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) return;
-        const userId = authData.user.id;
+  // This screen previously rendered an empty list while loading, so a slow
+  // connection was indistinguishable from having no groups.
+  const [groupsLoading, setGroupsLoading] = useState(true);
 
-        const { data: memberships, error } = await supabase
-          .from('group_members')
-          .select('group_id, groups(id, title, category)')
-          .eq('user_id', userId);
+  const fetchGroupsLive = useCallback(async (supabase: any, userId: string): Promise<Group[]> => {
+    const [{ data: memberships, error }, rows] = await Promise.all([
+      supabase
+        .from('group_members')
+        .select('group_id, groups(id, title, category)')
+        .eq('user_id', userId),
+      fetchBalanceRows(userId),
+    ]);
 
-        if (error || !memberships) return;
+    if (error) throw new Error(error.message);
+    if (!memberships) return [];
 
-        const groupsFormatted: Group[] = [];
-        for (const m of memberships) {
-          const g = Array.isArray(m.groups) ? m.groups[0] : m.groups as any;
-          if (!g) continue;
+    const balances = groupBalanceMap(rows, userId);
 
-          // Count members
-          const { data: members } = await supabase
-            .rpc('get_group_members', { target_group_id: g.id });
+    const groupsFormatted: Group[] = [];
+    for (const m of memberships) {
+      const g = Array.isArray(m.groups) ? m.groups[0] : m.groups as any;
+      if (!g) continue;
 
-          const categoryMap: Record<string, { label: string; icon: string }> = {
-            trip: { label: 'Travel', icon: 'flight' },
-            home: { label: 'Home', icon: 'home' },
-            food: { label: 'Food', icon: 'restaurant' },
-          };
-          const cat = categoryMap[g.category] || { label: 'Other', icon: 'group' };
+      // Count members
+      const { data: members } = await supabase
+        .rpc('get_group_members', { target_group_id: g.id });
 
-          groupsFormatted.push({
-            id: g.id,
-            title: g.title,
-            categoryId: g.category || 'other',
-            categoryLabel: cat.label,
-            categoryIcon: cat.icon,
-            memberCount: members?.length || 0,
-            members: [],
-            lastActivity: 'Active',
-            balanceText: 'View',
-          });
-        }
-        setGroups(groupsFormatted);
-      } catch (err) {
-        console.error('Error fetching groups:', err);
-      }
+      const categoryMap: Record<string, { label: string; icon: string }> = {
+        trip: { label: 'Travel', icon: 'flight' },
+        home: { label: 'Home', icon: 'home' },
+        food: { label: 'Food', icon: 'restaurant' },
+      };
+      const cat = categoryMap[g.category] || { label: 'Other', icon: 'group' };
+
+      const balance = balances[g.id] || 0;
+
+      groupsFormatted.push({
+        id: g.id,
+        title: g.title,
+        categoryId: g.category || 'other',
+        categoryLabel: cat.label,
+        categoryIcon: cat.icon,
+        memberCount: members?.length || 0,
+        members: [],
+        lastActivity: 'Active',
+        balanceText: formatBalanceLabel(balance),
+        isDebt: balance < -0.005,
+      });
     }
-    fetchGroups();
+    return groupsFormatted;
   }, []);
+
+  // Lifted to a useCallback (was an inline function inside this useEffect)
+  // so both the mount effect and pull-to-refresh below can call it.
+  const fetchGroups = useCallback(async () => {
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      // getSession() reads locally (no network) so a degraded connection
+      // can't be mistaken for "signed out" and silently return empty — see
+      // the same fix in lib/balances.ts for why that's worse than an error.
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) return;
+      const userId = sessionData.session.user.id;
+
+      const { data, cachedAt: fetchedCachedAt } = await withOfflineFallback(
+        'groupsList',
+        () => fetchGroupsLive(supabase, userId),
+      );
+      setGroups(data);
+      setCachedAt(fetchedCachedAt);
+    } catch (err) {
+      console.error('Error fetching groups:', err);
+    } finally {
+      setGroupsLoading(false);
+    }
+  }, [fetchGroupsLive]);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  // Pull-to-refresh. The loading skeleton above is gated on
+  // `groupsLoading && groups.length === 0`, so a refresh with existing
+  // groups already on screen never re-shows it — matching how Activity's
+  // pull-to-refresh skips its own full-screen skeleton.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchGroups();
+    setRefreshing(false);
+  }, [fetchGroups]);
 
   // Check for newly created groups returned as query parameters
   useEffect(() => {
@@ -127,21 +175,29 @@ export default function GroupsScreen() {
           backgroundColor: 'rgba(252, 249, 244, 0.72)' 
         }}
       >
-        <View className="flex-row items-center space-x-2">
+        <View className="flex-row items-center gap-2">
           <MaterialIcons name="menu" size={24} color="#004c22" />
           <Text className="font-headline-md font-bold text-primary text-xl">Kinlo</Text>
         </View>
         
         {/* Dynamic Plus Circle button in Header */}
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={handleCreateGroupPress}
           className="w-10 h-10 rounded-full bg-secondary-container items-center justify-center border border-white/50 active:scale-95"
         >
           <MaterialIcons name="group-add" size={22} color="#004c22" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 120 }}>
+      <OfflineBanner cachedAt={cachedAt} />
+
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#004c22" />
+        }
+      >
         <View className="px-5 pt-8 max-w-7xl mx-auto w-full">
           {/* Header Section */}
           <View className="mb-8 flex-row justify-between items-end">
@@ -151,24 +207,85 @@ export default function GroupsScreen() {
                 Manage shared expenses and balances across your different groups with mindful clarity.
               </Text>
             </View>
-            <TouchableOpacity 
+            <AnimatedPressable
               onPress={handleCreateGroupPress}
-              className="hidden md:flex flex-row items-center bg-primary px-6 py-3 rounded-2xl space-x-2"
+              className="hidden md:flex flex-row items-center bg-primary px-6 py-3 rounded-2xl gap-2"
             >
               <MaterialIcons name="group-add" size={20} color="white" />
               <Text className="text-white font-label-md font-semibold text-base">New Circle</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
+
+          {/* Search */}
+          {groups.length > 0 && (
+            <View className="flex-row items-center bg-surface-container-low border border-outline-variant/40 rounded-full px-4 py-2.5 mb-6">
+              <MaterialIcons name="search" size={22} color="#707a6f" />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search circles by name..."
+                placeholderTextColor="rgba(64, 73, 64, 0.5)"
+                className="flex-1 ml-3 text-base text-on-surface font-body"
+              />
+              {searchQuery.length > 0 && (
+                <AnimatedPressable onPress={() => setSearchQuery('')}>
+                  <MaterialIcons name="close" size={20} color="#707a6f" />
+                </AnimatedPressable>
+              )}
+            </View>
+          )}
 
           {/* Groups Grid */}
           <View className="flex-col gap-6">
-            {groups.map(group => (
-              <TouchableOpacity 
-                key={group.id}
-                onPress={() => router.push(`/group/${group.id}`)}
-                className="p-6 rounded-xl w-full active:scale-98 transition-all overflow-hidden"
+            {groupsLoading && groups.length === 0 && [0, 1, 2].map(i => (
+              <View
+                key={`skeleton-${i}`}
+                className="rounded-3xl p-5"
                 style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.72)',
+                  backgroundColor: 'rgba(255,255,255,0.72)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.05)',
+                }}
+              >
+                <View className="flex-row items-center">
+                  <SkeletonCircle size={52} />
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    <Skeleton width="52%" height={15} />
+                    <Skeleton width="30%" height={11} style={{ marginTop: 8 }} />
+                  </View>
+                </View>
+                <Skeleton width="100%" height={10} radius={5} style={{ marginTop: 18 }} />
+                <View className="flex-row justify-between" style={{ marginTop: 14 }}>
+                  <Skeleton width={92} height={12} />
+                  <Skeleton width={68} height={12} />
+                </View>
+              </View>
+            ))}
+
+            {groups
+              .filter(group => group.title.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map((group, groupIndex) => (
+              <AnimatedListItem key={group.id} index={groupIndex}>
+              <AnimatedPressable
+                scaleTo={0.98}
+                onPress={() => router.push({
+                  pathname: `/group/${group.id}`,
+                  params: {
+                    title: group.title,
+                    categoryLabel: group.categoryLabel,
+                    memberCount: String(group.memberCount),
+                  },
+                })}
+                className="p-6 rounded-xl w-full overflow-hidden"
+                style={{
+                  // #fefdfc, not rgba(255,255,255,0.72): a translucent
+                  // background paired with Android's `elevation` is a known
+                  // rendering bug there — elevation's shadow/outline math
+                  // assumes an opaque background, and a transparent one
+                  // leaves a mismatched rectangle behind the real rounded
+                  // card. This is the same color, precomputed opaque: white
+                  // at 72% over this app's #fcf9f4 page background.
+                  backgroundColor: '#fefdfc',
                   borderWidth: 1,
                   borderColor: 'rgba(255, 255, 255, 0.35)',
                   shadowColor: '#1c1917',
@@ -201,45 +318,37 @@ export default function GroupsScreen() {
                     {group.balanceText}
                   </Text>
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
+              </AnimatedListItem>
             ))}
           </View>
 
-          {/* Featured Insight Section */}
-          <View className="mt-8 flex-col space-y-6">
-            <View 
-              className="p-6 rounded-xl flex-col justify-center"
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.72)',
-                borderWidth: 1,
-                borderColor: 'rgba(255, 255, 255, 0.35)',
-                shadowColor: '#1c1917',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.06,
-                shadowRadius: 32,
-                elevation: 2,
-              }}
-            >
-              <Text className="font-headline-md text-xl text-primary mb-2">Monthly Breakdown</Text>
-              <Text className="font-body-md text-on-surface-variant mb-4">
-                Your overall spending in groups is down by 12% compared to last month. Great job managing your shared finances mindfully.
-              </Text>
-              <TouchableOpacity className="bg-primary px-6 py-3 rounded-xl self-start active:bg-tertiary transition-colors">
-                <Text className="text-white font-label-md font-medium">View Full Report</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          {/* The "Monthly Breakdown" card that stood here has been removed.
+              It claimed "Your overall spending in groups is down by 12%
+              compared to last month" — a hardcoded sentence, identical for
+              every user and every month, computed from nothing. In an app about
+              someone's money, an invented statistic is not a placeholder.
+              Its "View Full Report" button had no handler either.
+
+              Insights already does this job with real figures. */}
 
         </View>
       </ScrollView>
 
-      {/* Floating Action Button (Mobile Group Creation Link) */}
-      <TouchableOpacity 
+      {/* Floating Action Button (Mobile Group Creation Link)
+          The tab bar (app/(tabs)/_layout.tsx) floats above the screen as a
+          sibling drawn by the navigator, not a child of this view — no
+          z-index here can raise the FAB above it. `bottom-6` (24px) put the
+          FAB's top edge at 88px, inside the tab bar's own 80-90px range, so
+          it rendered underneath. This offset clears the tab bar's own
+          bottom inset + height, plus a gap. */}
+      <AnimatedPressable
         onPress={handleCreateGroupPress}
-        className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-primary items-center justify-center shadow-lg z-30"
+        className="absolute right-6 w-16 h-16 rounded-full bg-primary items-center justify-center shadow-lg z-30"
+        style={{ bottom: (Platform.OS === 'ios' ? 26 : 16) + 64 + 16 }}
       >
         <MaterialIcons name="group-add" size={32} color="white" />
-      </TouchableOpacity>
+      </AnimatedPressable>
     </View>
   );
 }

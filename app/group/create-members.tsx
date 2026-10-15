@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Avatar } from '../../components/Avatar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getRelatedUsers } from '../../lib/friendFetcher';
+import { createGroup } from '../../lib/groups';
+import { newTransactionId } from '../../lib/idempotency';
+import { useToast } from '../../components/Toast';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
 
 interface Contact {
   id: string;
@@ -28,6 +34,13 @@ export default function CreateCircleMembersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<Contact[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showToast } = useToast();
+
+  // Minted once and reused across retries or a double-tap, so a repeat
+  // submit targets the same group instead of creating a second one — see
+  // supabase/migrations/0033_create_group.sql.
+  const groupIdempotencyKey = useRef(newTransactionId());
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -66,69 +79,25 @@ export default function CreateCircleMembersScreen() {
   };
 
   const handleCreate = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      const { supabase } = await import('../../lib/supabase');
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-
       let mappedCategory = categoryId === 'travel' ? 'trip' : categoryId === 'utilities' ? 'home' : categoryId === 'food' ? 'food' : 'other';
       if (!['trip', 'home', 'food', 'other'].includes(mappedCategory)) mappedCategory = 'other';
 
-      let newGroupId = title.toLowerCase().replace(/\s+/g, '-'); // Fallback ID
+      await createGroup({
+        groupId: groupIdempotencyKey.current,
+        title,
+        category: mappedCategory,
+        memberIds: selectedContacts.map(c => c.id),
+      });
 
-      if (userId) {
-        // 1. Insert into Groups table
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .insert({
-            title: title,
-            category: mappedCategory,
-            created_by: userId
-          })
-          .select()
-          .single();
-
-        if (groupError) {
-          console.error('Supabase group insert error:', groupError.message);
-        } else if (groupData) {
-          newGroupId = groupData.id;
-
-          // 2. Insert into Group Members batch
-          // Note: In a real app, selectedContacts.id should be real UUIDs.
-          // Since they might be mock string IDs ('alex', 'sarah'), we filter them or catch errors.
-          const memberInserts = [
-            { group_id: groupData.id, user_id: userId } // Always add creator
-          ];
-          
-          // Append valid UUID contacts
-          selectedContacts.forEach(c => {
-             memberInserts.push({ group_id: groupData.id, user_id: c.id });
-          });
-
-          const { error: membersError } = await supabase.from('group_members').insert(memberInserts);
-          if (membersError) {
-            console.error('Supabase group_members batch insert error:', membersError.message);
-          }
-        }
-      }
-
-      // Generate payload for local UI fallback
-      const newGroup = {
-        id: newGroupId,
-        title: title,
-        categoryId: categoryId,
-        categoryLabel: categoryLabel,
-        categoryIcon: categoryIcon === 'flight' ? 'flight-takeoff' : categoryIcon,
-        memberCount: selectedContacts.length + 1,
-        members: ['You', ...selectedContacts.map(c => c.name)]
-      };
-
-      alert(`Circle "${title}" created!`);
-
-      // Redirect to Groups home sending parameters to state-appending logic
+      showToast(`Circle "${title}" created!`);
       router.replace('/');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      showToast(err?.message || 'Could not create this circle. Please try again.');
+      setIsSubmitting(false);
     }
   };
 
@@ -147,23 +116,23 @@ export default function CreateCircleMembersScreen() {
       {/* Top Navigation */}
       <View className="flex-row items-center justify-between px-5 py-3">
         <View className="flex-row items-center space-x-4">
-          <TouchableOpacity 
+          <AnimatedPressable 
             onPress={() => router.back()}
             className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
           >
             <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-          </TouchableOpacity>
+          </AnimatedPressable>
           <View>
             <Text className="font-headline text-2xl font-bold text-on-surface">Select Members</Text>
             <Text className="text-xs text-on-surface-variant opacity-85">{title} • {categoryLabel}</Text>
           </View>
         </View>
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={() => router.dismissAll()}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
       {/* Search Input */}
@@ -197,9 +166,9 @@ export default function CreateCircleMembersScreen() {
                 className="flex-row items-center bg-secondary-container px-3 py-1.5 rounded-full"
               >
                 <Text className="text-primary font-semibold text-xs mr-1">{contact.name.split(' ')[0]}</Text>
-                <TouchableOpacity onPress={() => handleRemoveChip(contact.id)}>
+                <AnimatedPressable onPress={() => handleRemoveChip(contact.id)}>
                   <MaterialIcons name="close" size={14} color="#004c22" />
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             ))}
           </ScrollView>
@@ -216,11 +185,11 @@ export default function CreateCircleMembersScreen() {
               Frequently Split With
             </Text>
             <View className="gap-2">
-              {filteredContacts.slice(0, 3).map(contact => {
+              {filteredContacts.slice(0, 3).map((contact, index) => {
                 const isChecked = selectedContacts.some(c => c.id === contact.id);
                 return (
-                  <TouchableOpacity
-                    key={`freq-${contact.id}`}
+                  <AnimatedListItem key={`freq-${contact.id}`} index={index}>
+                  <AnimatedPressable
                     onPress={() => handleToggleContact(contact)}
                     className="p-3 rounded-2xl flex-row items-center justify-between"
                     style={{
@@ -230,13 +199,12 @@ export default function CreateCircleMembersScreen() {
                     }}
                   >
                     <View className="flex-row items-center space-x-3">
-                      {contact.image ? (
-                        <Image source={{ uri: contact.image }} className="w-10 h-10 rounded-full" />
-                      ) : (
-                        <View className="w-10 h-10 rounded-full bg-secondary-container items-center justify-center">
-                          <Text className="text-primary font-bold text-sm">{contact.initials}</Text>
-                        </View>
-                      )}
+                      <Avatar
+                        uri={contact.image}
+                        initials={contact.initials}
+                        size={40}
+                        textClassName="text-primary font-bold text-sm"
+                      />
                       <View>
                         <Text className="font-semibold text-on-surface leading-tight">{contact.name}</Text>
                       </View>
@@ -246,7 +214,8 @@ export default function CreateCircleMembersScreen() {
                     }`}>
                       {isChecked && <MaterialIcons name="check" size={14} color="white" />}
                     </View>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
+                  </AnimatedListItem>
                 );
               })}
             </View>
@@ -258,11 +227,11 @@ export default function CreateCircleMembersScreen() {
               All Contacts
             </Text>
             <View className="gap-2">
-              {filteredContacts.slice(3).map(contact => {
+              {filteredContacts.slice(3).map((contact, index) => {
                 const isChecked = selectedContacts.some(c => c.id === contact.id);
                 return (
-                  <TouchableOpacity
-                    key={`all-${contact.id}`}
+                  <AnimatedListItem key={`all-${contact.id}`} index={index}>
+                  <AnimatedPressable
                     onPress={() => handleToggleContact(contact)}
                     className="p-3 rounded-2xl flex-row items-center justify-between"
                     style={{
@@ -272,13 +241,12 @@ export default function CreateCircleMembersScreen() {
                     }}
                   >
                     <View className="flex-row items-center space-x-3">
-                      {contact.image ? (
-                        <Image source={{ uri: contact.image }} className="w-10 h-10 rounded-full" />
-                      ) : (
-                        <View className="w-10 h-10 rounded-full bg-secondary-container items-center justify-center">
-                          <Text className="text-primary font-bold text-sm">{contact.initials}</Text>
-                        </View>
-                      )}
+                      <Avatar
+                        uri={contact.image}
+                        initials={contact.initials}
+                        size={40}
+                        textClassName="text-primary font-bold text-sm"
+                      />
                       <View>
                         <Text className="font-semibold text-on-surface leading-tight">{contact.name}</Text>
                       </View>
@@ -288,7 +256,8 @@ export default function CreateCircleMembersScreen() {
                     }`}>
                       {isChecked && <MaterialIcons name="check" size={14} color="white" />}
                     </View>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
+                  </AnimatedListItem>
                 );
               })}
             </View>
@@ -299,14 +268,17 @@ export default function CreateCircleMembersScreen() {
 
       {/* Sticky Bottom Confirmation */}
       <View className="absolute bottom-0 left-0 w-full p-5 bg-gradient-to-t from-surface via-surface/95 to-transparent">
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={handleCreate}
+          disabled={isSubmitting}
+          scaleTo={0.9}
           className="w-full h-14 bg-primary rounded-xl flex-row items-center justify-center shadow-md active:scale-95 duration-100"
+          style={{ opacity: isSubmitting ? 0.7 : 1 }}
         >
           <Text className="text-white font-semibold text-base">
-            Create Group ({selectedContacts.length} selected)
+            {isSubmitting ? 'Creating…' : `Create Group (${selectedContacts.length} selected)`}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </SafeAreaView>
   );

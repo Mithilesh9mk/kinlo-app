@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity, TextInput, FlatList } from 'react-native';
+import { View, Text, ScrollView, TextInput, FlatList } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { getRelatedUsers } from '../../lib/friendFetcher';
 import { fetchBalances } from '../../lib/balances';
+import { getContactsSyncEnabled, findKinloContactMatches, ContactMatch } from '../../lib/contactsSync';
+import { useToast } from '../../components/Toast';
 import AddFriendModal from '../../components/AddFriendModal';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { Avatar } from '../../components/Avatar';
 
 interface Friend {
   id: string;
@@ -26,6 +31,62 @@ export default function FriendsScreen() {
   const [friendsList, setFriendsList] = useState<Friend[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const { showToast } = useToast();
+  const [contactMatches, setContactMatches] = useState<ContactMatch[]>([]);
+  const [addingMatchId, setAddingMatchId] = useState<string | null>(null);
+
+  // Only runs the actual contact scan if the user opted in via the
+  // onboarding "Sync contacts" step or the Profile toggle — this screen
+  // never requests the permission itself. Best-effort: a failed lookup just
+  // means no suggestions show, not an error the user needs to see.
+  const loadContactMatches = useCallback(async () => {
+    try {
+      const enabled = await getContactsSyncEnabled();
+      if (!enabled) { setContactMatches([]); return; }
+      const matches = await findKinloContactMatches();
+      setContactMatches(matches);
+    } catch (e) {
+      console.warn('Contact match lookup failed:', e);
+      setContactMatches([]);
+    }
+  }, []);
+
+  const addMatchAsFriend = async (match: ContactMatch) => {
+    setAddingMatchId(match.id);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) {
+        showToast('Please sign in again to add friends');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('friendships')
+        .insert({ user_id: authData.user.id, friend_id: match.id });
+
+      if (error) {
+        // Raw Postgres text isn't for the user, but silence isn't either:
+        // the spinner stopping with the card still sitting there reads as
+        // the app ignoring the tap.
+        console.warn('Failed to add contact match as friend:', error.message);
+        showToast(`Could not add ${match.contactName} — try again`);
+        return;
+      }
+
+      setContactMatches((prev) => prev.filter((m) => m.id !== match.id));
+      showToast(`${match.contactName} added`);
+      fetchFriends();
+    } catch (e) {
+      console.warn('Failed to add contact match as friend:', e);
+      showToast('Could not add that friend — try again');
+    } finally {
+      setAddingMatchId(null);
+    }
+  };
+
+  const dismissMatch = (id: string) => {
+    setContactMatches((prev) => prev.filter((m) => m.id !== id));
+  };
 
   // Balances come from the shared snapshot (lib/balances.ts), so this list
   // agrees with Home, the settle-up picker and the friend detail screen by
@@ -58,7 +119,8 @@ export default function FriendsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchFriends();
-    }, [fetchFriends])
+      loadContactMatches();
+    }, [fetchFriends, loadContactMatches])
   );
 
   const filteredFriends = friendsList.filter(f => 
@@ -91,9 +153,9 @@ export default function FriendsScreen() {
         className="px-6 pb-4 flex-row items-center justify-between bg-surface z-20 shadow-sm border-b border-outline-variant/20"
         style={{ paddingTop: Math.max(insets.top, 24) }}
       >
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95">
+        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95">
           <MaterialIcons name="arrow-back" size={24} color="#404940" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="font-bold text-xl text-on-surface">All Friends</Text>
         <View className="w-10 h-10" />
       </View>
@@ -110,12 +172,56 @@ export default function FriendsScreen() {
             className="flex-1 ml-3 text-base text-on-surface font-body"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <AnimatedPressable onPress={() => setSearchQuery('')}>
               <MaterialIcons name="close" size={20} color="#707a6f" />
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
         </View>
       </View>
+
+      {/* From Contacts — only shown if the user opted in via onboarding/Profile
+          and we found at least one match this visit */}
+      {contactMatches.length > 0 && (
+        <View className="pb-3 bg-surface z-10">
+          <Text className="px-6 mb-2 text-xs font-semibold text-on-surface-variant uppercase tracking-wide">
+            From your contacts
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+            {contactMatches.map((match) => (
+              <View
+                key={match.id}
+                className="items-center mr-3 bg-surface-container-low rounded-2xl px-4 py-3"
+                style={{ width: 112 }}
+              >
+                <AnimatedPressable onPress={() => dismissMatch(match.id)} className="absolute top-1.5 right-1.5 z-10">
+                  <MaterialIcons name="close" size={14} color="#707a6f" />
+                </AnimatedPressable>
+                {/* size is required here: without it Avatar falls back to
+                    height:'100%', which has no fixed parent height to resolve
+                    against inside this card and collapses the layout. */}
+                <Avatar
+                  size={44}
+                  uri={match.avatarUrl || undefined}
+                  initials={match.contactName.slice(0, 2).toUpperCase()}
+                  textClassName="text-primary font-bold"
+                />
+                <Text numberOfLines={1} className="text-xs font-semibold text-on-surface mt-2 text-center">
+                  {match.contactName}
+                </Text>
+                <AnimatedPressable
+                  onPress={() => addMatchAsFriend(match)}
+                  disabled={addingMatchId === match.id}
+                  className="mt-2 bg-primary rounded-lg px-3 py-1.5"
+                >
+                  <Text className="text-white text-xs font-semibold">
+                    {addingMatchId === match.id ? '...' : 'Add'}
+                  </Text>
+                </AnimatedPressable>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Friends List */}
       <FlatList
@@ -131,50 +237,43 @@ export default function FriendsScreen() {
             </Text>
           </View>
         )}
-        renderItem={({ item }) => (
-          <TouchableOpacity 
-            onPress={() => router.push({
-              pathname: `/friend/${item.id}`,
-              params: {
-                friendName: item.fullName,
-                friendPhone: item.phoneNumber
-              }
-            })} 
-            className="flex-row items-center py-4 border-b border-outline-variant/15"
-          >
-            <View className={`w-14 h-14 rounded-full border-[3px] p-[2px] bg-surface mr-4 ${getBorderColor(item)}`}>
-              {item.image ? (
-                <Image 
-                  source={{ uri: item.image }} 
-                  className="w-full h-full rounded-full"
-                />
-              ) : (
-                <View className="w-full h-full rounded-full bg-secondary-container items-center justify-center">
-                  <Text className="text-primary font-bold text-lg">{item.initials}</Text>
-                </View>
-              )}
-            </View>
-            <View className="flex-1">
-              <Text className="text-base font-semibold text-on-surface">{item.fullName}</Text>
-              <Text className="text-xs text-on-surface-variant mt-0.5">{item.phoneNumber || 'No phone added'}</Text>
-            </View>
-            <View className="items-end">
-              <Text className={`text-sm font-bold ${getBalanceTextColor(item)}`}>
-                {getBalanceLabel(item)}
-              </Text>
-            </View>
-          </TouchableOpacity>
+        renderItem={({ item, index }) => (
+          <AnimatedListItem index={index}>
+            <AnimatedPressable
+              onPress={() => router.push({
+                pathname: `/friend/${item.id}`,
+                params: {
+                  friendName: item.fullName,
+                  friendPhone: item.phoneNumber
+                }
+              })}
+              className="flex-row items-center py-4 border-b border-outline-variant/15"
+            >
+              <View className={`w-14 h-14 rounded-full border-[3px] p-[2px] bg-surface mr-4 ${getBorderColor(item)}`}>
+                <Avatar uri={item.image} initials={item.initials} textClassName="text-primary font-bold text-lg" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-base font-semibold text-on-surface">{item.fullName}</Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5">{item.phoneNumber || 'No phone added'}</Text>
+              </View>
+              <View className="items-end">
+                <Text className={`text-sm font-bold ${getBalanceTextColor(item)}`}>
+                  {getBalanceLabel(item)}
+                </Text>
+              </View>
+            </AnimatedPressable>
+          </AnimatedListItem>
         )}
       />
 
       {/* Floating Action Button for Adding Friends */}
-      <TouchableOpacity 
+      <AnimatedPressable 
         onPress={() => setIsAddModalOpen(true)}
         className="absolute bottom-[40px] right-6 h-16 px-6 rounded-2xl bg-primary flex-row items-center justify-center shadow-lg z-30"
       >
         <MaterialIcons name="person-add" size={24} color="white" />
         <Text className="text-white font-bold text-base ml-2">Add Friend</Text>
-      </TouchableOpacity>
+      </AnimatedPressable>
 
       <AddFriendModal 
         isOpen={isAddModalOpen} 

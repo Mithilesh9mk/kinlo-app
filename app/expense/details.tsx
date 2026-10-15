@@ -1,19 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Modal, Pressable, GestureResponderEvent } from 'react-native';
+import { View, Text, TextInput, ScrollView, Modal, Pressable, GestureResponderEvent } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Avatar } from '../../components/Avatar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useExpense, Participant } from '../../context/ExpenseContext';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const categories = [
-  { id: 'food', icon: 'restaurant', label: 'Food' },
-  { id: 'travel', icon: 'flight', label: 'Travel' },
-  { id: 'home', icon: 'home', label: 'Home' },
-  { id: 'utilities', icon: 'bolt', label: 'Utilities' },
-  { id: 'other', icon: 'category', label: 'Other' },
-];
+import { useAlert } from '../../components/AppAlert';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
 
 interface Friend {
   id: string;
@@ -38,6 +34,7 @@ interface Payer {
 
 export default function ExpenseDetailsScreen() {
   const router = useRouter();
+  const { showAlert } = useAlert();
   const params = useLocalSearchParams();
   const {
     amount,
@@ -187,13 +184,11 @@ export default function ExpenseDetailsScreen() {
   const handleNextStep = () => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) {
-      alert('Please enter a valid amount greater than zero.');
+      showAlert('Invalid amount', 'Please enter a valid amount greater than zero.');
       return;
     }
-    if (!description.trim()) {
-      alert('Please add a description for this expense.');
-      return;
-    }
+    // Description is required on the amount screen, which is the only way
+    // into this one — nothing here can be reached with it still blank.
     router.push('/expense/split');
   };
 
@@ -211,11 +206,11 @@ export default function ExpenseDetailsScreen() {
         const friend = selectedFriends[0];
         return (
           <View className="w-10 h-10 rounded-full bg-secondary-container items-center justify-center overflow-hidden">
-            {friend.image ? (
-              <Image source={{ uri: friend.image }} className="w-full h-full" />
-            ) : (
-              <Text className="text-primary font-bold text-sm">{friend.initials || '??'}</Text>
-            )}
+            <Avatar
+              uri={friend.image}
+              initials={friend.initials || '??'}
+              textClassName="text-primary font-bold text-sm"
+            />
           </View>
         );
       }
@@ -224,11 +219,11 @@ export default function ExpenseDetailsScreen() {
       return (
         <View className="flex-row items-center">
           <View className="w-10 h-10 rounded-full border-2 border-white bg-secondary-fixed items-center justify-center overflow-hidden z-10">
-            {selectedFriends[0].image ? (
-              <Image source={{ uri: selectedFriends[0].image }} className="w-full h-full" />
-            ) : (
-              <Text className="text-on-secondary-fixed font-bold text-xs">{selectedFriends[0].initials || '??'}</Text>
-            )}
+            <Avatar
+              uri={selectedFriends[0].image}
+              initials={selectedFriends[0].initials || '??'}
+              textClassName="text-on-secondary-fixed font-bold text-xs"
+            />
           </View>
           <View className="w-10 h-10 rounded-full border-2 border-white bg-tertiary-fixed items-center justify-center -ml-3 z-0">
             <Text className="text-on-tertiary-fixed font-label-sm text-xs font-bold">
@@ -261,12 +256,12 @@ export default function ExpenseDetailsScreen() {
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       {/* Top Navigation */}
       <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-        <TouchableOpacity 
+        <AnimatedPressable
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="font-headline-md text-xl text-primary font-semibold">Kinlo</Text>
         <View className="w-10" />
       </View>
@@ -328,19 +323,17 @@ export default function ExpenseDetailsScreen() {
             {/* Paid By Row. Spacing is explicit marginLeft rather than
                 `space-x-*`, which was not applying and left the avatar and the
                 text crowded together. */}
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={() => setPayerModalOpen(true)}
               className="flex-row items-center justify-between p-5 border-b border-outline-variant/20 active:bg-surface-container-lowest"
             >
               <View className="flex-row items-center flex-1 mr-3">
                 <View className="w-11 h-11 rounded-full items-center justify-center overflow-hidden bg-secondary-container">
-                  {selectedPayer?.image ? (
-                    <Image source={{ uri: selectedPayer.image }} className="w-full h-full" />
-                  ) : (
-                    <Text className="text-primary font-bold text-sm">
-                      {selectedPayer?.initials || selectedPayer?.name?.charAt(0) || 'Y'}
-                    </Text>
-                  )}
+                  <Avatar
+                    uri={selectedPayer?.image}
+                    initials={selectedPayer?.initials || selectedPayer?.name?.charAt(0) || 'Y'}
+                    textClassName="text-primary font-bold text-sm"
+                  />
                 </View>
                 <View style={{ marginLeft: 14, flex: 1 }}>
                   <Text className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider mb-0.5">Paid by</Text>
@@ -350,10 +343,10 @@ export default function ExpenseDetailsScreen() {
                 </View>
               </View>
               <MaterialIcons name="expand-more" size={24} color="#707a6f" />
-            </TouchableOpacity>
+            </AnimatedPressable>
 
             {/* With Row */}
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={handleOpenPicker}
               className="flex-row items-center justify-between p-5 active:bg-surface-container-lowest"
             >
@@ -367,7 +360,7 @@ export default function ExpenseDetailsScreen() {
                 </View>
               </View>
               <MaterialIcons name="chevron-right" size={24} color="#707a6f" />
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
           {/* Paid-by popup */}
@@ -399,37 +392,36 @@ export default function ExpenseDetailsScreen() {
                   Whoever paid is owed by everyone else in the split.
                 </Text>
 
-                {payerOptions.map((p) => {
+                {payerOptions.map((p, index) => {
                   const active = selectedPayer?.id === p.id;
                   return (
-                    <TouchableOpacity
-                      key={p.id}
-                      onPress={() => choosePayer(p)}
-                      className="flex-row items-center py-3 px-3 rounded-2xl mb-1"
-                      style={{
-                        backgroundColor: active ? '#caead6' : 'transparent',
-                        borderWidth: 1,
-                        borderColor: active ? '#004c22' : 'transparent',
-                      }}
-                    >
-                      <View className="w-10 h-10 rounded-full items-center justify-center overflow-hidden bg-secondary-container">
-                        {p.image ? (
-                          <Image source={{ uri: p.image }} className="w-full h-full" />
-                        ) : (
-                          <Text className="text-primary font-bold text-sm">
-                            {p.initials || p.name?.charAt(0) || '?'}
-                          </Text>
-                        )}
-                      </View>
-                      <Text
-                        className="font-semibold text-on-surface text-base"
-                        style={{ marginLeft: 14, flex: 1 }}
-                        numberOfLines={1}
+                    <AnimatedListItem key={p.id} index={index}>
+                      <AnimatedPressable
+                        onPress={() => choosePayer(p)}
+                        className="flex-row items-center py-3 px-3 rounded-2xl mb-1"
+                        style={{
+                          backgroundColor: active ? '#caead6' : 'transparent',
+                          borderWidth: 1,
+                          borderColor: active ? '#004c22' : 'transparent',
+                        }}
                       >
-                        {p.isYou ? 'You' : p.name}
-                      </Text>
-                      {active && <MaterialIcons name="check-circle" size={22} color="#004c22" />}
-                    </TouchableOpacity>
+                        <View className="w-10 h-10 rounded-full items-center justify-center overflow-hidden bg-secondary-container">
+                          <Avatar
+                            uri={p.image}
+                            initials={p.initials || p.name?.charAt(0) || '?'}
+                            textClassName="text-primary font-bold text-sm"
+                          />
+                        </View>
+                        <Text
+                          className="font-semibold text-on-surface text-base"
+                          style={{ marginLeft: 14, flex: 1 }}
+                          numberOfLines={1}
+                        >
+                          {p.isYou ? 'You' : p.name}
+                        </Text>
+                        {active && <MaterialIcons name="check-circle" size={22} color="#004c22" />}
+                      </AnimatedPressable>
+                    </AnimatedListItem>
                   );
                 })}
               </Pressable>
@@ -440,16 +432,17 @@ export default function ExpenseDetailsScreen() {
 
       {/* Bottom Action Button */}
       <View className="absolute bottom-0 left-0 w-full px-5 pt-10 pb-5" style={{ backgroundColor: 'rgba(252, 249, 244, 0.9)' }}>
-        <TouchableOpacity 
+        <AnimatedPressable
+          scaleTo={0.9}
           onPress={handleNextStep}
           disabled={selectedFriends.length === 0 && !selectedGroup}
-          className={`w-full max-w-xl mx-auto h-14 rounded-xl flex-row items-center justify-center space-x-2 active:scale-95 transition-all shadow-lg ${
+          className={`w-full max-w-xl mx-auto h-14 rounded-xl flex-row items-center justify-center space-x-2 transition-all shadow-lg ${
             (selectedFriends.length === 0 && !selectedGroup) ? 'bg-outline-variant/30 opacity-50' : 'bg-primary shadow-primary/20'
           }`}
         >
           <Text className="text-white font-bold text-lg font-body-lg">Next Step</Text>
           <MaterialIcons name="arrow-forward" size={24} color="#ffffff" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </SafeAreaView>
   );

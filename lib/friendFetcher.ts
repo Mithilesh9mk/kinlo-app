@@ -125,7 +125,13 @@ export async function getRelatedUsers(userId: string, columns: string = 'id, ful
 
     return users || [];
   } catch (error) {
+    // Must rethrow, not swallow: callers that wrap fetches in
+    // withOfflineFallback (lib/balances.ts) rely on this throwing to detect
+    // a real failure. Swallowing to [] here made an offline fetch look like
+    // a successful "zero friends" result, which then got written over the
+    // good cached data via writeCache — silently destroying it instead of
+    // falling back to it.
     console.error('Exception in getRelatedUsers:', error);
-    return [];
+    throw error;
   }
 }

@@ -1,14 +1,39 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../lib/supabase';
+import { fetchBalances } from '../lib/balances';
 import { useGlobalBalances } from '../context/GlobalBalancesContext';
-import { dispatchPushNotification } from '../lib/pushDispatcher';
+import { SkeletonListRow } from '../components/Skeleton';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import { AnimatedListItem } from '../components/AnimatedListItem';
+import { listPersonalTransactions } from '../lib/personalTransactions';
+import { readCache, writeCache, isLikelyNetworkError } from '../lib/offlineCache';
+import { OfflineBanner } from '../components/OfflineBanner';
 
-type FilterType = 'All' | 'You Paid' | 'You Owe';
+// 'Personal' and 'Split' partition the feed by which ledger a row came from;
+// 'You Paid' / 'You Owe' partition it by debt direction. Those two ideas are
+// independent, and debt direction is meaningless for a personal expense (you
+// paid yourself — nobody owes anybody), so personal rows are excluded from
+// the latter two rather than being forced into one of them.
+type FilterType = 'All' | 'Personal' | 'Split' | 'You Paid' | 'You Owe';
+
+const STATEMENT_CACHE_KEY = 'statement.transactions';
+
+/**
+ * JSON.stringify turns `date: Date` into a plain ISO string, and JSON.parse
+ * (inside readCache) does not revive it back — a cached row's `date` field
+ * would silently become a string at runtime while TypeScript still thinks
+ * it's a Date. Nothing downstream currently calls .getTime() on a
+ * cache-restored row, but re-hydrating on the way out keeps the interface's
+ * own contract true rather than relying on that staying accidentally safe.
+ */
+function reviveStatementCacheDates(rows: StatementTx[]): StatementTx[] {
+  return rows.map((t) => ({ ...t, date: new Date(t.date) }));
+}
 
 interface StatementTx {
   id: string;
@@ -23,6 +48,8 @@ interface StatementTx {
   status?: string;
   paidByUserId: string;
   type?: string;
+  /** Which ledger this row came from. Personal rows never touch balances. */
+  entryType: 'personal' | 'split';
 }
 
 export default function StatementScreen() {
@@ -34,6 +61,7 @@ export default function StatementScreen() {
   // A failed fetch used to render as "No transactions", which is
   // indistinguishable from genuinely having none.
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('All');
   const [runningNetBalance, setRunningNetBalance] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -44,14 +72,17 @@ export default function StatementScreen() {
   const fetchStatement = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: authData } = await supabase.auth.getUser();
-      
-      if (!authData?.user) {
+      // getSession() reads locally (no network) so a degraded connection
+      // can't be mistaken for "signed out" and silently return empty — see
+      // the same fix in lib/balances.ts for why that's worse than an error.
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      if (!sessionData?.session?.user) {
         setLoading(false);
         return;
       }
-      
-      const userId = authData.user.id;
+
+      const userId = sessionData.session.user.id;
       setCurrentUserId(userId);
 
       // Fetch transactions WITHOUT problematic joins
@@ -80,7 +111,24 @@ export default function StatementScreen() {
 
       if (error || !txs) {
         console.error("Statement fetch error:", error);
-        setLoadError(error?.message || 'Could not load your statement.');
+        const cached = isLikelyNetworkError(error)
+          ? await readCache<StatementTx[]>(STATEMENT_CACHE_KEY)
+          : null;
+        if (cached) {
+          setTransactions(reviveStatementCacheDates(cached.data));
+          setCachedAt(cached.cachedAt);
+          setLoadError(null);
+        } else {
+          setLoadError(error?.message || 'Could not load your statement.');
+        }
+        // Independent of whether the transaction list came from cache —
+        // fetchBalances() has its own offline fallback, so still worth trying.
+        try {
+          const { totalBalance } = await fetchBalances();
+          setRunningNetBalance(totalBalance);
+        } catch (balErr) {
+          console.warn('Could not load net balance for statement:', balErr);
+        }
         setLoading(false);
         return;
       }
@@ -129,10 +177,9 @@ export default function StatementScreen() {
         }
       }
 
-      const userName = nameMap[userId] || authData.user.user_metadata?.full_name || 'A friend';
+      const userName = nameMap[userId] || sessionData.session.user.user_metadata?.full_name || 'A friend';
       setCurrentUserName(userName);
 
-      let totalBalance = 0;
       const processedTxs: StatementTx[] = [];
 
       for (const t of involvedTxs) {
@@ -149,8 +196,6 @@ export default function StatementScreen() {
         }
         
         if (userShare === 0 && !isPayer) continue;
-
-        totalBalance += userShare;
 
         // Get a friendly name for the counterparty
         let groupOrFriendName = '';
@@ -180,14 +225,91 @@ export default function StatementScreen() {
           dateString,
           status: ((t as any).status || 'active'),
           paidByUserId: t.paid_by,
-          type: t.type || 'expense'
+          type: t.type || 'expense',
+          entryType: 'split',
         });
       }
 
-      setTransactions(processedTxs);
-      setRunningNetBalance(totalBalance);
-    } catch (err) {
+      // Personal expenses live in their own table and are invisible to the
+      // split ledger by design (see migration 0036). They are merged in here
+      // for display only — the net balance below still comes from
+      // lib/balances.ts and is unaffected by anything in this block.
+      //
+      // A failure here must not blank the whole statement, so it degrades to
+      // "split rows only" rather than propagating.
+      let personalTxs: StatementTx[] = [];
+      try {
+        const personal = await listPersonalTransactions();
+        personalTxs = personal
+          .filter((p) => p.status === 'confirmed')
+          .map((p) => {
+            const date = new Date(p.occurredAt);
+            return {
+              id: p.id,
+              description: p.merchant || p.description || 'Personal expense',
+              groupOrFriendName: 'Personal',
+              category: p.category || 'other',
+              totalAmount: p.amount,
+              // Negative: a personal expense is money out, always. It is not a
+              // debt, so this figure never reaches a balance — it only drives
+              // this row's own colour and sign.
+              userShare: -p.amount,
+              isPayer: true,
+              date,
+              dateString: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+              status: 'active',
+              paidByUserId: userId,
+              type: 'expense',
+              entryType: 'personal' as const,
+            };
+          });
+      } catch (personalErr) {
+        console.warn('Could not load personal transactions for statement:', personalErr);
+      }
+
+      const merged = [...processedTxs, ...personalTxs].sort(
+        (a, b) => b.date.getTime() - a.date.getTime()
+      );
+
+      setTransactions(merged);
+      setCachedAt(null);
+      setLoadError(null);
+      await writeCache(STATEMENT_CACHE_KEY, merged);
+
+      // The headline figure comes from the shared balance engine, not from
+      // re-summing the rows above.
+      //
+      // This screen used to accumulate `userShare` across every transaction it
+      // had fetched — and the query has no status filter, so voided expenses
+      // were counted too. That is why Statement could report "You owe ₹1,226"
+      // while Home, Profile and Friends all showed settled: they read
+      // simplified_settlements, which excludes voided rows, and this did not.
+      //
+      // It was also blind to transaction_payers, so any multi-payer expense
+      // would have been attributed wrongly on top of that.
+      //
+      // Exactly the defect C1 fixed on the group screen. lib/balances.ts is the
+      // single source for a balance; the per-row figures below are a different
+      // thing — one transaction's own effect — and stay as they are.
+      try {
+        const { totalBalance } = await fetchBalances();
+        setRunningNetBalance(totalBalance);
+      } catch (balErr) {
+        console.warn('Could not load net balance for statement:', balErr);
+        setLoadError('Could not load your net balance.');
+      }
+    } catch (err: any) {
       console.error("Statement error:", err);
+      const cached = isLikelyNetworkError(err)
+        ? await readCache<StatementTx[]>(STATEMENT_CACHE_KEY)
+        : null;
+      if (cached) {
+        setTransactions(reviveStatementCacheDates(cached.data));
+        setCachedAt(cached.cachedAt);
+        setLoadError(null);
+      } else {
+        setLoadError(err?.message || 'Could not load your statement.');
+      }
     } finally {
       setLoading(false);
     }
@@ -199,110 +321,36 @@ export default function StatementScreen() {
     }, [fetchStatement])
   );
 
-  const handleApprove = async (tx: StatementTx) => {
-    try {
-      setLoading(true);
-      await supabase.from('transactions').update({ status: 'active' }).eq('id', tx.id);
-      
-      const { data: splits } = await supabase.from('transaction_splits').select('*').eq('transaction_id', tx.id);
-      if (splits) {
-        const payerId = tx.paidByUserId;
-        const otherSplit = splits.find(s => s.user_id !== payerId);
-        if (otherSplit) {
-          // Recompute the pair's net position instead of appending a row —
-          // the old insert stacked a new debt on top of any existing one.
-          const { data: authData } = await supabase.auth.getUser();
-          const me = authData?.user?.id;
-          const counterpartyId = me === payerId ? otherSplit.user_id : payerId;
-
-          const { recalculatePairSettlements } = await import('../lib/recalculateSettlements');
-          await recalculatePairSettlements(counterpartyId);
-          await refreshBalances();
-          
-          dispatchPushNotification(
-            [payerId],
-            'Expense Approved ✅',
-            `Your expense "${tx.description}" was approved and added to the ledger.`
-          );
-        }
-      }
-      
-      Alert.alert('Success', 'Expense approved and added to ledger!');
-      await fetchStatement();
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to approve expense.');
-      setLoading(false);
-    }
-  };
-
-  const handleReject = async (tx: StatementTx) => {
-    try {
-      setLoading(true);
-      await supabase.from('transactions').update({ status: 'rejected' }).eq('id', tx.id);
-      
-      dispatchPushNotification(
-        [tx.paidByUserId],
-        'Expense Rejected ❌',
-        `${currentUserName} rejected your expense ₹${Math.abs(tx.userShare).toFixed(0)} for "${tx.description}".`
-      );
-
-      Alert.alert('Success', 'Expense rejected.');
-      await fetchStatement();
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to reject expense.');
-      setLoading(false);
-    }
-  };
-
-  const handleConfirmSettlement = async (tx: StatementTx) => {
-    try {
-      setLoading(true);
-      await supabase.from('transactions').update({ status: 'active' }).eq('id', tx.id);
-      await refreshBalances();
-      
-      dispatchPushNotification(
-        [tx.paidByUserId],
-        'Settlement Confirmed ✅',
-        `${currentUserName} confirmed your settlement of ₹${Math.abs(tx.userShare).toFixed(0)}.`
-      );
-
-      Alert.alert('Success', 'Settlement confirmed!');
-      await fetchStatement();
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to confirm settlement.');
-      setLoading(false);
-    }
-  };
-
-  const handleDisputeSettlement = async (tx: StatementTx) => {
-    try {
-      setLoading(true);
-      await supabase.from('transactions').update({ status: 'disputed' }).eq('id', tx.id);
-      
-      dispatchPushNotification(
-        [tx.paidByUserId],
-        'Settlement Disputed ⚠️',
-        `${currentUserName} disputed your settlement of ₹${Math.abs(tx.userShare).toFixed(0)}. The original balance has been restored.`
-      );
-
-      Alert.alert('Success', 'Settlement disputed. Original balance restored.');
-      await fetchStatement();
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to dispute settlement.');
-      setLoading(false);
-    }
-  };
+  // The approve / reject / confirm / dispute handlers that stood here are gone.
+  //
+  // None of them was ever called — there was no button, no menu item, no code
+  // path reaching any of the four. They were the remains of an approval flow
+  // that was abandoned, and record_expense() has always written status='active'
+  // directly, so no transaction could ever arrive in a state needing approval.
+  //
+  // They were not merely inert. handleReject wrote status='rejected', which is
+  // not among the values transactions_status_check permits, so it would have
+  // failed outright. handleApprove called recalculatePairSettlements without
+  // checking group_id, so on a group expense it would have rebuilt a 1-on-1
+  // ledger and left the group's untouched. Dead code that is also wrong is
+  // worse than dead code, because the next person to wire it up inherits both.
+  //
+  // Migration 0026 removes the columns and statuses that backed this.
 
   const getFilteredTransactions = () => {
+    if (filter === 'Personal') {
+      return transactions.filter(t => t.entryType === 'personal');
+    }
+    if (filter === 'Split') {
+      return transactions.filter(t => t.entryType === 'split');
+    }
+    // Both of these describe who owes whom, which only split rows can answer
+    // — a personal expense creates no debt in either direction.
     if (filter === 'You Paid') {
-      return transactions.filter(t => t.userShare > 0);
+      return transactions.filter(t => t.entryType === 'split' && t.userShare > 0);
     }
     if (filter === 'You Owe') {
-      return transactions.filter(t => t.userShare < 0);
+      return transactions.filter(t => t.entryType === 'split' && t.userShare < 0);
     }
     return transactions;
   };
@@ -330,14 +378,16 @@ export default function StatementScreen() {
           backgroundColor: 'rgba(252, 249, 244, 0.72)' 
         }}
       >
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text className="font-headline-md font-bold text-primary text-xl ml-2 flex-1">Statement</Text>
       </View>
+
+      <OfflineBanner cachedAt={cachedAt} />
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Net Balance Header */}
@@ -357,21 +407,29 @@ export default function StatementScreen() {
           )}
         </View>
 
-        {/* Filter Tabs */}
-        <View className="px-5 mb-6">
-          <View className="flex-row p-1 bg-surface-container-high rounded-2xl">
-            {(['All', 'You Paid', 'You Owe'] as FilterType[]).map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setFilter(tab)}
-                className={`flex-1 py-2.5 rounded-xl items-center justify-center ${filter === tab ? 'bg-white shadow-sm border border-outline-variant/20' : 'bg-transparent'}`}
-              >
-                <Text className={`font-label-md font-semibold text-sm ${filter === tab ? 'text-primary' : 'text-on-surface-variant'}`}>
-                  {tab}
-                </Text>
-              </TouchableOpacity>
+        {/* Filter Tabs — horizontally scrollable rather than five equal
+            flex-1 columns. At five options, equal columns squeeze "You Paid"
+            and "You Owe" until they wrap or clip on narrower phones; natural
+            widths in a scroller stay legible however many filters exist. */}
+        <View className="mb-6">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+          >
+            {(['All', 'Personal', 'Split', 'You Paid', 'You Owe'] as FilterType[]).map((tab, index) => (
+              <AnimatedListItem key={tab} index={index}>
+                <AnimatedPressable
+                  onPress={() => setFilter(tab)}
+                  className={`px-4 py-2.5 rounded-xl items-center justify-center ${filter === tab ? 'bg-white shadow-sm border border-outline-variant/20' : 'bg-surface-container-high'}`}
+                >
+                  <Text className={`font-label-md font-semibold text-sm ${filter === tab ? 'text-primary' : 'text-on-surface-variant'}`}>
+                    {tab}
+                  </Text>
+                </AnimatedPressable>
+              </AnimatedListItem>
             ))}
-          </View>
+          </ScrollView>
         </View>
 
         {/* Transactions List */}
@@ -379,8 +437,20 @@ export default function StatementScreen() {
           <Text className="font-headline text-lg font-bold text-on-surface mb-4">Transaction History</Text>
           
           {loading ? (
-            <View className="py-10 items-center justify-center">
-              <ActivityIndicator size="large" color="#004c22" />
+            <View className="py-2">
+              {[0, 1, 2, 3, 4].map(i => (
+                <View
+                  key={i}
+                  className="p-4 rounded-2xl mb-3"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.72)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <SkeletonListRow avatarSize={48} />
+                </View>
+              ))}
             </View>
           ) : loadError ? (
             <View className="p-8 items-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl mt-4">
@@ -401,15 +471,23 @@ export default function StatementScreen() {
               </Text>
             </View>
           ) : (
-            <View className="space-y-4">
-              {filtered.map((tx) => (
-                <View 
-                  key={tx.id}
+            <View>
+              {filtered.map((tx, index) => (
+                <AnimatedListItem key={tx.id} index={index}>
+                <View
                   className="p-5 rounded-2xl flex-col"
                   style={{
-                    backgroundColor: (tx.status === 'rejected' || tx.status === 'disputed') 
-                        ? 'rgba(254, 226, 226, 0.5)' 
-                        : 'rgba(255, 255, 255, 0.72)',
+                    // Opaque colors, not the rgba(...) they replace: a
+                    // translucent background paired with Android's
+                    // `elevation` is a known rendering bug there — elevation's
+                    // shadow/outline math assumes an opaque background, and a
+                    // transparent one leaves a mismatched rectangle behind
+                    // the real rounded card. These are the same colors,
+                    // precomputed opaque over this app's #fcf9f4 page
+                    // background.
+                    backgroundColor: (tx.status === 'rejected' || tx.status === 'disputed')
+                        ? '#fdeeeb'
+                        : '#fefdfc',
                     borderWidth: 1,
                     borderColor: 'rgba(255, 255, 255, 0.35)',
                     shadowColor: '#1c1917',
@@ -422,26 +500,67 @@ export default function StatementScreen() {
                   }}
                 >
                   <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center space-x-4 flex-1">
-                      <View className={`w-12 h-12 rounded-xl items-center justify-center ${tx.userShare > 0 ? 'bg-[#DCFCE7]' : 'bg-error-container/50'}`}>
-                        <MaterialIcons name={getCategoryIcon(tx.category)} size={24} color={tx.userShare > 0 ? "#004c22" : "#ba1a1a"} />
+                    <View className="flex-row items-center gap-4 flex-1">
+                      {/* Personal rows deliberately avoid the red "you owe"
+                          treatment — that colour means debt, and a personal
+                          expense is not one. Amber matches how Personal
+                          Spending is identified elsewhere in the app. */}
+                      <View
+                        className="w-12 h-12 rounded-xl items-center justify-center"
+                        style={{
+                          backgroundColor: tx.entryType === 'personal'
+                            ? 'rgba(217,119,6,0.14)'
+                            : tx.userShare > 0 ? '#DCFCE7' : 'rgba(255,218,214,0.5)',
+                        }}
+                      >
+                        <MaterialIcons
+                          name={getCategoryIcon(tx.category)}
+                          size={24}
+                          color={tx.entryType === 'personal' ? '#d97706' : tx.userShare > 0 ? '#004c22' : '#ba1a1a'}
+                        />
                       </View>
-                      <View className="flex-1 mr-2" style={{ marginLeft: 12 }}>
+                      <View className="flex-1 mr-2">
                         <Text className="font-body-md font-semibold text-on-background text-base" numberOfLines={1}>{tx.description}</Text>
-                        <Text className="font-label-sm text-xs text-on-surface-variant mt-1" numberOfLines={1}>
-                          {tx.dateString} • {tx.groupOrFriendName}
-                        </Text>
+                        <View className="flex-row items-center gap-1.5 mt-1">
+                          <View
+                            className="px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: tx.entryType === 'personal' ? 'rgba(217,119,6,0.14)' : '#DCFCE7' }}
+                          >
+                            <Text
+                              className="font-bold"
+                              style={{ fontSize: 9, color: tx.entryType === 'personal' ? '#d97706' : '#004c22' }}
+                            >
+                              {tx.entryType === 'personal' ? 'PERSONAL' : 'SPLIT'}
+                            </Text>
+                          </View>
+                          <Text className="font-label-sm text-xs text-on-surface-variant flex-1" numberOfLines={1}>
+                            {tx.dateString}
+                            {tx.entryType === 'split' ? ` • ${tx.groupOrFriendName}` : ''}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                     <View className="items-end justify-center">
-                      <Text className={`font-body-md font-bold text-base ${
-                        tx.userShare > 0 ? 'text-primary' : 'text-error'
-                      }`}>
-                        {tx.userShare > 0 ? '+' : '-'}₹{Math.abs(tx.userShare).toFixed(2)}
+                      {/* Green/red here encode "owed to you" / "you owe".
+                          Personal spending is neither, so it renders neutral
+                          rather than borrowing the debt palette. */}
+                      <Text
+                        className="font-body-md font-bold text-base"
+                        style={{
+                          color: tx.entryType === 'personal'
+                            ? '#1c1c19'
+                            : tx.userShare > 0 ? '#004c22' : '#ba1a1a',
+                        }}
+                      >
+                        {tx.entryType === 'personal' ? '' : tx.userShare > 0 ? '+' : '-'}₹{Math.abs(tx.userShare).toFixed(2)}
                       </Text>
-                      <Text className="font-label-sm text-[10px] text-on-surface-variant mt-1">
-                        Total: ₹{tx.totalAmount.toFixed(2)}
-                      </Text>
+                      {/* For a personal row the total and the user's share are
+                          the same number — printing it twice reads as a bug. */}
+                      {tx.entryType === 'split' && (
+                        <Text className="font-label-sm text-[10px] text-on-surface-variant mt-1">
+                          Total: ₹{tx.totalAmount.toFixed(2)}
+                        </Text>
+                      )}
                     </View>
                   </View>
                   {/* Status Badge & Actions */}
@@ -465,6 +584,7 @@ export default function StatementScreen() {
                     </View>
                   )}
                 </View>
+                </AnimatedListItem>
               ))}
             </View>
           )}

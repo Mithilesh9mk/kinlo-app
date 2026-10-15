@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, Image, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -291,34 +292,36 @@ export default function SuccessScreen() {
         </Text>
 
         {/* View Details */}
-        <TouchableOpacity
+        <AnimatedPressable
+          scaleTo={0.9}
           onPress={handleViewDetails}
           style={{
             backgroundColor: 'rgba(255, 255, 255, 0.72)',
             borderWidth: 1,
             borderColor: 'rgba(255, 255, 255, 0.35)',
           }}
-          className="w-full h-14 rounded-2xl flex-row items-center justify-center active:scale-95 shadow-sm"
+          className="w-full h-14 rounded-2xl flex-row items-center justify-center shadow-sm"
         >
           <MaterialIcons name="receipt-long" size={20} color="#004c22" />
           <Text className="text-primary font-semibold text-base" style={{ marginLeft: 8 }}>
             View Details
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
         {/* Back to Home */}
-        <TouchableOpacity
+        <AnimatedPressable
+          scaleTo={0.9}
           onPress={handleNavigateHome}
-          className="w-full h-14 bg-primary rounded-2xl flex-row items-center justify-center active:scale-95 shadow-md overflow-hidden"
+          className="w-full h-14 bg-primary rounded-2xl flex-row items-center justify-center shadow-md overflow-hidden"
         >
           {/* Subtle shimmer effect line */}
           <View style={styles.shimmerEffect} />
-          
+
           <MaterialIcons name="home" size={20} color="white" />
           <Text className="text-white font-semibold text-base" style={{ marginLeft: 8 }}>
             Back to Home
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </Animated.View>
     </SafeAreaView>
   );

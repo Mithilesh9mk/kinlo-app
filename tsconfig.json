@@ -3,5 +3,6 @@
   "compilerOptions": {
     "strict": true
   },
-  "exclude": ["supabase/functions"]
+  "//": "tests/ runs under `npx tsx --test`, which strips types rather than checking them, and imports node:test. Typechecking it here would require @types/node as a devDependency — and adding one can change the EAS fingerprint, which orphans the installed APK from over-the-air updates. Tests are never bundled, so excluding them costs nothing.",
+  "exclude": ["supabase/functions", "tests"]
 }

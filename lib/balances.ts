@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getRelatedUsers } from './friendFetcher';
+import { withOfflineFallback } from './offlineCache';
 
 /**
  * THE single source of truth for "who owes whom".
@@ -49,6 +50,8 @@ export interface BalanceSnapshot {
   friends: FriendBalance[];
   /** Only those with a non-trivial outstanding balance — what Settle Up should offer. */
   outstanding: FriendBalance[];
+  /** null when this snapshot is live; an ISO timestamp when it's a cached fallback. */
+  cachedAt?: string | null;
 }
 
 export function statusFor(balance: number): BalanceStatus {
@@ -76,7 +79,7 @@ function initialsFor(name: string) {
  * on this — some passed `.is('group_id', null)` and some did not — so a debt
  * inside a group appeared on one screen and vanished on another.
  */
-export async function fetchBalanceMap(userId: string): Promise<Record<string, number>> {
+async function fetchBalanceMapLive(userId: string): Promise<Record<string, number>> {
   const { data: settlements, error } = await supabase
     .from('simplified_settlements')
     .select('debtor_id, creditor_id, amount')
@@ -99,14 +102,128 @@ export async function fetchBalanceMap(userId: string): Promise<Record<string, nu
 }
 
 /**
+ * Falls back to the last cached map on a network error so a friend's
+ * balance doesn't go blank offline. Every caller gets this transparently.
+ */
+export async function fetchBalanceMap(userId: string): Promise<Record<string, number>> {
+  const { data } = await withOfflineFallback(
+    `balanceMap.${userId}`,
+    () => fetchBalanceMapLive(userId),
+  );
+  return data;
+}
+
+/** One row of the materialised ledger, as stored. */
+export interface LedgerRow {
+  /** null for a 1-on-1 debt; a group id for a debt inside that group. */
+  group_id: string | null;
+  debtor_id: string;
+  creditor_id: string;
+  amount: number;
+}
+
+/**
+ * The raw ledger rows involving this user, un-aggregated.
+ *
+ * fetchBalanceMap collapses every scope into one number per counterparty, which
+ * is right for Home, Friends and Settle Up — they show the overall relationship.
+ * It is wrong for anything reasoning about a single expense, because a group
+ * debt and a 1-on-1 debt with the same person are separate obligations that
+ * must not offset each other.
+ *
+ * Fetching the rows and scoping them locally keeps this to one round trip even
+ * when the caller does not yet know which scope it needs.
+ */
+async function fetchBalanceRowsLive(userId: string): Promise<LedgerRow[]> {
+  const { data, error } = await supabase
+    .from('simplified_settlements')
+    .select('group_id, debtor_id, creditor_id, amount')
+    .or(`debtor_id.eq.${userId},creditor_id.eq.${userId}`);
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map(r => ({
+    group_id: (r as any).group_id ?? null,
+    debtor_id: (r as any).debtor_id,
+    creditor_id: (r as any).creditor_id,
+    amount: Number((r as any).amount) || 0,
+  }));
+}
+
+/** Falls back to the last cached rows on a network error. */
+export async function fetchBalanceRows(userId: string): Promise<LedgerRow[]> {
+  const { data } = await withOfflineFallback(
+    `balanceRows.${userId}`,
+    () => fetchBalanceRowsLive(userId),
+  );
+  return data;
+}
+
+/**
+ * Signed balance per counterparty within one scope only.
+ *
+ * `groupId` null means 1-on-1 debts; a group id means debts inside that group.
+ * Same sign convention as everywhere else: positive means they owe you.
+ */
+export function balanceMapForScope(
+  rows: LedgerRow[],
+  userId: string,
+  groupId: string | null,
+): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const r of rows) {
+    if ((r.group_id ?? null) !== groupId) continue;
+    if (r.creditor_id === userId) {
+      map[r.debtor_id] = (map[r.debtor_id] || 0) + r.amount;
+    } else if (r.debtor_id === userId) {
+      map[r.creditor_id] = (map[r.creditor_id] || 0) - r.amount;
+    }
+  }
+  return map;
+}
+
+/**
+ * Signed net balance per group the user belongs to (1-on-1 rows excluded).
+ * Same sign convention as everywhere else: positive means you are owed.
+ */
+export function groupBalanceMap(rows: LedgerRow[], userId: string): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.group_id) continue;
+    if (r.creditor_id === userId) {
+      map[r.group_id] = (map[r.group_id] || 0) + r.amount;
+    } else if (r.debtor_id === userId) {
+      map[r.group_id] = (map[r.group_id] || 0) - r.amount;
+    }
+  }
+  return map;
+}
+
+/** "+₹250" / "-₹180" / "Settled" — the compact form used on cards and strips. */
+export function formatBalanceLabel(balance: number): string {
+  if (balance > 0.005) return `+₹${balance.toFixed(0)}`;
+  if (balance < -0.005) return `-₹${Math.abs(balance).toFixed(0)}`;
+  return 'Settled';
+}
+
+/**
  * Everything the balance-showing screens need, in one call.
  *
  * `totalBalance` is derived from the same map that produces `friends`, so the
  * headline figure and the rows underneath it can never disagree.
  */
-export async function fetchBalances(): Promise<BalanceSnapshot> {
-  const { data: authData } = await supabase.auth.getUser();
-  const userId = authData?.user?.id;
+async function fetchBalancesLive(): Promise<BalanceSnapshot> {
+  // getSession() reads the session from local storage; getUser() makes a
+  // network round-trip to revalidate it. Using getUser() here meant a slow
+  // or degraded connection (not full offline — no exception, just a failed
+  // background call) silently looked identical to "not logged in", which
+  // returned an empty snapshot as if it were a genuine successful result.
+  // That empty result then got written into the cache via writeCache,
+  // overwriting real cached balances/friends with zeros — worse than doing
+  // nothing, since it destroyed the exact fallback data this file exists to
+  // preserve.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData?.session?.user?.id;
   if (!userId) {
     return { totalBalance: 0, friends: [], outstanding: [] };
   }
@@ -155,4 +272,17 @@ export async function fetchBalances(): Promise<BalanceSnapshot> {
   const outstanding = friends.filter(f => Math.abs(f.balance) > 0.005);
 
   return { totalBalance, friends, outstanding };
+}
+
+/**
+ * Falls back to the last cached snapshot on a network error, so a cold
+ * start with no connection shows the last-known balances instead of ₹0 —
+ * the same "don't lie about being settled up" concern this file already
+ * cares about, just covering the case where there's nothing in memory yet
+ * to fall back to (see GlobalBalancesContext's own in-memory keep-previous
+ * behavior, which handles going offline mid-session).
+ */
+export async function fetchBalances(): Promise<BalanceSnapshot> {
+  const { data, cachedAt } = await withOfflineFallback('balances', fetchBalancesLive);
+  return { ...data, cachedAt };
 }
