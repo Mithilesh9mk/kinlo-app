@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, ScrollView, Image, Keyboard, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -50,9 +50,17 @@ export default function FinanceEntryScreen() {
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [parsing, setParsing] = useState(isReview);
-  const [parseProgress, setParseProgress] = useState(10);
+  const [parseProgress, setParseProgress] = useState(0);
   const [parseStage, setParseStage] = useState('Analyzing screenshot…');
-  const [parseEstimatedTime, setParseEstimatedTime] = useState('~4–5 sec remaining');
+  const [parseEstimatedTime, setParseEstimatedTime] = useState('~2 sec remaining');
+  // The screenshot is kept so a failed scan can be retried (Scan again)
+  // without re-adding it: bytes while the review screen is open, otherwise
+  // the Storage path (review mode's params.path, or a saved row's path).
+  const bytesRef = useRef<{ base64: string; mimeType: string } | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [storedPath, setStoredPath] = useState<string | null>(null);
+  const [scanFailed, setScanFailed] = useState(false);
+  const [aspect, setAspect] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
 
@@ -74,6 +82,7 @@ export default function FinanceEntryScreen() {
       setOccurredAt(d);
       setDateText(formatDate(d));
       if (tx.sourceImagePath) {
+        setStoredPath(tx.sourceImagePath);
         signedReceiptUrl(tx.sourceImagePath).then((url) => url && setImageUri(url));
       }
     })();
@@ -83,15 +92,16 @@ export default function FinanceEntryScreen() {
   // screen (picker or share sheet) stashed the bytes for this txId, use
   // them directly — instant preview via a data URI, and a scan that skips
   // the edge function's own Storage round trip (see parseReceiptBytes).
-  // The Storage upload for the audit-trail copy is still happening in the
-  // background at this point; signedReceiptUrl(params.path) only runs as a
-  // fallback when there's nothing stashed (e.g. editing later, or the app
-  // was restarted mid-flow).
+  // The bytes are kept in bytesRef so "Scan again" works after a failure
+  // without the user re-adding the screenshot. signedReceiptUrl(params.path)
+  // only runs as a fallback when there's nothing stashed.
   useEffect(() => {
     if (!isReview || !params.path) return;
     const pending = params.id ? takePendingReceiptImage(params.id) : null;
+    setStoredPath(params.path);
 
     if (pending) {
+      bytesRef.current = pending;
       setImageUri(`data:${pending.mimeType};base64,${pending.base64}`);
     } else {
       signedReceiptUrl(params.path).then((url) => url && setImageUri(url));
@@ -102,73 +112,91 @@ export default function FinanceEntryScreen() {
       return;
     }
 
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      if (elapsed < 1.2) {
-        setParseProgress(Math.min(35, 10 + (elapsed / 1.2) * 25));
-        setParseStage('Scanning screenshot layout…');
-        setParseEstimatedTime('~4–5 sec remaining');
-      } else if (elapsed < 3.0) {
-        setParseProgress(Math.min(70, 35 + ((elapsed - 1.2) / 1.8) * 35));
-        setParseStage('Reading amount, merchant & date…');
-        setParseEstimatedTime('~2–3 sec remaining');
-      } else if (elapsed < 5.0) {
-        setParseProgress(Math.min(92, 70 + ((elapsed - 3.0) / 2.0) * 22));
-        setParseStage('Categorizing & verifying details…');
-        setParseEstimatedTime('~1 sec remaining');
-      } else {
-        setParseProgress(Math.min(96, 92 + (elapsed - 5.0) * 0.5));
-        setParseStage('Finalizing extraction…');
-        setParseEstimatedTime('Almost ready…');
-      }
-    }, 100);
-
-    (async () => {
-      try {
-        const result = pending
-          ? await parseReceiptBytes(pending.base64, pending.mimeType)
-          : await parseReceipt(params.path!);
-
-        clearInterval(interval);
-        setParseProgress(100);
-        setParseStage('Complete!');
-        setParseEstimatedTime('Done');
-
-        // Brief delay so user sees 100% completion before fields populate
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        setParsing(false);
-
-        if (!result.ok) {
-          // Distinct messages per cause: "couldn't read it" and "scanning is
-          // misconfigured" need completely different reactions from the user,
-          // and collapsing them hides outages behind what looks like a bad
-          // photo.
-          const messages: Record<string, string> = {
-            not_a_payment_screenshot: "That doesn't look like a payment screenshot — enter it manually",
-            unreadable: "Couldn't read that one — enter it manually",
-            not_found: 'That image could not be opened — try adding it again',
-            unauthorized: 'Please sign in again to scan screenshots',
-            bad_request: 'That image could not be scanned — enter it manually',
-            upstream_error: result.error.message || 'Scanning is unavailable right now — enter it manually',
-          };
-          const message = result.error.message || messages[result.error.code] || 'Scanning failed — enter it manually';
-          showToast(message);
-          return;
-        }
-
-        applyExtraction(result.extraction);
-      } catch (err) {
-        clearInterval(interval);
-        setParsing(false);
-        showToast('Scanning failed — enter it manually');
-      }
-    })();
-
+    runScan();
     return () => {
-      clearInterval(interval);
+      if (progressTimer.current) clearInterval(progressTimer.current);
     };
   }, [isReview, params.path, params.id, params.autoScan]);
+
+  // Progress is cosmetic (the real call has no progress events) but is shaped
+  // so the user sees it move fast: ~60% within 0.7s, ~85% by 2.5s, then a slow
+  // crawl to 96% until the response lands and it snaps to 100%.
+  function progressAt(t: number): number {
+    if (t < 0.7) {
+      const k = 1 - t / 0.7;
+      return 60 * (1 - k * k);
+    }
+    if (t < 2.5) return 60 + 25 * ((t - 0.7) / 1.8);
+    return Math.min(96, 85 + (t - 2.5) * 2.2);
+  }
+
+  async function runScan() {
+    const path = params.path ?? storedPath;
+    const bytes = bytesRef.current;
+    if (!bytes && !path) return;
+
+    if (progressTimer.current) clearInterval(progressTimer.current);
+    setScanFailed(false);
+    setParsing(true);
+    setParseProgress(0);
+    const startTime = Date.now();
+    progressTimer.current = setInterval(() => {
+      const t = (Date.now() - startTime) / 1000;
+      const p = progressAt(t);
+      setParseProgress(p);
+      if (p < 35) {
+        setParseStage('Scanning screenshot layout…');
+        setParseEstimatedTime('~2 sec remaining');
+      } else if (p < 85) {
+        setParseStage('Reading amount, merchant & date…');
+        setParseEstimatedTime('~1 sec remaining');
+      } else {
+        setParseStage('Categorizing & verifying details…');
+        setParseEstimatedTime('Almost ready…');
+      }
+    }, 80);
+
+    try {
+      const result = bytes
+        ? await parseReceiptBytes(bytes.base64, bytes.mimeType)
+        : await parseReceipt(path!);
+
+      if (progressTimer.current) clearInterval(progressTimer.current);
+      setParseProgress(100);
+      setParseStage('Complete!');
+      setParseEstimatedTime('Done');
+
+      // Brief delay so user sees 100% completion before fields populate
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      setParsing(false);
+
+      if (!result.ok) {
+        // Distinct messages per cause: "couldn't read it" and "scanning is
+        // misconfigured" need completely different reactions from the user,
+        // and collapsing them hides outages behind what looks like a bad
+        // photo.
+        const messages: Record<string, string> = {
+          not_a_payment_screenshot: "That doesn't look like a payment screenshot — enter it manually",
+          unreadable: "Couldn't read that one — enter it manually",
+          not_found: 'That image could not be opened — try adding it again',
+          unauthorized: 'Please sign in again to scan screenshots',
+          bad_request: 'That image could not be scanned — enter it manually',
+          upstream_error: result.error.message || 'Scanning is unavailable right now — enter it manually',
+        };
+        const message = result.error.message || messages[result.error.code] || 'Scanning failed — enter it manually';
+        showToast(message);
+        setScanFailed(true);
+        return;
+      }
+
+      applyExtraction(result.extraction);
+    } catch (err) {
+      if (progressTimer.current) clearInterval(progressTimer.current);
+      setParsing(false);
+      setScanFailed(true);
+      showToast('Scanning failed — enter it manually');
+    }
+  }
 
   function applyExtraction(extraction: ExtractionResult) {
     const uncertain = new Set<FieldName>();
@@ -283,7 +311,46 @@ export default function FinanceEntryScreen() {
       <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         {imageUri && (
           <AnimatedPressable onPress={() => setViewerOpen(true)}>
-            <Image source={{ uri: imageUri }} style={{ width: '100%', height: 180, borderRadius: 20, marginBottom: 16 }} resizeMode="cover" />
+            <View style={{ marginBottom: 16 }}>
+              <Image
+                source={{ uri: imageUri }}
+                onLoad={(e) => {
+                  const { width, height } = e.nativeEvent.source;
+                  if (width && height) setAspect(width / height);
+                }}
+                style={{
+                  width: '100%',
+                  aspectRatio: Math.max(0.45, Math.min(1.6, aspect ?? 0.6)),
+                  borderRadius: 20,
+                  backgroundColor: 'rgba(0,0,0,0.05)',
+                }}
+                resizeMode="contain"
+              />
+              <View className="flex-row items-center justify-center gap-1 mt-2">
+                <MaterialIcons name="zoom-out-map" size={14} color="#404940" />
+                <Text className="text-[11px] text-on-surface-variant">Tap to view full screenshot</Text>
+              </View>
+            </View>
+          </AnimatedPressable>
+        )}
+
+        {!parsing && !params.editId && scanFailed && (
+          <AnimatedPressable
+            onPress={runScan}
+            className="flex-row items-center justify-center gap-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5"
+          >
+            <MaterialIcons name="refresh" size={18} color="#004c22" />
+            <Text className="text-sm font-semibold text-primary">Scan again</Text>
+          </AnimatedPressable>
+        )}
+
+        {!parsing && params.editId && imageUri && (
+          <AnimatedPressable
+            onPress={runScan}
+            className="flex-row items-center justify-center gap-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5"
+          >
+            <MaterialIcons name="refresh" size={18} color="#004c22" />
+            <Text className="text-sm font-semibold text-primary">Re-scan receipt</Text>
           </AnimatedPressable>
         )}
 
