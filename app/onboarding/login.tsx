@@ -1,63 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, ScrollView, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform, AppState } from 'react-native';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
+import { checkUsersRowOnboarded } from '../../lib/onboardingState';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
-async function registerForPushNotificationsAsync() {
-  let token;
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#004c22',
-    });
-  }
-  if (Device.isDevice) {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') {
-      console.warn('Failed to get push token for push notification!');
-      return;
-    }
-    try {
-      // Read the real EAS project ID from app.json rather than hardcoding it twice
-      const projectId =
-        Constants.expoConfig?.extra?.eas?.projectId ??
-        Constants.easConfig?.projectId;
-
-      if (!projectId) {
-        console.warn('No EAS projectId configured; skipping push token registration');
-        return;
-      }
-
-      token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-    } catch (e) {
-      console.warn('Error fetching push token', e);
-    }
-  }
-  return token;
-}
+const GOOGLE_REDIRECT_URL = 'kinlo://onboarding/name-setup';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -67,17 +18,16 @@ export default function LoginScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [activeMethod, setActiveMethod] = useState<string | null>(null);
-  
-  const [showEmailInput, setShowEmailInput] = useState(false);
+
   const [emailText, setEmailText] = useState('');
   const [passwordText, setPasswordText] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
   const [isSendingMagicLink, setIsSendingMagicLink] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
-  const emailHeightAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -87,16 +37,139 @@ export default function LoginScreen() {
   }, []);
 
   const completeLogin = async () => {
-    try {
-      const token = await registerForPushNotificationsAsync();
-      if (token) {
-        await AsyncStorage.setItem('expo_push_token', token);
+    // Returning user (users row already has a real name): hydrate local
+    // keys, mark onboarded and go straight to Home. Otherwise run onboarding.
+    // A failed lookup falls through to onboarding, which never overwrites
+    // existing profile values (see first-action).
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+    if (user) {
+      const check = await checkUsersRowOnboarded(user.id, user.email);
+      if (check.status === 'onboarded') {
+        router.replace('/');
+        return;
       }
-    } catch (err) {
-      console.warn('Push registration failed', err);
     }
     router.replace('/onboarding/name-setup');
   };
+
+  // Whether a Google redirect has actually been processed (token exchange
+  // attempted, success or failure) — lets the AppState safety net below
+  // tell "still waiting for the deep link to arrive" apart from "browser
+  // was closed without completing sign-in", which look identical from a
+  // bare isLoading flag alone.
+  const googleRedirectHandled = useRef(true);
+
+  // Google's OAuth completion. React Native has no window for supabase-js
+  // to redirect through, so signInWithOAuth() only returns an authorization
+  // URL — it was previously discarded here, which is why tapping Google did
+  // nothing but spin the loader forever. skipBrowserRedirect stops
+  // supabase-js from even trying its web-only redirect path; Linking opens
+  // the URL in the system browser instead (expo-linking, not
+  // expo-web-browser — already a compiled native module in the installed
+  // build, so this ships OTA with no new native dependency / EAS build).
+  // The browser then redirects back to GOOGLE_REDIRECT_URL, which the
+  // Linking listener below catches and turns into a session.
+  const handleGoogleLogin = async () => {
+    setActiveMethod('google');
+    setIsLoading(true);
+    setAuthError('');
+    setAuthNotice('');
+    googleRedirectHandled.current = false;
+
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: GOOGLE_REDIRECT_URL,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.url) throw new Error('Could not start Google sign-in.');
+
+      await Linking.openURL(data.url);
+      // isLoading stays true — Linking.openURL only confirms the browser
+      // was asked to open, not that sign-in finished. The listener below
+      // (or the AppState safety net) clears it from here.
+    } catch (err: any) {
+      console.warn('[DEBUG] LoginScreen: google sign-in error:', err.message);
+      setAuthError(err.message || 'Failed to sign in with Google');
+      setIsLoading(false);
+      setActiveMethod(null);
+      googleRedirectHandled.current = true;
+    }
+  };
+
+  // Parses the deep-link redirect Google's OAuth screen sends back and
+  // turns it into a session. gotrue-js v2 defaults to the implicit flow
+  // (no flowType set in lib/supabase.ts), so the tokens arrive in the URL
+  // FRAGMENT (after #), not the query string — a plain URL parser misses
+  // them, hence the manual split below.
+  const completeGoogleRedirect = async (url: string) => {
+    if (!url.startsWith(GOOGLE_REDIRECT_URL)) return;
+
+    googleRedirectHandled.current = true;
+    const fragment = url.split('#')[1] || url.split('?')[1] || '';
+    const params = new URLSearchParams(fragment);
+
+    const errorDescription = params.get('error_description') || params.get('error');
+    if (errorDescription) {
+      setAuthError(decodeURIComponent(errorDescription));
+      setIsLoading(false);
+      setActiveMethod(null);
+      return;
+    }
+
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+    if (!access_token || !refresh_token) {
+      // A redirect with neither tokens nor an error isn't one we recognise
+      // — leave the spinner running rather than guess.
+      return;
+    }
+
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (error) {
+      setAuthError(error.message);
+      setIsLoading(false);
+      setActiveMethod(null);
+      return;
+    }
+    await completeLogin();
+  };
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      void completeGoogleRedirect(url);
+    });
+    // Cold-start case: the OS killed the app while the browser was open,
+    // and this launch IS the redirect.
+    Linking.getInitialURL().then((url) => {
+      if (url) void completeGoogleRedirect(url);
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Safety net for "the user backed out of the browser without finishing
+  // sign-in" — Linking has no such event on its own, so this infers it from
+  // the app returning to the foreground with no redirect having landed.
+  // Delayed, not instant: the redirect listener above may still be a beat
+  // behind AppState flipping to 'active'.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' || activeMethod !== 'google') return;
+      setTimeout(() => {
+        if (!googleRedirectHandled.current) {
+          googleRedirectHandled.current = true;
+          setIsLoading(false);
+          setActiveMethod(null);
+        }
+      }, 1500);
+    });
+    return () => subscription.remove();
+  }, [activeMethod]);
 
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
     setActiveMethod(provider);
@@ -123,53 +196,14 @@ export default function LoginScreen() {
     }
   };
 
-  const handleLoginMethod = async (method: string) => {
-    if (method === 'google' || method === 'apple') {
-      return handleSocialLogin(method);
-    }
-    
-    setActiveMethod(method);
-    setIsLoading(true);
-    
-    try {
-      console.log('[DEBUG] LoginScreen: Starting anonymous sign-in in Supabase for method:', method);
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) {
-        console.warn('[DEBUG] LoginScreen: Anonymous sign-in error:', error.message);
-        setIsLoading(false);
-        setActiveMethod(null);
-        return;
-      }
-      console.log('[DEBUG] LoginScreen: Anonymous sign-in successful. User ID:', data.user?.id);
-    } catch (err) {
-      console.error('[DEBUG] LoginScreen: Anonymous sign-in exception:', err);
-      setIsLoading(false);
-      setActiveMethod(null);
-      return;
-    }
-    
-    setTimeout(async () => {
-      setIsLoading(false);
-      await completeLogin();
-    }, 1800);
-  };
-
-  const toggleEmailInput = () => {
-    const nextState = !showEmailInput;
-    setShowEmailInput(nextState);
-    Animated.timing(emailHeightAnim, {
-      toValue: nextState ? 1 : 0,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  };
-
   const handleEmailAuth = async () => {
     if (!emailText.trim() || !emailText.includes('@') || passwordText.length < 6) {
       setAuthError('Please enter a valid email and a password of at least 6 characters.');
+      setAuthNotice('');
       return;
     }
     setAuthError('');
+    setAuthNotice('');
     setIsSendingMagicLink(true);
     
     try {
@@ -192,7 +226,7 @@ export default function LoginScreen() {
             // Already logged in (email confirmation disabled)
             await completeLogin();
           } else {
-            setAuthError('Account created! Please check your email for the confirmation link.');
+            setAuthNotice('Account created! Please check your email for the confirmation link.');
           }
         }
       } else {
@@ -218,9 +252,11 @@ export default function LoginScreen() {
   const handleForgotPassword = async () => {
     if (!emailText.trim() || !emailText.includes('@')) {
       setAuthError('Please enter a valid email to reset your password.');
+      setAuthNotice('');
       return;
     }
     setAuthError('');
+    setAuthNotice('');
     setIsSendingMagicLink(true);
     
     try {
@@ -230,7 +266,7 @@ export default function LoginScreen() {
       if (error) {
         setAuthError(error.message);
       } else {
-        setAuthError('✅ Password reset link sent to your email.');
+        setAuthNotice('✅ Password reset link sent to your email.');
       }
     } catch (e: any) {
       setAuthError(e.message || 'Failed to send reset link.');
@@ -238,17 +274,6 @@ export default function LoginScreen() {
       setIsSendingMagicLink(false);
     }
   };
-
-  // Interpolated height and opacity for email container
-  const emailOpacity = emailHeightAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  
-  const emailHeight = emailHeightAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 320], // Increased height to comfortably support both fields, toggle and error
-  });
 
   return (
     <View className="flex-1 bg-background">
@@ -276,41 +301,17 @@ export default function LoginScreen() {
               Sign In Securely
             </Text>
 
-            {/* 1. Truecaller 1-Tap Selector */}
-            <TouchableOpacity
-              onPress={() => handleLoginMethod('truecaller')}
-              disabled={isLoading}
-              activeOpacity={0.8}
-              className="w-full h-13 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm relative overflow-hidden active:scale-95 duration-100"
-              style={{ height: 52 }}
-            >
-              {isLoading && activeMethod === 'truecaller' ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <>
-                  <MaterialIcons name="verified" size={18} color="white" />
-                  <Text className="text-white font-bold text-sm" style={{ marginLeft: 8 }}>
-                    Continue with Truecaller
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <View className="flex-row items-center justify-between my-2">
-              <View className="h-px bg-outline-variant/30 flex-1" />
-              <Text className="text-[10px] text-outline-variant font-bold uppercase tracking-wider px-3">
-                Or Continue With
-              </Text>
-              <View className="h-px bg-outline-variant/30 flex-1" />
-            </View>
-
-            {/* 2. Social SSO Grid (Google & Apple) */}
+            {/* 1. Social SSO Grid (Google & Apple). Apple is left as-is,
+                still non-functional (no Apple Developer setup yet) — only
+                Google's flow was fixed. See handleGoogleLogin's comment for
+                why bare signInWithOAuth() never worked here before. */}
             <View className="flex-row justify-between" style={{ gap: 12 }}>
-              <TouchableOpacity
-                onPress={() => handleLoginMethod('google')}
+              <AnimatedPressable
+                onPress={handleGoogleLogin}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Google"
                 disabled={isLoading}
-                activeOpacity={0.8}
-                className="flex-1 h-12 bg-white border border-outline-variant/40 rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95"
+                className="flex-1 h-12 bg-white border border-outline-variant/40 rounded-2xl flex-row items-center justify-center shadow-sm"
               >
                 {isLoading && activeMethod === 'google' ? (
                   <ActivityIndicator size="small" color="#004c22" />
@@ -322,13 +323,14 @@ export default function LoginScreen() {
                     </Text>
                   </>
                 )}
-              </TouchableOpacity>
+              </AnimatedPressable>
 
-              <TouchableOpacity
-                onPress={() => handleLoginMethod('apple')}
+              <AnimatedPressable
+                onPress={() => handleSocialLogin('apple')}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Apple"
                 disabled={isLoading}
-                activeOpacity={0.8}
-                className="flex-1 h-12 bg-white border border-outline-variant/40 rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95"
+                className="flex-1 h-12 bg-white border border-outline-variant/40 rounded-2xl flex-row items-center justify-center shadow-sm"
               >
                 {isLoading && activeMethod === 'apple' ? (
                   <ActivityIndicator size="small" color="#004c22" />
@@ -340,113 +342,161 @@ export default function LoginScreen() {
                     </Text>
                   </>
                 )}
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
-            {/* 3. Secondary Choice: Email expansion */}
-            <View className="pt-2">
-              <TouchableOpacity
-                onPress={toggleEmailInput}
-                disabled={isLoading}
-                activeOpacity={0.8}
-                className="w-full h-11 bg-primary/10 border border-primary/20 rounded-2xl flex-row items-center justify-center space-x-2 active:scale-95"
-              >
-                <MaterialIcons name={showEmailInput ? "keyboard-arrow-up" : "mail-outline"} size={16} color="#004c22" />
-                <Text className="text-primary font-bold text-xs uppercase tracking-wider" style={{ marginLeft: 4 }}>
-                  {showEmailInput ? "Close Email Option" : "Continue with Email"}
-                </Text>
-              </TouchableOpacity>
+            <View className="flex-row items-center justify-between my-2">
+              <View className="h-px bg-outline-variant/30 flex-1" />
+              <Text className="text-xs text-outline-variant font-bold uppercase tracking-wider px-3">
+                Or Continue With Email
+              </Text>
+              <View className="h-px bg-outline-variant/30 flex-1" />
+            </View>
 
-              {/* Dynamic expanding input container */}
-              <Animated.View style={{ height: emailHeight, opacity: emailOpacity, overflow: 'hidden' }}>
-                <View className="pt-4 space-y-3" style={{ gap: 10 }}>
-                  
-                  {/* Email Input */}
-                  <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
-                    <MaterialIcons name="alternate-email" size={18} color="#707a6f" />
-                    <TextInput
-                      value={emailText}
-                      onChangeText={setEmailText}
-                      placeholder="Enter your email address"
-                      placeholderTextColor="rgba(64, 73, 64, 0.4)"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      className="flex-1 font-semibold text-sm text-on-surface p-0 focus:outline-none"
-                      style={{ marginLeft: 6 }}
-                    />
-                  </View>
+            {/* 2. Email sign in / sign up. Always visible now, with a single
+                explicit Sign In / Create Account switch driving both the
+                submit button's label and the request it sends — replaces
+                the old "tap to expand, then find a small text link at the
+                bottom" flow, which is why a first-time user couldn't easily
+                tell how to create an account. */}
+            <View className="pt-1">
+              <View className="flex-row p-1 rounded-2xl mb-3" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>
+                <AnimatedPressable
+                  onPress={() => { setIsSignUp(false); setAuthError(''); setAuthNotice(''); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign in"
+                  accessibilityState={{ selected: !isSignUp }}
+                  disabled={isSendingMagicLink}
+                  className={`flex-1 py-2.5 rounded-xl items-center ${!isSignUp ? 'bg-white shadow-sm' : ''}`}
+                >
+                  <Text className={`text-sm font-bold ${!isSignUp ? 'text-primary' : 'text-on-surface-variant'}`}>
+                    Sign In
+                  </Text>
+                </AnimatedPressable>
+                <AnimatedPressable
+                  onPress={() => { setIsSignUp(true); setAuthError(''); setAuthNotice(''); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create account"
+                  accessibilityState={{ selected: isSignUp }}
+                  disabled={isSendingMagicLink}
+                  className={`flex-1 py-2.5 rounded-xl items-center ${isSignUp ? 'bg-white shadow-sm' : ''}`}
+                >
+                  <Text className={`text-sm font-bold ${isSignUp ? 'text-primary' : 'text-on-surface-variant'}`}>
+                    Create Account
+                  </Text>
+                </AnimatedPressable>
+              </View>
 
-                  {/* Password Input */}
-                  <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
-                    <MaterialIcons name="lock-outline" size={18} color="#707a6f" />
-                    <TextInput
-                      value={passwordText}
-                      onChangeText={setPasswordText}
-                      placeholder="Enter password (min 6 chars)"
-                      placeholderTextColor="rgba(64, 73, 64, 0.4)"
-                      secureTextEntry={true}
-                      autoCapitalize="none"
-                      className="flex-1 font-semibold text-sm text-on-surface p-0 focus:outline-none"
-                      style={{ marginLeft: 6 }}
-                    />
-                  </View>
+              <View className="space-y-3" style={{ gap: 10 }}>
 
-                  {/* Forgot Password Link */}
-                  {!isSignUp && (
-                    <TouchableOpacity onPress={handleForgotPassword} className="self-end px-1 -mt-1">
-                      <Text className="text-[11px] text-primary font-bold">Forgot Password?</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Error Notification */}
-                  {authError.length > 0 && (
-                    <Text className="text-[10px] text-error font-bold tracking-tight text-center px-1">
-                      ⚠️ {authError}
-                    </Text>
-                  )}
-
-                  {/* Submit Button */}
-                  <TouchableOpacity
-                    onPress={handleEmailAuth}
-                    disabled={isSendingMagicLink || !emailText.includes('@') || passwordText.length < 6}
-                    activeOpacity={0.8}
-                    className={`w-full h-11 rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95 ${
-                      emailText.includes('@') && passwordText.length >= 6 ? 'bg-primary' : 'bg-outline-variant/50'
-                    }`}
-                    style={{ height: 46 }}
-                  >
-                    {isSendingMagicLink ? (
-                      <ActivityIndicator size="small" color="white" />
-                    ) : (
-                      <>
-                        <MaterialIcons name="vpn-key" size={14} color="white" />
-                        <Text className="text-white font-bold text-xs uppercase tracking-wider" style={{ marginLeft: 6 }}>
-                          {isSignUp ? 'Create Account' : 'Sign In'}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Login/Signup Toggle Switch */}
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setIsSignUp(!isSignUp);
-                      setAuthError('');
-                    }}
-                    className="items-center py-1"
-                  >
-                    <Text className="text-xs text-primary font-bold tracking-tight">
-                      {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
-                    </Text>
-                  </TouchableOpacity>
+                {/* Email Input. Sized to match name-setup.tsx's inputs
+                    (text-base, p-3.5) rather than this screen's old text-sm
+                    — the smallest, most-typed-into fields on the screen are
+                    exactly where "everything is too small" bites hardest. */}
+                <View className="p-3.5 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
+                  <MaterialIcons name="alternate-email" size={20} color="#707a6f" />
+                  <TextInput
+                    value={emailText}
+                    onChangeText={setEmailText}
+                    accessibilityLabel="Email address"
+                    placeholder="Enter your email address"
+                    placeholderTextColor="rgba(64, 73, 64, 0.4)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
+                    style={{ marginLeft: 6 }}
+                  />
                 </View>
-              </Animated.View>
+
+                {/* Password Input */}
+                <View className="p-3.5 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
+                  <MaterialIcons name="lock-outline" size={20} color="#707a6f" />
+                  <TextInput
+                    value={passwordText}
+                    onChangeText={setPasswordText}
+                    accessibilityLabel="Password"
+                    placeholder="Enter password (min 6 chars)"
+                    placeholderTextColor="rgba(64, 73, 64, 0.4)"
+                    secureTextEntry={true}
+                    autoCapitalize="none"
+                    className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+
+                {/* Forgot Password Link */}
+                {!isSignUp && (
+                  <AnimatedPressable onPress={handleForgotPassword} accessibilityRole="button" accessibilityLabel="Forgot password" className="self-end px-1 -mt-1">
+                    <Text className="text-xs text-primary font-bold">Forgot Password?</Text>
+                  </AnimatedPressable>
+                )}
+
+                {/* Error Notification */}
+                {authError.length > 0 && (
+                  <Text className="text-xs text-error font-bold tracking-tight text-center px-1">
+                    ⚠️ {authError}
+                  </Text>
+                )}
+
+                {/* Success notice (e.g. account created, reset link sent) */}
+                {authNotice.length > 0 && (
+                  <Text
+                    className="text-xs font-bold tracking-tight text-center px-1"
+                    style={{ color: '#004c22' }}
+                  >
+                    {authNotice}
+                  </Text>
+                )}
+
+                {/* Submit Button */}
+                <AnimatedPressable
+                  onPress={handleEmailAuth}
+                  accessibilityRole="button"
+                  accessibilityLabel={isSignUp ? 'Create account' : 'Sign in'}
+                  disabled={isSendingMagicLink || !emailText.includes('@') || passwordText.length < 6}
+                  className={`w-full h-11 rounded-2xl flex-row items-center justify-center shadow-sm ${
+                    emailText.includes('@') && passwordText.length >= 6 ? 'bg-primary' : 'bg-outline-variant/50'
+                  }`}
+                  style={{ height: 46 }}
+                >
+                  {isSendingMagicLink ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <>
+                      <MaterialIcons name="vpn-key" size={14} color="white" />
+                      <Text className="text-white font-bold text-xs uppercase tracking-wider" style={{ marginLeft: 6 }}>
+                        {isSignUp ? 'Create Account' : 'Sign In'}
+                      </Text>
+                    </>
+                  )}
+                </AnimatedPressable>
+              </View>
             </View>
           </View>
 
-          {/* Privacy Disclaimer footer */}
+          {/* Privacy Disclaimer footer.
+              These used to be styled as links with no onPress — underlined,
+              brand-coloured, and completely inert. Consent to terms nobody
+              can open is not consent, and a dead policy link is a store
+              rejection in its own right. */}
           <Text className="text-[10px] text-center text-on-surface-variant/60 leading-relaxed max-w-[280px] mx-auto">
-            By signing in, you agree to our <Text className="font-semibold text-primary underline">Terms of Service</Text> and our bank-grade <Text className="font-semibold text-primary underline">Privacy Policy</Text>.
+            By signing in, you agree to our{' '}
+            <Text
+              className="font-semibold text-primary underline"
+              onPress={() => router.push('/legal/terms')}
+              suppressHighlighting
+            >
+              Terms of Service
+            </Text>
+            {' '}and our{' '}
+            <Text
+              className="font-semibold text-primary underline"
+              onPress={() => router.push('/legal/privacy')}
+              suppressHighlighting
+            >
+              Privacy Policy
+            </Text>
+            .
           </Text>
         </Animated.View>
       </ScrollView>

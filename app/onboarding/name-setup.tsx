@@ -1,15 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, ScrollView, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../../lib/supabase';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { useAlert } from '../../components/AppAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function NameSetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAlert();
 
   const [nameText, setNameText] = useState('');
   const [emailText, setEmailText] = useState('');
@@ -44,6 +48,24 @@ export default function NameSetupScreen() {
     }
   }, [isValidName]);
 
+  // Prefill the email from the signed-in account, but only if the field is
+  // still empty so anything the user typed is never overwritten.
+  useEffect(() => {
+    let active = true;
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        const sessionEmail = data.session?.user?.email;
+        if (active && sessionEmail) {
+          setEmailText((prev) => prev || sessionEmail);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleNextStep = async () => {
     if (!isValidName) return;
     setIsSubmitting(true);
@@ -51,30 +73,87 @@ export default function NameSetupScreen() {
     try {
       // Save temporary profile info in AsyncStorage
       await AsyncStorage.setItem('onboarding_name', nameText.trim());
-      const emailValue = emailText.trim() || `${nameText.trim().toLowerCase().replace(/\s+/g, '.')}@kinlo.mind`;
-      await AsyncStorage.setItem('onboarding_email', emailValue);
+      const emailValue = emailText.trim();
+      if (emailValue) {
+        await AsyncStorage.setItem('onboarding_email', emailValue);
+      } else {
+        await AsyncStorage.removeItem('onboarding_email');
+      }
       if (phoneText.trim()) {
         await AsyncStorage.setItem('onboarding_phone', phoneText.trim());
       }
       
       // Update phone number and name in Supabase
+      const saveStartedAt = new Date().toISOString();
       try {
-        const { supabase } = await import('../../lib/supabase');
         const { data: authData } = await supabase.auth.getUser();
         if (authData?.user) {
-           await supabase.from('users').update({ 
+           // supabase-js RETURNS errors rather than throwing them, so the
+           // catch below never sees a rejected write. This used to discard
+           // the result entirely: a phone number refused by the unique
+           // index failed silently and the account was left with none at
+           // all, which then made the number unmatchable by 0038/0039.
+           const { error: profileErr } = await supabase.from('users').update({
               phone_number: phoneText.trim() || null,
               full_name: nameText.trim()
            }).eq('id', authData.user.id);
+
+           if (profileErr) {
+             console.warn('Profile save failed:', profileErr.code, profileErr.message);
+
+             // 23505 = unique violation. Since 0040 scoped phone uniqueness
+             // to real accounts only, this can no longer be a friend's
+             // placeholder squatting the number — it means another real
+             // Kinlo account already uses it. Worth stopping for, because
+             // continuing would silently leave this account without one.
+             if (profileErr.code === '23505') {
+               setIsSubmitting(false);
+               showAlert(
+                 'That number is already in use',
+                 'Another Kinlo account is already registered with this phone number.\n\nUse a different number, or leave it blank — you can add one later from your Profile.',
+                 [{ text: 'OK' }]
+               );
+               return;
+             }
+
+             // Anything else is a transient/unknown failure. Not worth
+             // blocking onboarding over: the sync step upserts name and
+             // phone again a screen later, so this usually self-heals.
+           } else if (phoneText.trim()) {
+             // Core Functionality Audit 2026-08-31 P2 §4.6: this is the
+             // primary path that creates a connection_requests row (the
+             // 0041 trigger fires on this exact UPDATE OF phone_number) — a
+             // new signup claiming a number someone already added as a
+             // placeholder. The owner previously learned of this only by
+             // opening the app. Best-effort: never block onboarding on a
+             // push failing. requestedAt-gated so a resubmit of the same
+             // number (trigger's own OLD/NEW check skips creating a
+             // duplicate) never re-announces an older request.
+             try {
+               const { fetchConnectionRequests } = await import('../../lib/connections');
+               const { dispatchPushNotification } = await import('../../lib/pushDispatcher');
+               const reqs = await fetchConnectionRequests();
+               const freshlyCreated = reqs.filter(
+                 (r) => r.role === 'claimant' && Date.parse(r.requestedAt) >= Date.parse(saveStartedAt)
+               );
+               for (const r of freshlyCreated) {
+                 dispatchPushNotification(
+                   [r.otherId],
+                   'A contact just connected',
+                   `${nameText.trim() || 'Someone'} joined Kinlo with a number you added — review the connection request.`
+                 );
+               }
+             } catch (pushErr) {
+               console.warn('Could not check for a new connection request:', pushErr);
+             }
+           }
         }
       } catch (dbErr) {
         console.log('Could not sync phone to Supabase yet:', dbErr);
       }
-      
-      setTimeout(() => {
-        setIsSubmitting(false);
-        router.push('/onboarding/avatar');
-      }, 1000);
+
+      setIsSubmitting(false);
+      router.push('/onboarding/avatar');
     } catch (e) {
       console.error(e);
       setIsSubmitting(false);
@@ -90,16 +169,19 @@ export default function NameSetupScreen() {
         >
           {/* Back button and progress header */}
           <View className="flex-row items-center justify-between pb-2">
-            <TouchableOpacity 
+            <AnimatedPressable
               onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
             >
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
-            
-            {/* Step Indicators: ●○○ */}
-            <View className="flex-row items-center space-x-1.5" style={{ gap: 6 }}>
+            </AnimatedPressable>
+
+            {/* Step Indicators: ●○○○ (1 of 4) */}
+            <View className="flex-row items-center space-x-1.5" style={{ gap: 6 }} accessibilityElementsHidden={true} importantForAccessibility="no-hide-descendants">
               <View className="w-5 h-1.5 rounded-full bg-primary" />
+              <View className="w-1.5 h-1.5 rounded-full bg-outline-variant/60" />
               <View className="w-1.5 h-1.5 rounded-full bg-outline-variant/60" />
               <View className="w-1.5 h-1.5 rounded-full bg-outline-variant/60" />
             </View>
@@ -107,16 +189,16 @@ export default function NameSetupScreen() {
 
           {/* Editorial Headline */}
           <View className="space-y-2 mt-4">
-            <Text className="font-display-lg text-3xl font-bold text-primary">What should we call you?</Text>
+            <Text className="font-display-lg text-3xl font-bold text-primary">Tell us about you</Text>
             <Text className="text-sm text-on-surface-variant/80 font-medium leading-relaxed max-w-sm mt-1">
-              Choose a display name and setup email credentials so your friends can split ledgers with you seamlessly.
+              Pick a display name and an email so your friends can split bills with you.
             </Text>
           </View>
 
           {/* Form container */}
           <View className="p-6 rounded-3xl space-y-5" style={styles.liquidGlass}>
             <Text className="font-headline text-[10px] text-outline font-bold uppercase tracking-wider pl-1 mb-1">
-              Onboarding Identity
+              Your details
             </Text>
 
             {/* Name Input */}
@@ -127,6 +209,7 @@ export default function NameSetupScreen() {
                 <TextInput
                   value={nameText}
                   onChangeText={setNameText}
+                  accessibilityLabel="Display name"
                   placeholder="e.g. Elena Sterling"
                   placeholderTextColor="rgba(64, 73, 64, 0.4)"
                   className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
@@ -148,7 +231,8 @@ export default function NameSetupScreen() {
                 <TextInput
                   value={emailText}
                   onChangeText={setEmailText}
-                  placeholder="e.g. elena.sterling@kinlo.mind"
+                  accessibilityLabel="Email address"
+                  placeholder="you@example.com"
                   placeholderTextColor="rgba(64, 73, 64, 0.4)"
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -166,6 +250,7 @@ export default function NameSetupScreen() {
                 <TextInput
                   value={phoneText}
                   onChangeText={setPhoneText}
+                  accessibilityLabel="Phone number"
                   placeholder="+91 98765 43210"
                   placeholderTextColor="rgba(64, 73, 64, 0.4)"
                   keyboardType="phone-pad"
@@ -181,10 +266,12 @@ export default function NameSetupScreen() {
 
           {/* Action button */}
           <Animated.View style={{ transform: [{ scale: isValidName ? pulseScale : 1 }] }}>
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={handleNextStep}
+              accessibilityRole="button"
+              accessibilityLabel="Next step"
               disabled={!isValidName || isSubmitting}
-              activeOpacity={0.8}
+              scaleTo={0.9}
               className={`w-full h-13 rounded-2xl flex-row items-center justify-center shadow-sm ${
                 isValidName ? 'bg-primary' : 'bg-outline-variant/40'
               }`}
@@ -198,7 +285,7 @@ export default function NameSetupScreen() {
                   <MaterialIcons name="arrow-forward" size={16} color="white" style={{ marginLeft: 6 }} />
                 </>
               )}
-            </TouchableOpacity>
+            </AnimatedPressable>
           </Animated.View>
         </Animated.View>
       </ScrollView>

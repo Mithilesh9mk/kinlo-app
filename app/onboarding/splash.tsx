@@ -46,9 +46,9 @@ export default function SplashScreen() {
       ])
     ).start();
 
-    // Auto-advance to login after 2.5 seconds
+    // Auto-advance to the value-prop slides after 2.5 seconds
     const timer = setTimeout(() => {
-      router.replace('/onboarding/login');
+      router.replace('/onboarding/value');
     }, 2800);
 
     return () => clearTimeout(timer);
@@ -79,15 +79,8 @@ export default function SplashScreen() {
         </Text>
       </Animated.View>
 
-      {/* Bottom organic credits */}
-      <Animated.View style={{ opacity: fadeAnim }} className="items-center">
-        <Text className="text-[10px] text-outline-variant font-bold uppercase tracking-widest">
-          Kinlo Framework
-        </Text>
-        <Text className="text-[9px] text-on-surface-variant/50 font-semibold mt-1">
-          Designed by Google DeepMind Team
-        </Text>
-      </Animated.View>
+      {/* Bottom spacer keeps the logo centred (justify-between) */}
+      <View />
     </View>
   );
 }

@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, ScrollView, Image, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { Avatar } from '../../components/Avatar';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -27,9 +30,22 @@ export default function AvatarSelectionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
+  // Defaults to null (initials) rather than forcing a preset pick — the
+  // preset URLs are ephemeral AI-generated links that eventually 404, and
+  // making "skip" the default path is what actually removes that failure
+  // mode instead of just patching the fallback render.
+  const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [selectedAura, setSelectedAura] = useState(AURAS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [nameInitials, setNameInitials] = useState('?');
+
+  useEffect(() => {
+    AsyncStorage.getItem('onboarding_name').then((name) => {
+      if (!name) return;
+      const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
+      if (initials) setNameInitials(initials);
+    });
+  }, []);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -67,18 +83,29 @@ export default function AvatarSelectionScreen() {
   const handleContinue = async () => {
     setIsSubmitting(true);
     try {
-      await AsyncStorage.setItem('onboarding_avatar', selectedAvatar);
+      // Only persist a value when the user actually picked one — leaving the
+      // key unset (rather than writing '') keeps "no avatar" unambiguous for
+      // every downstream reader.
+      if (selectedAvatar) {
+        await AsyncStorage.setItem('onboarding_avatar', selectedAvatar);
+      } else {
+        await AsyncStorage.removeItem('onboarding_avatar');
+      }
       await AsyncStorage.setItem('onboarding_aura_color', selectedAura.color);
       await AsyncStorage.setItem('onboarding_aura_id', selectedAura.id);
 
-      setTimeout(() => {
-        setIsSubmitting(false);
-        router.push('/onboarding/sync');
-      }, 1000);
+      setIsSubmitting(false);
+      router.push('/onboarding/permissions');
     } catch (e) {
       console.error(e);
       setIsSubmitting(false);
     }
+  };
+
+  const handleSkip = async () => {
+    setSelectedAvatar(null);
+    await AsyncStorage.removeItem('onboarding_avatar');
+    router.push('/onboarding/permissions');
   };
 
   return (
@@ -90,17 +117,20 @@ export default function AvatarSelectionScreen() {
         >
           {/* Header */}
           <View className="flex-row items-center justify-between pb-2">
-            <TouchableOpacity 
+            <AnimatedPressable
               onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
             >
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
-            
-            {/* Step Indicators: ●●○ */}
-            <View className="flex-row items-center space-x-1.5" style={{ gap: 6 }}>
+            </AnimatedPressable>
+
+            {/* Step Indicators: ●●○○ (2 of 4) */}
+            <View className="flex-row items-center space-x-1.5" style={{ gap: 6 }} accessibilityElementsHidden={true} importantForAccessibility="no-hide-descendants">
               <View className="w-1.5 h-1.5 rounded-full bg-primary" />
               <View className="w-5 h-1.5 rounded-full bg-primary" />
+              <View className="w-1.5 h-1.5 rounded-full bg-outline-variant/60" />
               <View className="w-1.5 h-1.5 rounded-full bg-outline-variant/60" />
             </View>
           </View>
@@ -140,7 +170,7 @@ export default function AvatarSelectionScreen() {
               ]}
               className="w-28 h-28 rounded-full border-4 shadow-lg overflow-hidden bg-white/50"
             >
-              <Image source={{ uri: selectedAvatar }} className="w-full h-full" />
+              <Avatar uri={selectedAvatar} initials={nameInitials} />
             </Animated.View>
 
             <Text className="font-headline text-xs font-bold text-primary tracking-wide uppercase mt-4">
@@ -159,32 +189,36 @@ export default function AvatarSelectionScreen() {
                 {PRESET_AVATARS.map((av, index) => {
                   const isActive = selectedAvatar === av;
                   return (
-                    <TouchableOpacity
-                      key={index}
-                      onPress={() => triggerAvatarChangeAnimation(av)}
-                      activeOpacity={0.8}
-                      className="relative rounded-full border-2 p-0.5 active:scale-95"
-                      style={{ 
-                        borderColor: isActive ? '#004c22' : 'transparent',
-                      }}
-                    >
-                      <Image source={{ uri: av }} className="w-14 h-14 rounded-full" />
-                      {isActive && (
-                        <View className="absolute bottom-0 right-0 bg-primary w-5 h-5 rounded-full items-center justify-center border border-white">
-                          <MaterialIcons name="check" size={12} color="white" />
-                        </View>
-                      )}
-                    </TouchableOpacity>
+                    <AnimatedListItem key={index} index={index}>
+                      <AnimatedPressable
+                        onPress={() => triggerAvatarChangeAnimation(av)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Preset avatar ${index + 1}`}
+                        accessibilityState={{ selected: isActive }}
+                        className="relative rounded-full border-2 p-0.5"
+                        style={{
+                          borderColor: isActive ? '#004c22' : 'transparent',
+                        }}
+                      >
+                        <Image source={{ uri: av }} className="w-14 h-14 rounded-full" />
+                        {isActive && (
+                          <View className="absolute bottom-0 right-0 bg-primary w-5 h-5 rounded-full items-center justify-center border border-white">
+                            <MaterialIcons name="check" size={12} color="white" />
+                          </View>
+                        )}
+                      </AnimatedPressable>
+                    </AnimatedListItem>
                   );
                 })}
                 {/* Upload Custom mock */}
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={() => triggerAvatarChangeAnimation('https://lh3.googleusercontent.com/aida-public/AB6AXuCjndLpSFDH7YFAj7EjmK4oN7dyC5Kg4aE5mQaVMymirtxPlgzSO0bsqkvYsnwB-0TMheOIGag7S7cEEQtweBceoDoGYQ7qgVTsxrwKdEjMDy2NOe8SBTIakNYQVU6BWwR-aoCBWixkVqYEWYB2gcyeIx4WtPOiZUVo3uaiCDPMBbCbrF25Vcs5vkBxco4r6aq4a85O0_aDrUSlhWAGZKUcfRs8uATzONDORXOdUNOEK9tzTxSmNFkGkJnoM0eP1iWIhfoc7V2k894')}
-                  activeOpacity={0.8}
-                  className="w-14 h-14 rounded-full border border-dashed border-outline-variant items-center justify-center active:scale-95"
+                  accessibilityRole="button"
+                  accessibilityLabel="Upload custom photo"
+                  className="w-14 h-14 rounded-full border border-dashed border-outline-variant items-center justify-center"
                 >
                   <MaterialIcons name="add-a-photo" size={18} color="#707a6f" />
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
 
@@ -194,31 +228,34 @@ export default function AvatarSelectionScreen() {
                 Background Aura Tint
               </Text>
               <View className="flex-row justify-between" style={{ gap: 12 }}>
-                {AURAS.map((aura) => {
+                {AURAS.map((aura, index) => {
                   const isActive = selectedAura.id === aura.id;
                   return (
-                    <TouchableOpacity
-                      key={aura.id}
-                      onPress={() => setSelectedAura(aura)}
-                      activeOpacity={0.8}
-                      className="flex-1 py-3.5 rounded-2xl items-center justify-center border active:scale-95 flex-row space-x-1.5"
-                      style={{ 
-                        backgroundColor: isActive ? 'white' : 'transparent',
-                        borderColor: isActive ? '#004c22' : 'rgba(112, 122, 111, 0.25)',
-                        borderWidth: isActive ? 2 : 1
-                      }}
-                    >
-                      <View 
-                        className="w-4 h-4 rounded-full border border-white"
-                        style={{ backgroundColor: aura.color }}
-                      />
-                      <Text 
-                        className={`text-xs font-bold ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
-                        style={{ marginLeft: 4 }}
+                    <AnimatedListItem key={aura.id} index={index} style={{ flex: 1 }}>
+                      <AnimatedPressable
+                        onPress={() => setSelectedAura(aura)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${aura.label} aura`}
+                        accessibilityState={{ selected: isActive }}
+                        className="flex-1 py-3.5 rounded-2xl items-center justify-center border flex-row space-x-1.5"
+                        style={{
+                          backgroundColor: isActive ? 'white' : 'transparent',
+                          borderColor: isActive ? '#004c22' : 'rgba(112, 122, 111, 0.25)',
+                          borderWidth: isActive ? 2 : 1
+                        }}
                       >
-                        {aura.label}
-                      </Text>
-                    </TouchableOpacity>
+                        <View
+                          className="w-4 h-4 rounded-full border border-white"
+                          style={{ backgroundColor: aura.color }}
+                        />
+                        <Text
+                          className={`text-xs font-bold ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
+                          style={{ marginLeft: 4 }}
+                        >
+                          {aura.label}
+                        </Text>
+                      </AnimatedPressable>
+                    </AnimatedListItem>
                   );
                 })}
               </View>
@@ -226,10 +263,12 @@ export default function AvatarSelectionScreen() {
           </View>
 
           {/* Action button */}
-          <TouchableOpacity
+          <AnimatedPressable
             onPress={handleContinue}
+            accessibilityRole="button"
+            accessibilityLabel="Save and continue"
             disabled={isSubmitting}
-            activeOpacity={0.8}
+            scaleTo={0.9}
             className="w-full h-13 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm"
             style={{ height: 52, marginTop: 12 }}
           >
@@ -241,7 +280,11 @@ export default function AvatarSelectionScreen() {
                 <MaterialIcons name="arrow-forward" size={16} color="white" style={{ marginLeft: 6 }} />
               </>
             )}
-          </TouchableOpacity>
+          </AnimatedPressable>
+
+          <AnimatedPressable onPress={handleSkip} disabled={isSubmitting} accessibilityRole="button" accessibilityLabel="Skip, use my initials" className="items-center py-2">
+            <Text className="text-xs text-primary font-bold tracking-tight">Skip — use my initials</Text>
+          </AnimatedPressable>
         </Animated.View>
       </ScrollView>
     </View>

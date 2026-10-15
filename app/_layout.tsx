@@ -1,14 +1,36 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useIncomingShare } from 'expo-sharing';
+import * as SplashScreen from 'expo-splash-screen';
 import { View, ActivityIndicator } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GlobalBalancesProvider } from '../context/GlobalBalancesContext';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { CrashReportBanner } from '../components/CrashReportBanner';
+import { installCrashLogger } from '../lib/crashLog';
+import { checkUsersRowOnboarded, SEEN_INTRO_KEY } from '../lib/onboardingState';
+
+// Module scope, before any component mounts — a crash during the very first
+// render would otherwise happen before a hook could install the handler.
+installCrashLogger();
+import { ToastProvider } from '../components/Toast';
+import { AlertProvider } from '../components/AppAlert';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import '../global.css'; // NativeWind v4 requires importing the CSS
+
+// Keeps the native splash (app.json's expo-splash-screen config) on screen
+// through Hermes bundle load and this component's first mount, instead of a
+// blank/white native window — that gap, not anything JS-side, was the "blank
+// screen, nothing loading" report on cold-start deep links (share-sheet,
+// etc.), since no JS has run yet to render even the loading view below.
+// Module-level, not inside the component: must run before first render.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const segments = useSegments();
@@ -17,8 +39,13 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
 
-  // Initialize Push Notifications if session exists
-  usePushNotifications(session?.user?.id);
+  // Initialize Push Notifications once onboarding is done, not the instant a
+  // session exists — the OS permission request lives inside this hook, and
+  // firing it pre-onboarding would show the raw system prompt before the
+  // user ever reaches onboarding/permissions.tsx's priming screen. Once
+  // onboarded, later mounts just read the already-decided status (no repeat
+  // prompt) and refresh the push token.
+  usePushNotifications(isOnboarded ? session?.user?.id : undefined);
 
   // Step 1: On mount, check both session + onboarding status
   useEffect(() => {
@@ -28,26 +55,43 @@ export default function RootLayout() {
         setSession(currentSession);
 
         if (currentSession) {
-          // Sprint 1 P1 Bug: Auto-insert user row to prevent foreign key errors
+          // Sprint 1 P1 Bug: Auto-insert user row to prevent foreign key errors.
+          // Fire-and-forget: this is a self-healing background repair, not
+          // something the first paint should ever wait on.
           const userId = currentSession.user.id;
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', userId)
-            .maybeSingle();
-            
-          if (!existingUser) {
-            const email = currentSession.user.email || '';
-            const defaultName = email ? email.split('@')[0] : 'New User';
-            
-            await supabase.from('users').insert({
-              id: userId,
-              full_name: defaultName,
-            });
-          }
+          (async () => {
+            try {
+              const { data: existingUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', userId)
+                .maybeSingle();
+
+              if (!existingUser) {
+                const email = currentSession.user.email || '';
+                const defaultName = email ? email.split('@')[0] : 'New User';
+
+                await supabase.from('users').insert({
+                  id: userId,
+                  full_name: defaultName,
+                });
+              }
+            } catch {
+              // Best-effort repair; a failure here isn't fatal to boot.
+            }
+          })();
 
           const completed = await AsyncStorage.getItem('onboarding_completed');
-          setIsOnboarded(completed === 'true');
+          if (completed === 'true') {
+            setIsOnboarded(true);
+          } else {
+            // Flag missing (new device, cleared storage, or a mid-flow
+            // force-quit). The users row decides: a real name means this
+            // account already onboarded; otherwise resume onboarding. If the
+            // lookup itself fails, let the user in rather than lock them out.
+            const check = await checkUsersRowOnboarded(userId, currentSession.user.email);
+            setIsOnboarded(check.status !== 'new');
+          }
         } else {
           setIsOnboarded(false);
         }
@@ -80,21 +124,65 @@ export default function RootLayout() {
     const inOnboarding = segments[0] === 'onboarding';
     const hasSession = !!session;
 
-    // If we are navigating to any non-onboarding route (like tabs or /), and we have a session, 
-    // assume onboarding is completed. Update local state to prevent bouncing back.
+    // Signed in, flag not yet in state, outside onboarding: decide from the
+    // persisted flag (set by login for returning users, or by first-action),
+    // never from the current route — a mid-flow force-quit must resume
+    // onboarding rather than land on tabs.
     if (!inOnboarding && hasSession && !isOnboarded) {
-       setIsOnboarded(true);
-       return;
+      let cancelled = false;
+      AsyncStorage.getItem('onboarding_completed')
+        .catch(() => null)
+        .then((flag) => {
+          if (cancelled) return;
+          if (flag === 'true') setIsOnboarded(true);
+          else router.replace('/onboarding/name-setup');
+        });
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (!hasSession && !inOnboarding) {
-      router.replace('/onboarding/login');
-    } else if (hasSession && !isOnboarded && !inOnboarding) {
-      router.replace('/onboarding/name-setup');
+      // Fresh install sees splash → value slides first; afterwards, login.
+      AsyncStorage.getItem(SEEN_INTRO_KEY)
+        .catch(() => 'true')
+        .then((seen) => router.replace(seen === 'true' ? '/onboarding/login' : '/onboarding/splash'));
     } else if (hasSession && isOnboarded && inOnboarding) {
       router.replace('/');
     }
   }, [isReady, session, isOnboarded, segments]);
+
+  // Route an incoming OS share into the finance review flow.
+  //
+  // This does NOT rely on the deep link. expo-sharing's Android side stores
+  // the intent in a native singleton and rewrites the launch URL to
+  // `kinlo://expo-sharing` — where "expo-sharing" is the URL *host*, so the
+  // path is empty and a pathname-based redirect never matches, dropping the
+  // share on an unmatched (blank) route. useIncomingShare() reads that
+  // singleton synchronously on mount instead, which is independent of how
+  // the router parses the URL and works for both cold start and resume.
+  //
+  // Gated on an authenticated, onboarded session so this never fights the
+  // auth redirects above — a share received while signed out would otherwise
+  // race the push to /onboarding/login.
+  const { sharedPayloads } = useIncomingShare();
+  const shareHandled = useRef(false);
+
+  useEffect(() => {
+    if (shareHandled.current) return;
+    if (!isReady || !session || !isOnboarded) return;
+    if (sharedPayloads.length === 0) return;
+
+    shareHandled.current = true;
+    router.push('/finance/share');
+  }, [sharedPayloads, isReady, session, isOnboarded, router]);
+
+  // Hand off from native splash to this view the moment it's ready to paint
+  // — same background colour as the splash (#fcf9f4), so the swap is
+  // invisible rather than a flash to a different screen.
+  useEffect(() => {
+    if (isReady) SplashScreen.hideAsync().catch(() => {});
+  }, [isReady]);
 
   // Render simple premium sand-tinted loading view while reading storage
   if (!isReady) {
@@ -106,20 +194,44 @@ export default function RootLayout() {
   }
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+    {/* Outside every provider below, deliberately — so a crash INSIDE one of
+        them (SafeAreaProvider, GlobalBalancesProvider, etc.) still gets a
+        readable fallback instead of the blank screen a release build gives
+        an uncaught render error with no boundary at all. */}
+    <ErrorBoundary>
     <SafeAreaProvider>
       <GlobalBalancesProvider>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          <Stack.Screen name="expense" options={{ presentation: 'modal', headerShown: false }} />
-          <Stack.Screen name="group" options={{ headerShown: false }} />
-          <Stack.Screen name="friend" options={{ headerShown: false }} />
-          <Stack.Screen name="transaction" options={{ headerShown: false }} />
-          <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false }} />
-          <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false }} />
-        </Stack>
+        <ToastProvider>
+          <AlertProvider>
+            <StatusBar style="dark" />
+            {/* Temporary diagnostic — shows the previous run's fatal error
+                once, then forgets it. Remove when the crash is fixed. */}
+            <CrashReportBanner />
+            <Animated.View entering={FadeIn.duration(180)} style={{ flex: 1 }}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                  animationDuration: 220,
+                }}
+              >
+                <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
+                <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                <Stack.Screen name="expense" options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="group" options={{ headerShown: false }} />
+                <Stack.Screen name="friend" options={{ headerShown: false }} />
+                <Stack.Screen name="transaction" options={{ headerShown: false }} />
+                <Stack.Screen name="finance" options={{ headerShown: false }} />
+                <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false, animation: 'slide_from_bottom' }} />
+              </Stack>
+            </Animated.View>
+          </AlertProvider>
+        </ToastProvider>
       </GlobalBalancesProvider>
     </SafeAreaProvider>
+    </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

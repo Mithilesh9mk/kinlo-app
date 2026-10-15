@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { useAlert } from '../../components/AppAlert';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
+  const { showAlert } = useAlert();
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleUpdatePassword = async () => {
     if (password.length < 6) {
-      Alert.alert('Invalid Password', 'Password must be at least 6 characters long.');
+      showAlert('Invalid Password', 'Password must be at least 6 characters long.');
       return;
     }
 
@@ -20,14 +23,14 @@ export default function ResetPasswordScreen() {
       const { error } = await supabase.auth.updateUser({ password });
       
       if (error) {
-        Alert.alert('Error', error.message);
+        showAlert('Error', error.message);
       } else {
-        Alert.alert('Success', 'Your password has been updated successfully.', [
+        showAlert('Success', 'Your password has been updated successfully.', [
           { text: 'Log In', onPress: () => router.replace('/onboarding/login') }
         ]);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update password.');
+      showAlert('Error', e.message || 'Failed to update password.');
     } finally {
       setIsSubmitting(false);
     }
@@ -67,11 +70,10 @@ export default function ResetPasswordScreen() {
             </View>
           </View>
 
-          <TouchableOpacity
+          <AnimatedPressable
             onPress={handleUpdatePassword}
             disabled={isSubmitting || password.length < 6}
-            activeOpacity={0.8}
-            className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95 ${
+            className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-sm ${
               password.length >= 6 ? 'bg-primary' : 'bg-outline-variant/50'
             }`}
           >
@@ -85,15 +87,15 @@ export default function ResetPasswordScreen() {
                 </Text>
               </>
             )}
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
 
-        <TouchableOpacity 
+        <AnimatedPressable
           onPress={() => router.replace('/onboarding/login')}
           className="items-center mt-6 py-2"
         >
           <Text className="text-sm text-primary font-bold">Back to Login</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
