@@ -1,10 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Pressable, Image, Modal, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, ScrollView, Pressable, Image, Modal, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, RefreshControl } from 'react-native';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { Avatar } from '../../components/Avatar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Skeleton } from '../../components/Skeleton';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { fetchBalances } from '../../lib/balances';
+import { useToast } from '../../components/Toast';
+import {
+  getContactsSyncEnabled,
+  setContactsSyncEnabled,
+  CONTACT_SYNC_DISCLOSURE_TITLE,
+  CONTACT_SYNC_DISCLOSURE_BODY,
+} from '../../lib/contactsSync';
+import { useAlert } from '../../components/AppAlert';
+import { fetchDeletionPreview, deleteMyAccount, DeletionPreview } from '../../lib/accountDeletion';
+import { clearOfflineCache } from '../../lib/offlineCache';
+import { fetchConnectionRequests } from '../../lib/connections';
+import { dispatchPushNotification } from '../../lib/pushDispatcher';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -65,17 +81,22 @@ function NotBuiltYet({ label }: { label: string }) {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { showAlert } = useAlert();
 
   // Profile Identity state (will load from AsyncStorage)
   const [username, setUsername] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [upiAddress, setUpiAddress] = useState('');
-  const [userAvatar, setUserAvatar] = useState('https://lh3.googleusercontent.com/aida-public/AB6AXuAEWIgSE-QquhsBf4hrGjLBd3pWoMzpRRn_vICM8H7sUYTIJY4GWGsEeXG_dae_MyiW4IWf6SE5CYlWDfoqE9ClUM6sqMJ8HbMXVFZ7ArNX-_VBya9PWHSjMUcC-A3gW_1ChTvJAY6CvgXER-lgWyrfvpObwosaF2uqCB-liLMIQSfKcVZlilYpDOWUegEhpSgvYtTLHSpmOSpA7Lb2VSK06ryBgR0dauCEOSMu9w0Cx4-jiDkddobszvGXC4sFWc0aIkL_XOHtUro');
+  // Was a hardcoded lh3.googleusercontent.com preset URL — see the same note
+  // in app/(tabs)/index.tsx. null skips straight to initials instead of one
+  // failed network attempt + a flash.
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   // Real stats from Supabase
   const [circlesCount, setCirclesCount] = useState(0);
   const [expensesCount, setExpensesCount] = useState(0);
+  const [logStreak, setLogStreak] = useState(0);
 
   // Real settlement summary from Supabase
   const [totalOwed, setTotalOwed] = useState(0);
@@ -92,6 +113,14 @@ export default function ProfileScreen() {
   const [syncEnabled, setSyncEnabled] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // The toggle used to hold only local component state, so it read as "on"
+  // until this screen unmounted and forgot — reopening Profile always started
+  // from the default above. It also had no connection to the same choice
+  // asked once during onboarding. Both now read/write one persisted value.
+  useEffect(() => {
+    getContactsSyncEnabled().then(setSyncEnabled);
+  }, []);
+
 
   // Edit profile Identity bottom sheet
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -100,10 +129,12 @@ export default function ProfileScreen() {
   const [tempPhone, setTempPhone] = useState('');
   const [tempUpi, setTempUpi] = useState('');
 
-  // Load identity dynamically on focus/mount
-  useEffect(() => {
-    async function loadIdentity() {
-      try {
+  // Load identity dynamically on focus/mount.
+  // Lifted to a useCallback (was declared inline inside the effect below) so
+  // pull-to-refresh can also call it. The effect still re-fires on
+  // isEditOpen exactly as before — that dependency didn't move.
+  const loadIdentity = useCallback(async () => {
+    try {
         const storedName = await AsyncStorage.getItem('onboarding_name');
         const storedEmail = await AsyncStorage.getItem('onboarding_email');
         const storedAvatar = await AsyncStorage.getItem('onboarding_avatar');
@@ -153,33 +184,42 @@ export default function ProfileScreen() {
       } catch (e) {
         console.error('Failed to load profile identity:', e);
       }
-    }
-    loadIdentity();
-  }, [isEditOpen]);
+  }, []);
 
   useEffect(() => {
-    async function loadStats() {
-      try {
-        const { supabase } = await import('../../lib/supabase');
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) return;
-        const userId = authData.user.id;
+    loadIdentity();
+  }, [isEditOpen, loadIdentity]);
 
-        const { count: groupsCount } = await supabase
-          .from('group_members')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-        if (groupsCount !== null) setCirclesCount(groupsCount);
+  // Lifted to a useCallback (was declared inline inside a mount-only effect)
+  // so pull-to-refresh can also call it.
+  const loadStats = useCallback(async () => {
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) return;
+      const userId = authData.user.id;
 
-        const { count: txCount } = await supabase
-          .from('transaction_splits')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-        if (txCount !== null) setExpensesCount(txCount);
-      } catch (err) { console.warn('Stats error:', err); }
-    }
-    loadStats();
+      const { count: groupsCount } = await supabase
+        .from('group_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      if (groupsCount !== null) setCirclesCount(groupsCount);
+
+      const { count: txCount } = await supabase
+        .from('transaction_splits')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      if (txCount !== null) setExpensesCount(txCount);
+
+      const { fetchPersonalLogStreak } = await import('../../lib/personalTransactions');
+      const { days } = await fetchPersonalLogStreak();
+      setLogStreak(days);
+    } catch (err) { console.warn('Stats error:', err); }
   }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   const loadSettlements = React.useCallback(async () => {
     setBalanceLoading(true);
@@ -222,6 +262,16 @@ export default function ProfileScreen() {
     loadSettlements();
   }, [loadSettlements]);
 
+  // Pull-to-refresh. Deliberately does not touch isEditOpen or any of the
+  // modal-only local/demo state (banks, cards, sessions) — those aren't
+  // network data, per the NotBuiltYet panels above.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadIdentity(), loadStats(), loadSettlements()]);
+    setRefreshing(false);
+  }, [loadIdentity, loadStats, loadSettlements]);
+
   // ====================================================
   // MODAL SLIDING STATE VARIABLES (Enterprise Centers)
   // ====================================================
@@ -258,20 +308,37 @@ export default function ProfileScreen() {
   const [exportFormat, setExportFormat] = useState<string>('pdf');
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleteBlockOpen, setIsDeleteBlockOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletionPreview, setDeletionPreview] = useState<DeletionPreview | null>(null);
 
   // 4. Subscriptions Plan Status Panel
   const [userPlan, setUserPlan] = useState<'basic' | 'gold'>('basic');
-  const [receiptOcr, setReceiptOcr] = useState<boolean>(true);
+
+  // Personal Spending: whether "Add from screenshot" auto-runs extraction on
+  // upload, or leaves the review screen blank for manual entry. A real,
+  // free device preference — not the Kinlo Gold-gated toggle this used to
+  // be (see the deleted "Receipt OCR Scanning" row in the Gold plan modal).
+  const AUTO_SCAN_KEY = 'kinlo.finance.autoScan.v1';
+  const [autoScanReceipts, setAutoScanReceipts] = useState<boolean>(true);
+  useEffect(() => {
+    AsyncStorage.getItem(AUTO_SCAN_KEY).then((v) => {
+      if (v !== null) setAutoScanReceipts(v !== 'false');
+    });
+  }, []);
+  const handleToggleAutoScan = () => {
+    const next = !autoScanReceipts;
+    setAutoScanReceipts(next);
+    AsyncStorage.setItem(AUTO_SCAN_KEY, next ? 'true' : 'false');
+    triggerToast(next ? 'Auto-scan enabled!' : 'Auto-scan disabled — screenshots open blank for manual entry.');
+  };
 
   // 5. Enterprise Support FAQ sheet & Bug report
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
   const [bugDesc, setBugDesc] = useState('');
   const [isSubmittingBug, setIsSubmittingBug] = useState(false);
 
-  // Animated toast configurations
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
+  const { showToast: triggerToast } = useToast();
 
   // Screen entrance transitions
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -293,21 +360,17 @@ export default function ProfileScreen() {
     ]).start();
   }, []);
 
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setShowToast(true);
-    Animated.sequence([
-      Animated.timing(toastOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.delay(2000),
-      Animated.timing(toastOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start(() => setShowToast(false));
-  };
-
   const handleSaveProfile = async () => {
     if (!tempName.trim()) {
       triggerToast('Name cannot be empty.');
       return;
     }
+    // Captured before the state overwrite below — this is what tells us a
+    // moment from now whether the 0041 trigger on users(phone_number) fired
+    // for real, not just because phone_number was present in the SET list.
+    const phoneChanged = tempPhone.trim() !== userPhone;
+    const saveStartedAt = new Date().toISOString();
+
     setUsername(tempName);
     setUserEmail(tempEmail);
     setUserPhone(tempPhone.trim());
@@ -321,11 +384,39 @@ export default function ProfileScreen() {
       const { supabase } = await import('../../lib/supabase');
       const { data: authData } = await supabase.auth.getUser();
       if (authData?.user) {
-        await supabase.from('users').update({ 
-          phone_number: tempPhone.trim() || null, 
+        await supabase.from('users').update({
+          phone_number: tempPhone.trim() || null,
           full_name: tempName.trim(),
           upi_address: tempUpi.trim() || null
         }).eq('id', authData.user.id);
+      }
+
+      // Core Functionality Audit 2026-08-31 P2 §4.6: a placeholder's owner
+      // previously found out someone claimed their number only by opening
+      // the app. The 0041 trigger creates the connection_requests row
+      // server-side with no client hook of its own, so this checks for one
+      // right after the save that could have caused it. Gated on
+      // phoneChanged (a same-value save doesn't fire the trigger's own
+      // internal change check — 0043 — so nothing new would be found
+      // anyway) and on requestedAt being after this save started, so an
+      // older still-pending request from a previous, already-notified save
+      // is never re-announced.
+      if (phoneChanged && tempPhone.trim()) {
+        try {
+          const reqs = await fetchConnectionRequests();
+          const freshlyCreated = reqs.filter(
+            (r) => r.role === 'claimant' && Date.parse(r.requestedAt) >= Date.parse(saveStartedAt)
+          );
+          for (const r of freshlyCreated) {
+            dispatchPushNotification(
+              [r.otherId],
+              'A contact just connected',
+              `${tempName.trim() || 'Someone'} joined Kinlo with a number you added — review the connection request.`
+            );
+          }
+        } catch (e) {
+          console.warn('Could not check for a new connection request:', e);
+        }
       }
     } catch (e) {
       console.error('Failed to save profile changes:', e);
@@ -346,18 +437,54 @@ export default function ProfileScreen() {
     triggerToast(next ? 'Dark theme simulation active!' : 'Light theme restored.');
   };
 
-  const handleToggleSync = () => {
+  const handleToggleSync = async () => {
     if (!syncEnabled) {
+      // Prominent disclosure BEFORE the OS prompt: Play requires the app to
+      // state in its own words that contact data leaves the device, and to
+      // let the user decline without the system dialog ever appearing.
+      const consented = await new Promise<boolean>((resolve) => {
+        showAlert(
+          CONTACT_SYNC_DISCLOSURE_TITLE,
+          CONTACT_SYNC_DISCLOSURE_BODY,
+          [
+            { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Continue', onPress: () => resolve(true) },
+          ],
+          { onDismiss: () => resolve(false) }
+        );
+      });
+
+      if (!consented) {
+        setSyncEnabled(false);
+        return;
+      }
+
       setIsSyncing(true);
-      triggerToast('Synchronizing 254 contacts...');
-      setTimeout(() => {
+      try {
+        // expo-contacts' default export in this SDK is the rewritten API,
+        // whose getContactsAsync throws on purpose (see AddFriendModal.tsx).
+        // Requesting permission works fine on the default export, but /legacy
+        // is what the rest of this app's contacts code already standardized
+        // on, so this stays consistent with that.
+        const Contacts = await import('expo-contacts/legacy');
+        const { status } = await Contacts.requestPermissionsAsync();
+        if (status === 'granted') {
+          await setContactsSyncEnabled(true);
+          setSyncEnabled(true);
+          triggerToast('Contact syncing enabled.');
+        } else {
+          triggerToast('Contacts permission was not granted.');
+        }
+      } catch (e) {
+        console.error('Failed to enable contact syncing:', e);
+        triggerToast('Could not enable contact syncing. Please try again.');
+      } finally {
         setIsSyncing(false);
-        setSyncEnabled(true);
-        triggerToast('Contacts synced successfully!');
-      }, 1500);
+      }
     } else {
+      await setContactsSyncEnabled(false);
       setSyncEnabled(false);
-      triggerToast('Contacts sync disabled.');
+      triggerToast('Contact syncing disabled.');
     }
   };
 
@@ -375,7 +502,18 @@ export default function ProfileScreen() {
         'onboarding_phone',
         'onboarding_avatar',
         'expo_push_token',
+        'onboarding_aura_color',
+        'onboarding_aura_id',
+        'onboarding_upi',
+        'contacts_sync_enabled',
+        'kinlo.hint.firstSplit',
+        'kinlo.hint.firstPersonal',
       ]);
+      // Most kinlo.cache.* keys are per-friend/per-group, so a fixed list
+      // above can't cover them — this sweeps every one so a shared device
+      // never flashes the previous account's numbers before the next
+      // session's first live fetch completes.
+      await clearOfflineCache();
       router.replace('/onboarding/login');
     } catch (e) {
       triggerToast('Failed to log out. Please try again.');
@@ -450,8 +588,60 @@ export default function ProfileScreen() {
     }, 2000);
   };
 
-  const handleDeleteAccountAttempt = () => {
+  const handleDeleteAccountAttempt = async () => {
+    setDeleteConfirmText('');
+    setDeletionPreview(null);
     setIsDeleteBlockOpen(true);
+
+    // Best-effort: the dialog still works without it, just without the
+    // specific counts. Never block opening the deletion prompt on a network
+    // call — a statutory right must not depend on a query succeeding.
+    try {
+      setDeletionPreview(await fetchDeletionPreview());
+    } catch (e) {
+      console.warn('Could not load deletion preview:', e);
+    }
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (isDeleting) return;
+    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') return;
+
+    // Final gate, after the typed confirmation. Deliberately the last thing
+    // between the user and an irreversible action, and worded so the
+    // destructive option is never the reflexive one — 'Keep my account' is
+    // the cancel, and it is what a dismissed dialog resolves to.
+    const confirmed = await new Promise<boolean>((resolve) => {
+      showAlert(
+        'Last chance',
+        'This permanently deletes your account, your personal expenses, your saved receipts and your login.\n\nIt cannot be undone, and we cannot recover it for you afterwards.',
+        [
+          { text: 'Keep my account', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Delete forever', style: 'destructive', onPress: () => resolve(true) },
+        ],
+        { onDismiss: () => resolve(false) }
+      );
+    });
+
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteMyAccount();
+      setIsDeleteBlockOpen(false);
+      // Straight to the start of onboarding: the session is gone, so any
+      // other destination would just bounce off the auth gate.
+      router.replace('/onboarding/login');
+    } catch (e: any) {
+      console.error('Account deletion failed:', e);
+      showAlert(
+        'Could not delete your account',
+        e?.message || 'Something went wrong. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // 4. Subscriptions Manager
@@ -493,24 +683,34 @@ export default function ProfileScreen() {
           backgroundColor: 'rgba(252, 249, 244, 0.72)' 
         }}
       >
-        <View className="flex-row items-center space-x-3">
+        <View className="flex-row items-center gap-3">
           <View className="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/30">
-            <Image source={{ uri: userAvatar }} className="w-full h-full" />
+            <Avatar
+              uri={userAvatar}
+              initials={username.charAt(0).toUpperCase() || undefined}
+              textClassName="text-primary font-bold text-xs"
+            />
           </View>
           <Text className="font-headline-md font-bold text-primary text-xl">Kinlo</Text>
         </View>
-        <TouchableOpacity 
+        <AnimatedPressable 
           onPress={() => triggerToast('No new notifications')}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="notifications-none" size={24} color="#1c1c19" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 120 }}>
-        <Animated.View 
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#004c22" />
+        }
+      >
+        <Animated.View
           style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
-          className="px-5 pt-6 max-w-xl mx-auto w-full space-y-6"
+          className="px-5 pt-6 max-w-xl mx-auto w-full gap-6"
         >
 
           {/* Elena Identity Card */}
@@ -521,9 +721,13 @@ export default function ProfileScreen() {
             <View className="absolute -top-12 -right-12 w-48 h-48 bg-primary/5 rounded-full blur-3xl" />
             <View className="relative mb-4">
               <View className="w-24 h-24 rounded-full border-4 border-white shadow-lg overflow-hidden bg-secondary-container">
-                <Image source={{ uri: userAvatar }} className="w-full h-full" />
+                <Avatar
+                  uri={userAvatar}
+                  initials={username.charAt(0).toUpperCase() || undefined}
+                  textClassName="text-primary font-bold text-3xl"
+                />
               </View>
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => {
                   setTempName(username);
                   setTempEmail(userEmail);
@@ -534,23 +738,23 @@ export default function ProfileScreen() {
                 className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full items-center justify-center border-2 border-white shadow-md active:scale-90"
               >
                 <MaterialIcons name="edit" size={16} color="white" />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             <Text className="font-headline-lg-mobile text-2xl font-bold text-on-surface mb-1">{username || 'Set your name'}</Text>
             <Text className="text-sm text-on-surface-variant mb-1">{userEmail || 'Set your email'}</Text>
             {(userPhone || upiAddress) ? (
-              <View className="items-center mb-5 space-y-1">
+              <View className="items-center mb-5 gap-1">
                 {userPhone ? (
-                  <View className="flex-row items-center space-x-1">
+                  <View className="flex-row items-center gap-1">
                     <MaterialIcons name="phone" size={14} color="#707a6f" />
-                    <Text className="text-xs text-on-surface-variant" style={{ marginLeft: 4 }}>{userPhone}</Text>
+                    <Text className="text-xs text-on-surface-variant">{userPhone}</Text>
                   </View>
                 ) : null}
                 {upiAddress ? (
-                  <View className="flex-row items-center space-x-1">
+                  <View className="flex-row items-center gap-1">
                     <MaterialIcons name="qr-code" size={14} color="#707a6f" />
-                    <Text className="text-xs text-on-surface-variant" style={{ marginLeft: 4 }}>UPI: {upiAddress}</Text>
+                    <Text className="text-xs text-on-surface-variant">UPI: {upiAddress}</Text>
                   </View>
                 ) : null}
               </View>
@@ -559,7 +763,7 @@ export default function ProfileScreen() {
             )}
 
             {/* Horizontal Stats Panels */}
-            <View className="flex-row w-full space-x-4">
+            <View className="flex-row w-full gap-4">
               <View className="flex-1 bg-white/40 border border-outline-variant/35 rounded-2xl py-3 items-center justify-center">
                 <Text className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider mb-0.5">Circles</Text>
                 <Text className="font-headline-md text-xl font-bold text-primary">{circlesCount}</Text>
@@ -568,6 +772,12 @@ export default function ProfileScreen() {
                 <Text className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider mb-0.5">Expenses</Text>
                 <Text className="font-headline-md text-xl font-bold text-primary">{expensesCount}</Text>
               </View>
+              {logStreak > 0 ? (
+                <View className="flex-1 bg-white/40 border border-outline-variant/35 rounded-2xl py-3 items-center justify-center">
+                  <Text className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider mb-0.5">Streak</Text>
+                  <Text className="font-headline-md text-xl font-bold text-primary">🔥 {logStreak}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
 
@@ -583,8 +793,10 @@ export default function ProfileScreen() {
             {balanceLoading ? (
               <View className="bg-primary/5 p-5 rounded-2xl border border-primary/10 items-center mb-5">
                 <Text className="font-label-md text-xs text-on-surface-variant font-semibold">Net Shared Balance</Text>
-                <View className="mt-3">
-                  <ActivityIndicator size="small" color="#004c22" />
+                <Skeleton width={148} height={30} radius={9} style={{ marginTop: 12 }} />
+                <View className="flex-row mt-4">
+                  <Skeleton width={78} height={12} style={{ marginRight: 14 }} />
+                  <Skeleton width={78} height={12} />
                 </View>
               </View>
             ) : balanceError ? (
@@ -594,14 +806,14 @@ export default function ProfileScreen() {
                 <Text className="text-xs text-on-surface-variant mt-1 text-center">
                   This is not the same as being settled up. Check your connection and try again.
                 </Text>
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={loadSettlements}
                   className="flex-row items-center px-4 py-2 rounded-full bg-error/10 mt-3"
                   accessibilityRole="button"
                 >
                   <MaterialIcons name="refresh" size={14} color="#b91c1c" />
                   <Text className="font-bold text-[10px] uppercase tracking-wide text-error ml-1">Retry</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             ) : (
               <>
@@ -609,7 +821,7 @@ export default function ProfileScreen() {
                   <Text className="font-label-md text-xs text-on-surface-variant font-semibold">Net Shared Balance</Text>
                   <Text className={`text-3xl font-bold mt-1 ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{netBalance >= 0 ? '+' : '-'}₹{Math.abs(netBalance).toFixed(2)}</Text>
 
-                  <View className={`flex-row items-center px-3 py-1 rounded-full space-x-1 mt-3 ${netBalance >= 0 ? 'bg-[#DCFCE7]' : 'bg-error/10'}`}>
+                  <View className={`flex-row items-center px-3 py-1 rounded-full gap-1 mt-3 ${netBalance >= 0 ? 'bg-[#DCFCE7]' : 'bg-error/10'}`}>
                     <MaterialIcons name={netBalance >= 0 ? 'check-circle' : 'warning'} size={14} color={netBalance >= 0 ? '#004c22' : '#b91c1c'} />
                     <Text className={`font-bold text-[10px] uppercase tracking-wide ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{netBalance >= 0 ? 'You are Net Owed' : 'You Owe Net'}</Text>
                   </View>
@@ -639,77 +851,115 @@ export default function ProfileScreen() {
               Enterprise Configuration
             </Text>
 
-            <View className="space-y-4">
+            <View className="gap-4">
               {/* Menu Row 1: Payments & Wallets */}
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsPaymentsOpen(true)}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="account-balance" size={20} color="#004c22" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Payments & Wallets</Text>
                     <Text className="text-xs text-on-surface-variant">Bank feeds Plaid, Credit Cards, UPI</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
-              </TouchableOpacity>
+              </AnimatedPressable>
 
               {/* Menu Row 2: Security & Privacy */}
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsSecurityOpen(true)}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-[#dcfce7] items-center justify-center">
                     <MaterialIcons name="verified-user" size={20} color="#004c22" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Security & Privacy</Text>
                     <Text className="text-xs text-on-surface-variant">2FA setup, FaceID Lock, Active sessions</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
-              </TouchableOpacity>
+              </AnimatedPressable>
 
               {/* Menu Row 3: Data & Export */}
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsDataOpen(true)}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="folder-zip" size={20} color="#004c22" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Data & Export Compliance</Text>
                     <Text className="text-xs text-on-surface-variant">PDF exporter, Delete Account (GDPR)</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
-              </TouchableOpacity>
+              </AnimatedPressable>
+
+              {/* Menu Row: Legal. Both stores require the privacy policy to be
+                  reachable from inside the app, not only from the store
+                  listing — and the login-screen link is gone once you are
+                  signed in, so it needs a permanent home here too. */}
+              <AnimatedPressable
+                onPress={() => router.push('/legal/privacy')}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="policy" size={20} color="#004c22" />
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Privacy Policy</Text>
+                    <Text className="text-xs text-on-surface-variant">What we collect and why</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                onPress={() => router.push('/legal/terms')}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="gavel" size={20} color="#004c22" />
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Terms of Service</Text>
+                    <Text className="text-xs text-on-surface-variant">The agreement you signed up under</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+              </AnimatedPressable>
 
               {/* Menu Row 4: Subscriptions */}
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsPlanOpen(true)}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-[#fef3c7] items-center justify-center">
                     <MaterialIcons name="stars" size={20} color="#d97706" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Kinlo Gold Status</Text>
                     <Text className="text-xs text-on-surface-variant">OCR scan targets, Advanced Bento tiers</Text>
                   </View>
                 </View>
-                <View className="flex-row items-center space-x-1">
+                <View className="flex-row items-center gap-1">
                   <View className={`px-2 py-0.5 rounded-full ${userPlan === 'gold' ? 'bg-[#DCFCE7]' : 'bg-[#e5e7eb]'}`}>
                     <Text className={`font-bold text-[9px] uppercase tracking-wider ${userPlan === 'gold' ? 'text-primary' : 'text-on-surface-variant'}`}>
                       {userPlan === 'gold' ? 'Active' : 'Basic'}
@@ -717,31 +967,53 @@ export default function ProfileScreen() {
                   </View>
                   <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
               {/* Menu Row 5: Support */}
-              <TouchableOpacity 
+              <AnimatedPressable
                 onPress={() => setIsSupportOpen(true)}
                 activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3.5"
+                className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="contact-support" size={20} color="#004c22" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Help & Support</Text>
                     <Text className="text-xs text-on-surface-variant">FAQ sheets, Bug reporter, Health logs</Text>
                   </View>
                 </View>
-                <View className="flex-row items-center space-x-2">
-                  <View className="flex-row items-center space-x-1 bg-[#dcfce7] px-2 py-0.5 rounded-full">
+                <View className="flex-row items-center gap-2">
+                  <View className="flex-row items-center gap-1 bg-[#dcfce7] px-2 py-0.5 rounded-full">
                     <View className="w-1.5 h-1.5 rounded-full bg-primary" />
                     <Text className="text-primary font-bold text-[9px] uppercase tracking-wide">Pulsing Health</Text>
                   </View>
                   <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
+
+              {/* Menu Row 6: Personal Spending — a route push, not a local
+                  modal like the five rows above it, since a scan/list/detail
+                  flow is substantial enough to want its own route group
+                  (mirrors app/expense/, app/group/) rather than another
+                  full-screen Modal defined inline in this file. */}
+              <AnimatedPressable
+                onPress={() => router.push('/finance')}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3.5"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="document-scanner" size={20} color="#004c22" />
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Personal Spending</Text>
+                    <Text className="text-xs text-on-surface-variant">Scan a payment screenshot, track your own spends</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+              </AnimatedPressable>
             </View>
           </View>
 
@@ -754,17 +1026,17 @@ export default function ProfileScreen() {
               Local Preferences
             </Text>
 
-            <View className="space-y-4">
-              <TouchableOpacity 
+            <View className="gap-4">
+              <AnimatedPressable 
                 onPress={handleTogglePush}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="notifications-active" size={20} color="#004c22" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Push Alerts</Text>
                     <Text className="text-xs text-on-surface-variant">Send transaction updates</Text>
                   </View>
@@ -774,18 +1046,18 @@ export default function ProfileScreen() {
                 }`}>
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={handleToggleDarkMode}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="dark-mode" size={20} color="#004c22" />
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Appearance</Text>
                     <Text className="text-xs text-on-surface-variant">Simulate dark theme</Text>
                   </View>
@@ -795,14 +1067,14 @@ export default function ProfileScreen() {
                 }`}>
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
-              <TouchableOpacity 
+              <AnimatedPressable
                 onPress={handleToggleSync}
                 activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3"
+                className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
               >
-                <View className="flex-row items-center space-x-4">
+                <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     {isSyncing ? (
                       <ActivityIndicator size="small" color="#004c22" />
@@ -810,7 +1082,7 @@ export default function ProfileScreen() {
                       <MaterialIcons name="import-contacts" size={20} color="#004c22" />
                     )}
                   </View>
-                  <View style={{ marginLeft: 6 }}>
+                  <View>
                     <Text className="font-semibold text-base text-on-surface">Contacts Syncing</Text>
                     <Text className="text-xs text-on-surface-variant">Sync phonebook friends</Text>
                   </View>
@@ -820,21 +1092,42 @@ export default function ProfileScreen() {
                 }`}>
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                onPress={handleToggleAutoScan}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="document-scanner" size={20} color="#004c22" />
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Auto-scan screenshots</Text>
+                    <Text className="text-xs text-on-surface-variant">Read amount and merchant automatically</Text>
+                  </View>
+                </View>
+                <View className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${
+                  autoScanReceipts ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
+                }`}>
+                  <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </View>
+              </AnimatedPressable>
             </View>
           </View>
 
 
 
           {/* Log Out */}
-          <View className="mt-8 items-center space-y-3 pb-8">
-            <TouchableOpacity 
+          <View className="mt-8 items-center gap-3 pb-8">
+            <AnimatedPressable 
               onPress={handleLogOut}
-              className="flex-row items-center space-x-2 py-3 px-6 rounded-full border border-error bg-error/5 active:scale-95"
+              className="flex-row items-center gap-2 py-3 px-6 rounded-full border border-error bg-error/5 active:scale-95"
             >
               <MaterialIcons name="logout" size={18} color={COLORS.error} />
-              <Text className="text-error font-bold text-sm" style={{ marginLeft: 6 }}>Log Out</Text>
-            </TouchableOpacity>
+              <Text className="text-error font-bold text-sm">Log Out</Text>
+            </AnimatedPressable>
             <Text className="text-[10px] text-outline font-bold uppercase tracking-wider">
               Version 2.4.0 (Organic Build)
             </Text>
@@ -865,8 +1158,8 @@ export default function ProfileScreen() {
             <Text className="font-headline text-lg font-bold text-on-surface mb-2">Edit Identity</Text>
             <Text className="text-sm text-on-surface-variant mb-6">Modify your profile details and pick avatar icons</Text>
 
-            <View className="space-y-4 mb-6">
-              <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3" style={{ marginBottom: 12 }}>
+            <View className="gap-4 mb-6">
+              <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center gap-3" style={{ marginBottom: 12 }}>
                 <MaterialIcons name="person" size={20} color="#707a6f" />
                 <TextInput
                   value={tempName}
@@ -874,11 +1167,11 @@ export default function ProfileScreen() {
                   placeholder="Full Name"
                   placeholderTextColor="rgba(64, 73, 64, 0.4)"
                   className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
-                  style={{ marginLeft: 6 }}
+                 
                 />
               </View>
 
-              <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
+              <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center gap-3">
                 <MaterialIcons name="email" size={20} color="#707a6f" />
                 <TextInput
                   value={tempEmail}
@@ -887,13 +1180,13 @@ export default function ProfileScreen() {
                   placeholderTextColor="rgba(64, 73, 64, 0.4)"
                   keyboardType="email-address"
                   className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
-                  style={{ marginLeft: 6 }}
+                 
                 />
               </View>
 
               <View style={{ marginTop: 12 }}>
                 <Text className="text-[10px] text-outline font-bold uppercase tracking-wider mb-2 pl-1">Phone Number (Optional)</Text>
-                <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
+                <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center gap-3">
                   <MaterialIcons name="phone" size={20} color="#707a6f" />
                   <TextInput
                     value={tempPhone}
@@ -902,7 +1195,7 @@ export default function ProfileScreen() {
                     placeholderTextColor="rgba(64, 73, 64, 0.4)"
                     keyboardType="phone-pad"
                     className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
-                    style={{ marginLeft: 6 }}
+                   
                   />
                 </View>
                 <Text className="text-[10px] text-on-surface-variant mt-1.5 pl-1">Add your number so friends can find you</Text>
@@ -910,7 +1203,7 @@ export default function ProfileScreen() {
 
               <View style={{ marginTop: 12 }}>
                 <Text className="text-[10px] text-outline font-bold uppercase tracking-wider mb-2 pl-1">UPI Address (Optional)</Text>
-                <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
+                <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center gap-3">
                   <MaterialIcons name="qr-code" size={20} color="#707a6f" />
                   <TextInput
                     value={tempUpi}
@@ -920,7 +1213,7 @@ export default function ProfileScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
-                    style={{ marginLeft: 6 }}
+                   
                   />
                 </View>
                 <Text className="text-[10px] text-on-surface-variant mt-1.5 pl-1">For direct settling up via UPI apps</Text>
@@ -932,8 +1225,8 @@ export default function ProfileScreen() {
               {AVATARS.map((av, idx) => {
                 const isActive = userAvatar === av;
                 return (
-                  <TouchableOpacity
-                    key={idx}
+                  <AnimatedListItem key={idx} index={idx}>
+                  <AnimatedPressable
                     onPress={async () => {
                       setUserAvatar(av);
                       try {
@@ -950,24 +1243,25 @@ export default function ProfileScreen() {
                         <MaterialIcons name="check" size={12} color="white" />
                       </View>
                     )}
-                  </TouchableOpacity>
+                  </AnimatedPressable>
+                  </AnimatedListItem>
                 );
               })}
             </View>
 
             <View className="flex-row gap-3">
-              <TouchableOpacity 
+              <AnimatedPressable 
                 onPress={() => setIsEditOpen(false)}
                 className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"
               >
                 <Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
+              </AnimatedPressable>
+              <AnimatedPressable 
                 onPress={handleSaveProfile}
                 className="flex-1 h-12 bg-primary rounded-xl items-center justify-center shadow-sm"
               >
                 <Text className="text-white font-semibold text-sm">Save Changes</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
             </View>
           </View>
@@ -984,9 +1278,9 @@ export default function ProfileScreen() {
       >
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
           <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-            <TouchableOpacity onPress={() => setIsPaymentsOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
+            <AnimatedPressable onPress={() => setIsPaymentsOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
+            </AnimatedPressable>
             <Text className="font-headline text-lg font-bold text-primary">Payments & Wallets</Text>
             <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
               <MaterialIcons name="account-balance-wallet" size={20} color="#004c22" />
@@ -994,31 +1288,31 @@ export default function ProfileScreen() {
           </View>
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="max-w-xl mx-auto w-full space-y-6">
-              <View className="p-6 rounded-3xl space-y-4 relative" style={styles.liquidGlass}>
+            <View className="max-w-xl mx-auto w-full gap-6">
+              <View className="p-6 rounded-3xl gap-4 relative" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Open Banking Feeds (Plaid)</Text>
                 {banks.length === 0 && <NotBuiltYet label="Link a bank account to auto-settle balances." />}
-                <View className="space-y-3" style={{ opacity: 0.4 }} pointerEvents="none">
+                <View className="gap-3" style={{ opacity: 0.4 }} pointerEvents="none">
                   {banks.map(b => (
                     <View key={b.id} className="p-4 bg-white/50 border border-outline-variant/20 rounded-2xl flex-row items-center justify-between">
-                      <View className="flex-row items-center space-x-3">
+                      <View className="flex-row items-center gap-3">
                         <View className="w-10 h-10 bg-secondary-container rounded-xl items-center justify-center">
                           <MaterialIcons name="account-balance" size={18} color="#004c22" />
                         </View>
-                        <View style={{ marginLeft: 6 }}>
+                        <View>
                           <Text className="font-semibold text-sm text-on-surface">{b.bankName}</Text>
                           <Text className="text-[10px] text-on-surface-variant mt-0.5">{b.accountType} • ₹{b.balance.toFixed(2)}</Text>
                         </View>
                       </View>
                       <View className="items-end">
-                        <TouchableOpacity 
+                        <AnimatedPressable 
                           onPress={() => handleToggleBankAutoSettle(b.id, b.bankName)}
                           className={`w-10 h-5 rounded-full p-0.5 flex-row items-center transition-colors ${
                             b.autoSettle ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
                           }`}
                         >
                           <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
-                        </TouchableOpacity>
+                        </AnimatedPressable>
                         <Text className="text-[8px] text-outline font-bold uppercase tracking-wider mt-1">Auto-Settle</Text>
                       </View>
                     </View>
@@ -1029,17 +1323,17 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
-              <View className="p-6 rounded-3xl space-y-4 relative" style={styles.liquidGlass}>
+              <View className="p-6 rounded-3xl gap-4 relative" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Payment Methods Ledger</Text>
                 {cards.length === 0 && <NotBuiltYet label="Saved cards, UPI IDs, and wallets will appear here." />}
-                <View className="space-y-3" style={{ opacity: 0.4 }} pointerEvents="none">
+                <View className="gap-3" style={{ opacity: 0.4 }} pointerEvents="none">
                   {cards.map(c => (
                     <View key={c.id} className="p-3 bg-white/40 border border-outline-variant/20 rounded-2xl flex-row items-center justify-between">
-                      <View className="flex-row items-center space-x-3">
+                      <View className="flex-row items-center gap-3">
                         <View className="w-9 h-9 bg-surface rounded-xl items-center justify-center">
                           <MaterialIcons name={c.icon as any} size={16} color="#707a6f" />
                         </View>
-                        <View style={{ marginLeft: 6 }}>
+                        <View>
                           <Text className="font-semibold text-sm text-on-surface">{c.label}</Text>
                           <Text className="text-[10px] text-on-surface-variant mt-0.5">{c.detail}</Text>
                         </View>
@@ -1052,10 +1346,10 @@ export default function ProfileScreen() {
                     </View>
                   ))}
                 </View>
-                <TouchableOpacity onPress={() => triggerToast('Stripe Bank selector connection mock')} className="w-full h-11 bg-primary/10 border border-primary/20 rounded-2xl flex-row items-center justify-center space-x-2" style={{ opacity: 0.4 }} disabled>
+                <AnimatedPressable onPress={() => triggerToast('Stripe Bank selector connection mock')} className="w-full h-11 bg-primary/10 border border-primary/20 rounded-2xl flex-row items-center justify-center gap-2" style={{ opacity: 0.4 }} disabled>
                   <MaterialIcons name="add" size={16} color="#004c22" />
                   <Text className="text-primary font-bold text-xs uppercase tracking-wider">Link Bank / Plaid Connect</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
                 <View className="absolute top-4 right-4 bg-amber/15 border border-amber/30 px-3 py-1 rounded-full z-10">
                   <Text className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d97706' }}>Coming Soon</Text>
                 </View>
@@ -1064,7 +1358,7 @@ export default function ProfileScreen() {
               {/* Amounts render as INR everywhere in the app, so this panel stays
                   disabled until real conversion is wired up. Letting the user pick
                   USD here changed nothing but still said it had. */}
-              <View className="p-6 rounded-3xl space-y-4 relative" style={styles.liquidGlass}>
+              <View className="p-6 rounded-3xl gap-4 relative" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Multi-Currency & Exchange settings</Text>
                 <NotBuiltYet label="All amounts are shown in INR for now." />
                 <View style={{ opacity: 0.4 }} pointerEvents="none">
@@ -1073,7 +1367,7 @@ export default function ProfileScreen() {
                       <Text className="font-semibold text-sm text-on-surface">Default Local Currency</Text>
                       <Text className="text-xs text-on-surface-variant">Default values applied to splits</Text>
                     </View>
-                    <View className="bg-surface-container-high px-4 h-9 rounded-xl flex-row items-center space-x-2 border border-outline-variant/30">
+                    <View className="bg-surface-container-high px-4 h-9 rounded-xl flex-row items-center gap-2 border border-outline-variant/30">
                       <Text className="text-primary font-bold text-xs uppercase tracking-wide">{currency}</Text>
                       <MaterialIcons name="keyboard-arrow-down" size={16} color="#004c22" />
                     </View>
@@ -1109,9 +1403,9 @@ export default function ProfileScreen() {
       >
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
           <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-            <TouchableOpacity onPress={() => setIsSecurityOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
+            <AnimatedPressable onPress={() => setIsSecurityOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
+            </AnimatedPressable>
             <Text className="font-headline text-lg font-bold text-primary">Security Center</Text>
             <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
               <MaterialIcons name="verified-user" size={20} color="#004c22" />
@@ -1119,40 +1413,40 @@ export default function ProfileScreen() {
           </View>
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="max-w-xl mx-auto w-full space-y-6">
-              <View className="p-6 rounded-3xl space-y-4" style={styles.liquidGlass}>
+            <View className="max-w-xl mx-auto w-full gap-6">
+              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center space-x-3">
+                  <View className="flex-row items-center gap-3">
                     <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                       <MaterialIcons name="phonelink-lock" size={20} color="#004c22" />
                     </View>
-                    <View style={{ marginLeft: 6 }}>
+                    <View>
                       <Text className="font-semibold text-base text-on-surface">Authenticator App</Text>
                       <Text className="text-xs text-on-surface-variant">Google Authenticator / 1Password</Text>
                     </View>
                   </View>
-                  <TouchableOpacity onPress={handleToggleMfa} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${mfaEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}>
+                  <AnimatedPressable onPress={handleToggleMfa} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${mfaEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}>
                     <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
 
                 {isMfaSetupOpen && (
-                  <View className="bg-primary/5 p-4 rounded-2xl border border-primary/10 space-y-4 mt-3">
+                  <View className="bg-primary/5 p-4 rounded-2xl border border-primary/10 gap-4 mt-3">
                     <Text className="text-xs font-bold text-primary uppercase tracking-wide">Setup Authenticator App</Text>
                     <Text className="text-xs text-on-surface-variant leading-relaxed">1. Copy the secret key below and import it into Google Authenticator.</Text>
                     <View className="p-3 bg-white border border-outline-variant/30 rounded-xl flex-row justify-between items-center">
                       <Text className="font-bold text-sm text-primary select-all">ZENS-PLIT-MIND-FUL9</Text>
-                      <TouchableOpacity onPress={handleCopySecretKey} className="p-1"><MaterialIcons name="content-copy" size={16} color="#004c22" /></TouchableOpacity>
+                      <AnimatedPressable onPress={handleCopySecretKey} className="p-1"><MaterialIcons name="content-copy" size={16} color="#004c22" /></AnimatedPressable>
                     </View>
                     <Text className="text-xs text-on-surface-variant leading-relaxed">2. Input the generated 6-digit verification code below to activate.</Text>
-                    <View className="flex-row space-x-2 items-center justify-center">
+                    <View className="flex-row gap-2 items-center justify-center">
                       <TextInput value={mfaVerifyCode} onChangeText={setMfaVerifyCode} placeholder="Enter code (123456)" placeholderTextColor="rgba(64, 73, 64, 0.4)" keyboardType="numeric" maxLength={6} className="p-3 bg-white border border-outline-variant/30 rounded-xl flex-1 text-center font-bold text-base focus:outline-none" />
-                      <TouchableOpacity onPress={handleVerifyMfaCode} className="bg-primary px-5 h-[46px] rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-bold text-xs uppercase tracking-wide">Verify</Text></TouchableOpacity>
+                      <AnimatedPressable onPress={handleVerifyMfaCode} className="bg-primary px-5 h-[46px] rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-bold text-xs uppercase tracking-wide">Verify</Text></AnimatedPressable>
                     </View>
                   </View>
                 )}
 
-                <TouchableOpacity 
+                <AnimatedPressable 
                   onPress={() => {
                     const next = !backupSmsEnabled;
                     setBackupSmsEnabled(next);
@@ -1170,26 +1464,26 @@ export default function ProfileScreen() {
                   }`}>
                     <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
                   </View>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
 
-              <View className="p-6 rounded-3xl space-y-4" style={styles.liquidGlass}>
+              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Biometrics & Directory Privacy</Text>
                 
                 <View className="flex-row items-center justify-between py-2 border-b border-outline-variant/20 pb-4">
-                  <View className="flex-row items-center space-x-3">
+                  <View className="flex-row items-center gap-3">
                     <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                       <MaterialIcons name="fingerprint" size={20} color="#004c22" />
                     </View>
-                    <View style={{ marginLeft: 6 }}>
+                    <View>
                       <Text className="font-semibold text-base text-on-surface">Biometric Unlock</Text>
                       <Text className="text-xs text-on-surface-variant">Lock with FaceID / TouchID lock scanner</Text>
                     </View>
                   </View>
-                  <TouchableOpacity onPress={handleToggleBiometrics} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${biometricsEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}><View className="w-4 h-4 bg-white rounded-full shadow-sm" /></TouchableOpacity>
+                  <AnimatedPressable onPress={handleToggleBiometrics} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${biometricsEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}><View className="w-4 h-4 bg-white rounded-full shadow-sm" /></AnimatedPressable>
                 </View>
 
-                <TouchableOpacity 
+                <AnimatedPressable 
                   onPress={() => {
                     const next = !findPhoneEnabled;
                     setFindPhoneEnabled(next);
@@ -1207,9 +1501,9 @@ export default function ProfileScreen() {
                   }`}>
                     <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
                   </View>
-                </TouchableOpacity>
+                </AnimatedPressable>
 
-                <TouchableOpacity 
+                <AnimatedPressable 
                   onPress={() => {
                     const next = !searchDirectoryEnabled;
                     setSearchDirectoryEnabled(next);
@@ -1227,7 +1521,7 @@ export default function ProfileScreen() {
                   }`}>
                     <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
                   </View>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
 
               <View className="p-6 rounded-3xl relative" style={styles.liquidGlass}>
@@ -1237,26 +1531,26 @@ export default function ProfileScreen() {
                     <Text className="text-[10px] text-on-surface-variant uppercase font-bold mt-0.5">Logged in devices</Text>
                   </View>
                   {sessions.length > 1 && (
-                    <TouchableOpacity onPress={() => setIsRevokeAllConfirmOpen(true)} className="bg-error/5 border border-error/20 px-3 py-1 rounded-full active:scale-95" style={{ opacity: 0.4 }} disabled>
+                    <AnimatedPressable onPress={() => setIsRevokeAllConfirmOpen(true)} className="bg-error/5 border border-error/20 px-3 py-1 rounded-full active:scale-95" style={{ opacity: 0.4 }} disabled>
                       <Text className="text-error font-semibold text-[10px] uppercase tracking-wide">Revoke Others</Text>
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   )}
                 </View>
                 {sessions.length === 0 && <NotBuiltYet label="Device and session tracking isn't wired up yet." />}
-                <View className="space-y-4 pt-2" style={{ opacity: 0.4 }} pointerEvents="none">
+                <View className="gap-4 pt-2" style={{ opacity: 0.4 }} pointerEvents="none">
                   {sessions.map((sess) => (
                     <View key={sess.id} className="p-3.5 bg-white/40 border border-outline-variant/20 rounded-2xl flex-row items-center justify-between" style={{ marginBottom: 12 }}>
-                      <View className="flex-row items-center space-x-3 flex-1">
+                      <View className="flex-row items-center gap-3 flex-1">
                         <View className="w-10 h-10 bg-surface rounded-xl items-center justify-center">
                           <MaterialIcons name={sess.device.includes('iPhone') ? 'phone-iphone' : sess.device.includes('MacBook') ? 'laptop-mac' : 'language'} size={20} color="#404940" />
                         </View>
-                        <View className="flex-1 mr-2" style={{ marginLeft: 8 }}>
+                        <View className="flex-1 mr-2">
                           <Text className="font-semibold text-on-surface text-sm">{sess.device} · {sess.os}</Text>
                           <Text className="text-[10px] text-on-surface-variant mt-0.5">{sess.location} • {sess.lastActive}</Text>
                         </View>
                       </View>
                       {!sess.isActiveNow ? (
-                        <TouchableOpacity onPress={() => handleRevokeSession(sess.id, sess.device)} className="w-8 h-8 rounded-full bg-error/5 border border-error/20 items-center justify-center active:scale-90"><MaterialIcons name="delete-outline" size={16} color="#b91c1c" /></TouchableOpacity>
+                        <AnimatedPressable onPress={() => handleRevokeSession(sess.id, sess.device)} className="w-8 h-8 rounded-full bg-error/5 border border-error/20 items-center justify-center active:scale-90"><MaterialIcons name="delete-outline" size={16} color="#b91c1c" /></AnimatedPressable>
                       ) : (
                         <View className="bg-primary/10 px-2 py-0.5 rounded-full"><Text className="text-primary font-bold text-[9px] uppercase tracking-wider">This device</Text></View>
                       )}
@@ -1281,9 +1575,9 @@ export default function ProfileScreen() {
       >
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
           <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-            <TouchableOpacity onPress={() => setIsDataOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
+            <AnimatedPressable onPress={() => setIsDataOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
+            </AnimatedPressable>
             <Text className="font-headline text-lg font-bold text-primary">Data & Compliance</Text>
             <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
               <MaterialIcons name="folder-zip" size={20} color="#004c22" />
@@ -1291,14 +1585,14 @@ export default function ProfileScreen() {
           </View>
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="max-w-xl mx-auto w-full space-y-6">
-              <View className="p-6 rounded-3xl space-y-6" style={styles.liquidGlass}>
+            <View className="max-w-xl mx-auto w-full gap-6">
+              <View className="p-6 rounded-3xl gap-6" style={styles.liquidGlass}>
                 <View>
                   <Text className="font-headline text-base font-bold text-on-surface">Mindful Statement Exporter</Text>
                   <Text className="text-xs text-on-surface-variant mt-0.5">Download split ledgers in secure audit formats</Text>
                 </View>
 
-                <View className="space-y-2">
+                <View className="gap-2">
                   <Text className="text-[10px] text-outline font-bold uppercase tracking-wider pl-1">Date Range</Text>
                   <View className="flex-row flex-wrap justify-between">
                     {[
@@ -1306,46 +1600,50 @@ export default function ProfileScreen() {
                       { id: '6months', label: '6 Months' },
                       { id: '1year', label: 'Past 1 Year' },
                       { id: 'all', label: 'All Time' },
-                    ].map(item => {
+                    ].map((item, itemIdx) => {
                       const isActive = exportRange === item.id;
                       return (
-                        <TouchableOpacity key={item.id} onPress={() => setExportRange(item.id)} className="px-3.5 py-2.5 rounded-xl border mb-2 w-[48%] items-center" style={{ backgroundColor: isActive ? 'rgba(202, 234, 214, 0.2)' : 'white', borderColor: isActive ? COLORS.primary : 'rgba(255,255,255,0.4)', borderWidth: isActive ? 2 : 1 }}><Text className={`text-xs font-semibold ${isActive ? 'text-primary font-bold' : 'text-on-surface'}`}>{item.label}</Text></TouchableOpacity>
+                        <AnimatedListItem key={item.id} index={itemIdx}>
+                        <AnimatedPressable onPress={() => setExportRange(item.id)} className="px-3.5 py-2.5 rounded-xl border mb-2 w-[48%] items-center" style={{ backgroundColor: isActive ? 'rgba(202, 234, 214, 0.2)' : 'white', borderColor: isActive ? COLORS.primary : 'rgba(255,255,255,0.4)', borderWidth: isActive ? 2 : 1 }}><Text className={`text-xs font-semibold ${isActive ? 'text-primary font-bold' : 'text-on-surface'}`}>{item.label}</Text></AnimatedPressable>
+                        </AnimatedListItem>
                       );
                     })}
                   </View>
                 </View>
 
-                <View className="space-y-2">
+                <View className="gap-2">
                   <Text className="text-[10px] text-outline font-bold uppercase tracking-wider pl-1">Document Format</Text>
-                  <View className="flex-row justify-between space-x-3">
+                  <View className="flex-row justify-between gap-3">
                     {[
                       { id: 'pdf', label: 'PDF Statement' },
                       { id: 'csv', label: 'CSV Spreadsheet' },
                       { id: 'json', label: 'Raw JSON Feed' },
-                    ].map(item => {
+                    ].map((item, itemIdx) => {
                       const isActive = exportFormat === item.id;
                       return (
-                        <TouchableOpacity key={item.id} onPress={() => setExportFormat(item.id)} className="flex-1 py-3 rounded-xl border items-center" style={{ backgroundColor: isActive ? 'rgba(202, 234, 214, 0.2)' : 'white', borderColor: isActive ? COLORS.primary : 'rgba(255,255,255,0.4)', borderWidth: isActive ? 2 : 1 }}><Text className={`text-xs font-semibold ${isActive ? 'text-primary font-bold' : 'text-on-surface'}`}>{item.label}</Text></TouchableOpacity>
+                        <AnimatedListItem key={item.id} index={itemIdx}>
+                        <AnimatedPressable onPress={() => setExportFormat(item.id)} className="flex-1 py-3 rounded-xl border items-center" style={{ backgroundColor: isActive ? 'rgba(202, 234, 214, 0.2)' : 'white', borderColor: isActive ? COLORS.primary : 'rgba(255,255,255,0.4)', borderWidth: isActive ? 2 : 1 }}><Text className={`text-xs font-semibold ${isActive ? 'text-primary font-bold' : 'text-on-surface'}`}>{item.label}</Text></AnimatedPressable>
+                        </AnimatedListItem>
                       );
                     })}
                   </View>
                 </View>
 
-                <TouchableOpacity onPress={handleExportStatement} disabled={isExporting} className="w-full h-13 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95 duration-100">
+                <AnimatedPressable onPress={handleExportStatement} disabled={isExporting} className="w-full h-13 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95 duration-100">
                   {isExporting ? <ActivityIndicator size="small" color="white" /> : (
                     <>
                       <MaterialIcons name="cloud-download" size={18} color="white" />
-                      <Text className="text-white font-bold text-sm" style={{ marginLeft: 6 }}>Export Statement</Text>
+                      <Text className="text-white font-bold text-sm">Export Statement</Text>
                     </>
                   )}
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
 
-              <View className="p-6 rounded-3xl space-y-4" style={styles.liquidGlass}>
+              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Data Erasure Right (GDPR/CCPA)</Text>
                 <Text className="text-xs text-on-surface-variant leading-relaxed">Complying with global financial regulations, you have the right to be forgotten. Wiping your profile erases personal data, anonymizing splits.</Text>
                 <View className="w-full h-px bg-outline-variant/30 my-2" />
-                <TouchableOpacity onPress={handleDeleteAccountAttempt} className="w-full h-12 bg-red-100 border border-red-300 rounded-2xl flex-row items-center justify-center active:scale-95"><MaterialIcons name="delete-forever" size={18} color={COLORS.error} /><Text className="text-error font-bold text-xs uppercase tracking-wider" style={{ marginLeft: 6 }}>Delete Account & Data</Text></TouchableOpacity>
+                <AnimatedPressable onPress={handleDeleteAccountAttempt} className="w-full h-12 bg-red-100 border border-red-300 rounded-2xl flex-row items-center justify-center active:scale-95"><MaterialIcons name="delete-forever" size={18} color={COLORS.error} /><Text className="text-error font-bold text-xs uppercase tracking-wider">Delete Account & Data</Text></AnimatedPressable>
               </View>
             </View>
           </ScrollView>
@@ -1361,9 +1659,9 @@ export default function ProfileScreen() {
       >
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
           <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-            <TouchableOpacity onPress={() => setIsPlanOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
+            <AnimatedPressable onPress={() => setIsPlanOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
+            </AnimatedPressable>
             <Text className="font-headline text-lg font-bold text-primary">Gold Premium</Text>
             <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
               <MaterialIcons name="stars" size={20} color="#d97706" />
@@ -1371,7 +1669,7 @@ export default function ProfileScreen() {
           </View>
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="max-w-xl mx-auto w-full space-y-6">
+            <View className="max-w-xl mx-auto w-full gap-6">
               <View className="p-6 rounded-3xl relative overflow-hidden items-center text-center" style={[styles.liquidGlass, { borderWidth: 1, borderColor: '#d97706' }]}>
                 <View className="absolute -top-12 -right-12 w-48 h-48 bg-[#fef3c7]/40 rounded-full blur-3xl" />
                 <View className="w-16 h-16 rounded-full bg-[#fef3c7] items-center justify-center mb-3">
@@ -1385,42 +1683,30 @@ export default function ProfileScreen() {
                     <Text className="text-[10px] text-outline font-bold uppercase tracking-wider">Active Plan</Text>
                     <Text className="text-base font-bold text-on-surface mt-0.5">{userPlan === 'gold' ? 'Gold Monthly Pro' : 'Kinlo Basic Free'}</Text>
                   </View>
-                  <TouchableOpacity onPress={handleTogglePlan} className="bg-primary px-4 py-2.5 rounded-xl shadow-sm active:scale-95"><Text className="text-white font-bold text-xs uppercase tracking-wide">{userPlan === 'gold' ? 'Downgrade' : 'Upgrade (₹399)'}</Text></TouchableOpacity>
+                  <AnimatedPressable onPress={handleTogglePlan} className="bg-primary px-4 py-2.5 rounded-xl shadow-sm active:scale-95"><Text className="text-white font-bold text-xs uppercase tracking-wide">{userPlan === 'gold' ? 'Downgrade' : 'Upgrade (₹399)'}</Text></AnimatedPressable>
                 </View>
               </View>
 
-              <View className="p-6 rounded-3xl space-y-4" style={styles.liquidGlass}>
+              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Gold Features Bento Grid</Text>
                 <View className="flex-row justify-between flex-wrap">
                   {[
-                    { id: '1', title: 'Receipt OCR', icon: 'document-scanner', color: '#004c22', desc: 'Scan items dynamically' },
+                    { id: '1', title: 'Receipt OCR', icon: 'document-scanner', color: '#004c22', desc: 'Included free — see Personal Spending' },
                     { id: '2', title: 'Zero Fees', icon: 'money-off', color: '#166534', desc: 'Zero cost on cashouts' },
                     { id: '3', title: 'Bento Insights', icon: 'auto-graph', color: '#27633b', desc: 'Rich analytics filters' },
                     { id: '4', title: 'Infinite Circles', icon: 'all-inclusive', color: COLORS.amber, desc: 'Uncapped group sizes' },
-                  ].map(f => (
-                    <View key={f.id} className="p-4 bg-white/50 border border-outline-variant/20 rounded-2xl w-[48%] mb-4 space-y-1">
+                  ].map((f, fIdx) => (
+                    <AnimatedListItem key={f.id} index={fIdx}>
+                    <View className="p-4 bg-white/50 border border-outline-variant/20 rounded-2xl w-[48%] mb-4 gap-1">
                       <MaterialIcons name={f.icon as any} size={18} color={f.color} />
                       <Text className="font-bold text-xs text-on-surface">{f.title}</Text>
                       <Text className="text-[9px] text-outline font-medium">{f.desc}</Text>
                     </View>
+                    </AnimatedListItem>
                   ))}
                 </View>
               </View>
 
-              <View className="p-6 rounded-3xl" style={styles.liquidGlass}>
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center space-x-3">
-                    <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
-                      <MaterialIcons name="document-scanner" size={20} color="#004c22" />
-                    </View>
-                    <View style={{ marginLeft: 6 }}>
-                      <Text className="font-semibold text-base text-on-surface">Receipt OCR Scanning</Text>
-                      <Text className="text-xs text-on-surface-variant">Auto-scan and allocate items upon upload</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity onPress={() => { const next = !receiptOcr; setReceiptOcr(next); triggerToast(next ? 'Receipt OCR scan activated!' : 'OCR scan disabled.'); }} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${receiptOcr ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}><View className="w-4 h-4 bg-white rounded-full shadow-sm" /></TouchableOpacity>
-                </View>
-              </View>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -1435,78 +1721,156 @@ export default function ProfileScreen() {
       >
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
           <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-            <TouchableOpacity onPress={() => setIsSupportOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
+            <AnimatedPressable onPress={() => setIsSupportOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </TouchableOpacity>
+            </AnimatedPressable>
             <Text className="font-headline text-lg font-bold text-primary">Help & Support</Text>
-            <View className="flex-row items-center space-x-1 bg-[#dcfce7] px-2.5 py-1 rounded-full">
+            <View className="flex-row items-center gap-1 bg-[#dcfce7] px-2.5 py-1 rounded-full">
               <View className="w-1.5 h-1.5 rounded-full bg-primary" />
               <Text className="text-primary font-bold text-[9px] uppercase tracking-wide">Pulsing Healthy</Text>
             </View>
           </View>
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="max-w-xl mx-auto w-full space-y-6">
-              <View className="p-6 rounded-3xl space-y-4" style={styles.liquidGlass}>
+            <View className="max-w-xl mx-auto w-full gap-6">
+              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Frequently Asked Questions</Text>
-                <View className="space-y-2">
+                <View className="gap-2">
                   {[
                     { id: 'q1', q: 'How does Kinlo calculate share mathematics?', a: 'Kinlo takes the dynamic entered amount and divides it equally among active participants. When selecting percentage or exact modes, it validates ratios ensuring splits sum up to 100% or total amount respectively.' },
                     { id: 'q2', q: 'What is Plaid banking integration?', a: 'Plaid connects bank account structures securely, letting users record actual settlement cashouts without leaving the splits tab. No transactions occur; it only aggregates balance logs.' },
                     { id: 'q3', q: 'Can I delete collaborative expenses?', a: 'Only the original transaction creator (addedBy owner) can execute direct deletions. If a friend added the cost, deleting triggers a request permission overlay to respect ledger integrity.' },
-                  ].map(faq => {
+                  ].map((faq, faqIdx) => {
                     const isExpanded = expandedFaq === faq.id;
                     return (
-                      <View key={faq.id} className="border-b border-outline-variant/20 pb-3 mt-2">
-                        <TouchableOpacity onPress={() => toggleFaq(faq.id)} className="flex-row justify-between items-center">
+                      <AnimatedListItem key={faq.id} index={faqIdx}>
+                      <View className="border-b border-outline-variant/20 pb-3 mt-2">
+                        <AnimatedPressable onPress={() => toggleFaq(faq.id)} className="flex-row justify-between items-center">
                           <Text className="font-semibold text-sm text-on-surface pr-3 flex-1">{faq.q}</Text>
                           <MaterialIcons name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={18} color="#707a6f" />
-                        </TouchableOpacity>
+                        </AnimatedPressable>
                         {isExpanded && <Text className="text-xs text-on-surface-variant leading-relaxed mt-2 pl-1 bg-[#caead6]/10 p-3 rounded-xl border border-outline-variant/10">{faq.a}</Text>}
                       </View>
+                      </AnimatedListItem>
                     );
                   })}
                 </View>
               </View>
 
-              <View className="p-6 rounded-3xl space-y-4" style={styles.liquidGlass}>
+              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <View>
                   <Text className="font-headline text-base font-bold text-on-surface">Report a Bug & Diagnostic Logs</Text>
                   <Text className="text-xs text-on-surface-variant mt-0.5">Automated hardware diagnostic metadata appended</Text>
                 </View>
-                <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-start space-x-3" style={{ minHeight: 90 }}>
+                <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-start gap-3" style={{ minHeight: 90 }}>
                   <MaterialIcons name="bug-report" size={20} color="#707a6f" style={{ marginTop: 2 }} />
-                  <TextInput value={bugDesc} onChangeText={setBugDesc} placeholder="Describe what occurred... (e.g. keypads layout overlap)" placeholderTextColor="rgba(64, 73, 64, 0.4)" multiline={true} numberOfLines={4} className="flex-1 font-body text-sm text-on-surface p-0 focus:outline-none" style={{ marginLeft: 6, minHeight: 70 }} />
+                  <TextInput value={bugDesc} onChangeText={setBugDesc} placeholder="Describe what occurred... (e.g. keypads layout overlap)" placeholderTextColor="rgba(64, 73, 64, 0.4)" multiline={true} numberOfLines={4} className="flex-1 font-body text-sm text-on-surface p-0 focus:outline-none" style={{ minHeight: 70 }} />
                 </View>
 
-                <View className="bg-surface-container-high/40 p-4 border border-outline-variant/20 rounded-2xl space-y-2">
+                <View className="bg-surface-container-high/40 p-4 border border-outline-variant/20 rounded-2xl gap-2">
                   <Text className="text-[9px] text-outline font-bold uppercase tracking-wider">Device Diagnostic logs harvested:</Text>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Layout dimensions:</Text><Text className="text-[10px] text-primary font-bold">{SCREEN_WIDTH}px x {SCREEN_HEIGHT}px</Text></View>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Operating System:</Text><Text className="text-[10px] text-primary font-bold">{Platform.OS === 'web' ? 'Web Browser' : Platform.OS}</Text></View>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Network Latency speed:</Text><Text className="text-[10px] text-primary font-bold">42ms</Text></View>
                 </View>
-                <TouchableOpacity onPress={handleSubmitBugReport} disabled={isSubmittingBug} className="w-full h-12 bg-primary rounded-2xl flex-row items-center justify-center active:scale-95">{isSubmittingBug ? <ActivityIndicator size="small" color="white" /> : <><MaterialIcons name="send" size={16} color="white" /><Text className="text-white font-bold text-xs uppercase tracking-wide" style={{ marginLeft: 6 }}>Submit Bug Diagnostics</Text></>}</TouchableOpacity>
+                <AnimatedPressable onPress={handleSubmitBugReport} disabled={isSubmittingBug} className="w-full h-12 bg-primary rounded-2xl flex-row items-center justify-center active:scale-95">{isSubmittingBug ? <ActivityIndicator size="small" color="white" /> : <><MaterialIcons name="send" size={16} color="white" /><Text className="text-white font-bold text-xs uppercase tracking-wide">Submit Bug Diagnostics</Text></>}</AnimatedPressable>
               </View>
             </View>
           </ScrollView>
         </SafeAreaView>
       </Modal>
 
-      {/* D. GDPR Account Deletion Block Intercept warning popup */}
+      {/* D. Account deletion — real, and irreversible.
+          An outstanding balance is a WARNING, not a block: erasure is a
+          right, and making it conditional on settling a debt is not a
+          defensible reading of one. See lib/accountDeletion.ts. */}
       <Modal
         visible={isDeleteBlockOpen}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setIsDeleteBlockOpen(false)}
+        onRequestClose={() => !isDeleting && setIsDeleteBlockOpen(false)}
       >
         <View className="flex-1 bg-black/40 justify-center items-center px-6">
           <View className="w-full max-w-sm rounded-3xl p-6" style={{ backgroundColor: '#fcf9f4', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.4)', elevation: 4 }}>
-            <View className="w-12 h-12 bg-error-container/40 rounded-full items-center justify-center self-center mb-4"><MaterialIcons name="lock" size={24} color="#BA1A1A" /></View>
-            <Text className="font-headline text-lg font-bold text-on-surface text-center mb-2">Account Deletion Blocked</Text>
-            <Text className="text-sm text-on-surface-variant text-center leading-relaxed mb-6">You cannot terminate your account under regulatory guidelines because you currently have a net shared balance of <Text className={`font-bold ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{netBalance >= 0 ? '+' : '-'}₹{Math.abs(netBalance).toFixed(2)}</Text> outstanding in your active circles.</Text>
+            <View className="w-12 h-12 bg-error-container/40 rounded-full items-center justify-center self-center mb-4">
+              <MaterialIcons name="delete-forever" size={24} color="#BA1A1A" />
+            </View>
+            <Text className="font-headline text-lg font-bold text-on-surface text-center mb-2">
+              Delete your account?
+            </Text>
+
+            <Text className="text-sm text-on-surface-variant text-center leading-relaxed mb-4">
+              This cannot be undone.
+            </Text>
+
+            {deletionPreview && (
+              <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                <Text className="text-xs font-semibold text-on-surface mb-2">Permanently deleted</Text>
+                <Text className="text-xs text-on-surface-variant leading-relaxed mb-3">
+                  Your name, phone number and UPI ID · {deletionPreview.personalEntries} personal
+                  {deletionPreview.personalEntries === 1 ? ' expense' : ' expenses'} · your saved
+                  receipt images · your friend list · your login
+                </Text>
+
+                <Text className="text-xs font-semibold text-on-surface mb-2">Kept, without your name</Text>
+                <Text className="text-xs text-on-surface-variant leading-relaxed">
+                  {deletionPreview.sharedExpenses} shared{' '}
+                  {deletionPreview.sharedExpenses === 1 ? 'expense' : 'expenses'}
+                  {deletionPreview.openGroups > 0 ? ` and ${deletionPreview.openGroups} group${deletionPreview.openGroups === 1 ? '' : 's'}` : ''}
+                  {' '}stay on the other people&apos;s records, shown as &ldquo;Deleted user&rdquo;. Removing them
+                  would change someone else&apos;s balance.
+                </Text>
+
+                {(deletionPreview.youOwe > 0 || deletionPreview.owedToYou > 0) && (
+                  <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+                    <Text className="text-xs font-semibold" style={{ color: '#9a5511' }}>
+                      You still have money outstanding
+                    </Text>
+                    <Text className="text-xs text-on-surface-variant leading-relaxed mt-1">
+                      {deletionPreview.youOwe > 0 && `You owe ₹${deletionPreview.youOwe.toFixed(2)}. `}
+                      {deletionPreview.owedToYou > 0 && `₹${deletionPreview.owedToYou.toFixed(2)} is owed to you. `}
+                      Deleting will not cancel it — you just won&apos;t be able to see or settle it here.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <Text className="text-xs text-on-surface-variant mb-2">
+              Type <Text className="font-bold text-on-surface">DELETE</Text> to confirm
+            </Text>
+            <TextInput
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!isDeleting}
+              placeholder="DELETE"
+              placeholderTextColor="rgba(64,73,64,0.35)"
+              className="w-full rounded-xl px-4 py-3 mb-4 text-base font-semibold text-on-surface"
+              style={{ backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}
+            />
+
             <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setIsDeleteBlockOpen(false)} className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"><Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text></TouchableOpacity>
-              <TouchableOpacity onPress={() => { setIsDeleteBlockOpen(false); setIsDataOpen(false); setIsPaymentsOpen(true); triggerToast('Direct to Plaid wallets to settle.'); }} className="flex-1 h-12 bg-primary rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-semibold text-sm">Settle Balances</Text></TouchableOpacity>
+              <AnimatedPressable
+                onPress={() => { setIsDeleteBlockOpen(false); setDeleteConfirmText(''); }}
+                disabled={isDeleting}
+                className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"
+              >
+                <Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={handleConfirmDeleteAccount}
+                disabled={isDeleting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                className="flex-1 h-12 rounded-xl items-center justify-center shadow-sm"
+                style={{ backgroundColor: deleteConfirmText.trim().toUpperCase() === 'DELETE' && !isDeleting ? '#BA1A1A' : 'rgba(0,0,0,0.15)' }}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-white font-semibold text-sm">Delete forever</Text>
+                )}
+              </AnimatedPressable>
             </View>
           </View>
         </View>
@@ -1525,33 +1889,27 @@ export default function ProfileScreen() {
             <Text className="font-headline text-lg font-bold text-on-surface text-center mb-2">Revoke All Other Sessions?</Text>
             <Text className="text-sm text-on-surface-variant text-center leading-relaxed mb-6">This action will immediately terminate all remote logged-in active sessions on other devices. You will remain logged in on this iPhone.</Text>
             <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setIsRevokeAllConfirmOpen(false)} className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"><Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleConfirmRevokeAll} className="flex-1 h-12 bg-error rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-semibold text-sm">Revoke All</Text></TouchableOpacity>
+              <AnimatedPressable onPress={() => setIsRevokeAllConfirmOpen(false)} className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"><Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text></AnimatedPressable>
+              <AnimatedPressable onPress={handleConfirmRevokeAll} className="flex-1 h-12 bg-error rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-semibold text-sm">Revoke All</Text></AnimatedPressable>
             </View>
           </View>
         </View>
       </Modal>
-
-      {/* Floating Toast Indicator */}
-      {showToast && (
-        <Animated.View 
-          style={[
-            styles.toastContainer,
-            { opacity: toastOpacity }
-          ]}
-          className="absolute bottom-6 left-6 right-6 bg-[#1C1C19] py-3.5 px-5 rounded-2xl flex-row items-center justify-between shadow-lg z-50"
-        >
-          <Text className="text-white font-medium text-sm flex-1">{toastMessage}</Text>
-          <MaterialIcons name="info" size={18} color="#8bd79b" style={{ marginLeft: 8 }} />
-        </Animated.View>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   liquidGlass: {
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    // Was rgba(255,255,255,0.72) — a translucent background paired with
+    // `elevation` (Android's Material shadow) is a known Android rendering
+    // bug: elevation's shadow/outline is computed assuming an opaque
+    // background, and a transparent one leaves a mismatched rectangle
+    // painted behind the actual rounded content, roughly the size of
+    // whatever forced the first layout pass. #fefdfc is the same color
+    // solved once, opaquely: white at 72% over this app's #fcf9f4 page
+    // background, precomputed rather than composited at paint time.
+    backgroundColor: '#fefdfc',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
     shadowColor: '#1c1917',
@@ -1560,10 +1918,4 @@ const styles = StyleSheet.create({
     shadowRadius: 32,
     elevation: 2,
   },
-  toastContainer: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  }
 });
