@@ -10,8 +10,10 @@ console.log("Hello from parse-receipt!")
 // lib/categories.ts for the category ids this must agree with — if that file
 // changes its five preset ids, PRESET_CATEGORIES below has to change with it.
 //
-// Claude only (ANTHROPIC_API_KEY secret). Haiku runs first for speed; a weak
-// result is retried once on Sonnet. RECEIPT_MODEL overrides the first model.
+// Provider chain: Claude Haiku first (ANTHROPIC_API_KEY), Gemini as fallback
+// (GEMINI_API_KEY) on an API error or a weak result, Claude Sonnet as the last
+// resort. First good result wins; otherwise the best partial one is returned.
+// RECEIPT_MODEL overrides the Haiku model, GEMINI_MODEL the Gemini one.
 //
 // Plain fetch, no SDK — avoids pinning an npm package version in Deno for a
 // single REST call.
@@ -233,6 +235,122 @@ async function callClaudeVision(
   return toolUse.input as Record<string, unknown>
 }
 
+// Gemini's structured-output schema is an OpenAPI-3.0 subset: uppercase
+// type names, and "nullable" as its own flag rather than a type union.
+const GEMINI_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    is_payment_screenshot: {
+      type: 'BOOLEAN',
+      description: 'False if the image is clearly not a payment/transaction screenshot (e.g. a photo, a meme, an unrelated app).',
+    },
+    amount: {
+      type: 'NUMBER',
+      nullable: true,
+      description: 'The transaction amount as a plain number, no currency symbol or thousands separators. Null if unreadable.',
+    },
+    currency: {
+      type: 'STRING',
+      nullable: true,
+      description: 'ISO 4217 currency code, e.g. "INR", "USD". Null if not determinable; default to INR if the screenshot uses ₹.',
+    },
+    merchant: {
+      type: 'STRING',
+      nullable: true,
+      description: "Who was paid, or who paid — the counterparty name shown on the screenshot. Null if not shown.",
+    },
+    occurred_at: {
+      type: 'STRING',
+      nullable: true,
+      description: 'The transaction date/time shown on the screenshot, as an ISO 8601 string. Null if no date is visible.',
+    },
+    category: {
+      type: 'STRING',
+      nullable: true,
+      enum: [...PRESET_CATEGORIES],
+      description: 'Best-guess spending category from the fixed list, or null if none fits well.',
+    },
+    direction: {
+      type: 'STRING',
+      nullable: true,
+      enum: ['debit', 'credit'],
+      description: "\"debit\" if money left the user's account, \"credit\" if money was received. Null if unclear.",
+    },
+    payment_app: {
+      type: 'STRING',
+      nullable: true,
+      description: 'The app the screenshot appears to be from, e.g. "Google Pay", "PhonePe", if identifiable.',
+    },
+    raw_text: {
+      type: 'STRING',
+      description: 'All legible text on the screenshot, transcribed as plain text.',
+    },
+    confidence: {
+      type: 'NUMBER',
+      description: 'Your own confidence (0 to 1) that amount, merchant and date are all correctly read.',
+    },
+    notes: {
+      type: 'STRING',
+      nullable: true,
+      description: 'Anything worth flagging to the user, e.g. "amount partially obscured".',
+    },
+  },
+  required: ['is_payment_screenshot', 'raw_text', 'confidence'],
+}
+
+async function callGeminiVision(
+  geminiKey: string,
+  model: string,
+  mimeType: string,
+  base64Image: string
+): Promise<Record<string, unknown>> {
+  console.log(`Calling Gemini Vision with model: ${model}`)
+  const geminiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt() }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inline_data: { mime_type: mimeType, data: base64Image } },
+              { text: 'Read this payment screenshot and return the JSON described in your instructions.' },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_RESPONSE_SCHEMA,
+          temperature: 0.1,
+        },
+      }),
+    }
+  )
+  if (!geminiResponse.ok) {
+    const errText = await geminiResponse.text().catch(() => '')
+    console.error('Gemini API error:', geminiResponse.status, errText)
+    throw new Error(`Gemini ${geminiResponse.status}`)
+  }
+  const geminiBody = await geminiResponse.json()
+  const candidate = geminiBody.candidates?.[0]
+  if (!candidate || (candidate.finishReason && candidate.finishReason !== 'STOP')) {
+    throw new Error(`Gemini returned no usable candidate: ${candidate?.finishReason ?? 'no candidate'}`)
+  }
+  const responseText: string | undefined = candidate.content?.parts?.[0]?.text
+  if (!responseText) throw new Error('Gemini candidate had no text part')
+  return JSON.parse(responseText) as Record<string, unknown>
+}
+
+// A result is "good" when it is clearly not a payment screenshot (nothing to
+// extract, no point retrying) or has an amount with decent confidence.
+function isGood(raw: Record<string, unknown>): boolean {
+  if (raw.is_payment_screenshot === false) return true
+  return typeof raw.amount === 'number' && (typeof raw.confidence !== 'number' || raw.confidence >= 0.7)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -330,33 +448,41 @@ serve(async (req) => {
     }
 
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!anthropicKey) {
-      console.error('ANTHROPIC_API_KEY is not set')
+    const geminiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!anthropicKey && !geminiKey) {
+      console.error('Neither ANTHROPIC_API_KEY nor GEMINI_API_KEY is set')
       return json({ ok: false, code: 'upstream_error', error: 'Extraction not configured: please set ANTHROPIC_API_KEY in Supabase secrets' }, 200)
     }
 
-    // Fast model first (Haiku: ~1-2s, plenty for clean payment screenshots).
-    // If it comes back with no amount or low confidence, retry once on the
-    // stronger model before bothering the user with a "fill it in manually".
     const envModel = Deno.env.get('RECEIPT_MODEL')
     const fastModel = envModel && envModel.startsWith('claude') ? envModel : FAST_MODEL
-    let raw: Record<string, unknown>
-    try {
-      raw = await callClaudeVision(anthropicKey, fastModel, mimeType, base64Image)
-      const weak = raw.is_payment_screenshot !== false &&
-        (typeof raw.amount !== 'number' || (typeof raw.confidence === 'number' && raw.confidence < 0.7))
-      if (weak && fastModel !== STRONG_MODEL) {
-        console.log('Weak extraction from', fastModel, '- retrying with', STRONG_MODEL)
-        try {
-          const retry = await callClaudeVision(anthropicKey, STRONG_MODEL, mimeType, base64Image)
-          if (typeof retry.amount === 'number' || retry.is_payment_screenshot === false) raw = retry
-        } catch (retryError) {
-          console.error('Strong-model retry failed, keeping first result:', retryError)
+    const geminiModel = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.6-flash'
+
+    const attempts: Array<[string, () => Promise<Record<string, unknown>>]> = []
+    if (anthropicKey) attempts.push([fastModel, () => callClaudeVision(anthropicKey, fastModel, mimeType, base64Image)])
+    if (geminiKey) attempts.push([geminiModel, () => callGeminiVision(geminiKey, geminiModel, mimeType, base64Image)])
+    if (anthropicKey && fastModel !== STRONG_MODEL) {
+      attempts.push([STRONG_MODEL, () => callClaudeVision(anthropicKey, STRONG_MODEL, mimeType, base64Image)])
+    }
+
+    let raw: Record<string, unknown> | null = null
+    let lastError = 'Could not read this image right now'
+    for (const [name, run] of attempts) {
+      try {
+        const result = await run()
+        if (isGood(result)) {
+          raw = result
+          break
         }
+        console.log('Weak extraction from', name, '- trying next provider')
+        if (!raw || (typeof raw.amount !== 'number' && typeof result.amount === 'number')) raw = result
+      } catch (callError) {
+        console.error(name, 'extraction error:', callError)
+        lastError = (callError as Error)?.message || lastError
       }
-    } catch (callError) {
-      console.error('Claude extraction error:', callError)
-      return json({ ok: false, code: 'upstream_error', error: (callError as Error)?.message || 'Could not read this image right now' }, 200)
+    }
+    if (!raw) {
+      return json({ ok: false, code: 'upstream_error', error: lastError }, 200)
     }
 
     if (raw.is_payment_screenshot === false) {

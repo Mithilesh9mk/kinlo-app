@@ -11,12 +11,14 @@ import { CATEGORIES, MAX_CATEGORY_LENGTH } from '../../lib/categories';
 import {
   parseReceipt,
   parseReceiptBytes,
+  uploadReceiptImage,
   savePersonalTransaction,
   signedReceiptUrl,
   getPersonalTransaction,
   ExtractionResult,
 } from '../../lib/personalTransactions';
-import { takePendingReceiptImage, getReceiptUploadOutcome } from '../../lib/pendingReceiptImage';
+import { takePendingReceiptImage, getReceiptUploadOutcome, registerReceiptUpload } from '../../lib/pendingReceiptImage';
+import { getReceiptDraft, deleteReceiptDraft } from '../../lib/receiptDrafts';
 
 type FieldName = 'amount' | 'merchant' | 'description' | 'category' | 'occurredAt';
 
@@ -97,23 +99,43 @@ export default function FinanceEntryScreen() {
   // only runs as a fallback when there's nothing stashed.
   useEffect(() => {
     if (!isReview || !params.path) return;
-    const pending = params.id ? takePendingReceiptImage(params.id) : null;
+    let cancelled = false;
     setStoredPath(params.path);
 
-    if (pending) {
-      bytesRef.current = pending;
-      setImageUri(`data:${pending.mimeType};base64,${pending.base64}`);
-    } else {
-      signedReceiptUrl(params.path).then((url) => url && setImageUri(url));
-    }
+    (async () => {
+      const pending = params.id ? takePendingReceiptImage(params.id) : null;
 
-    if (params.autoScan === '0') {
-      setParsing(false);
-      return;
-    }
+      if (pending) {
+        bytesRef.current = pending;
+        setImageUri(`data:${pending.mimeType};base64,${pending.base64}`);
+      } else {
+        // Reopened later (failed scan, left the screen, app restarted): the
+        // screenshot was kept on this device as a local draft.
+        const local = params.id ? await getReceiptDraft(params.id) : null;
+        if (cancelled) return;
+        if (local) {
+          bytesRef.current = { base64: local.base64, mimeType: local.draft.mimeType };
+          setImageUri(local.uri);
+          // The first background cloud upload may never have landed; redo it
+          // (upsert) so saving still ends up with a working image path.
+          const reupload = uploadReceiptImage(params.id, local.base64);
+          reupload.catch((e) => console.error('Draft re-upload failed:', e));
+          registerReceiptUpload(params.id, reupload);
+        } else {
+          signedReceiptUrl(params.path!).then((url) => url && setImageUri(url));
+        }
+      }
+      if (cancelled) return;
 
-    runScan();
+      if (params.autoScan === '0') {
+        setParsing(false);
+        return;
+      }
+      runScan();
+    })();
+
     return () => {
+      cancelled = true;
       if (progressTimer.current) clearInterval(progressTimer.current);
     };
   }, [isReview, params.path, params.id, params.autoScan]);
@@ -270,6 +292,7 @@ export default function FinanceEntryScreen() {
         sourceImagePath,
         editedFields: Array.from(editedFields),
       });
+      if (isReview && params.id) deleteReceiptDraft(params.id).catch(() => {});
       showToast(
         sourceImagePath === null && isReview
           ? 'Added — receipt image failed to upload'
@@ -334,13 +357,13 @@ export default function FinanceEntryScreen() {
           </AnimatedPressable>
         )}
 
-        {!parsing && !params.editId && scanFailed && (
+        {!parsing && !params.editId && (scanFailed || params.autoScan === '0') && (
           <AnimatedPressable
             onPress={runScan}
             className="flex-row items-center justify-center gap-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5"
           >
             <MaterialIcons name="refresh" size={18} color="#004c22" />
-            <Text className="text-sm font-semibold text-primary">Scan again</Text>
+            <Text className="text-sm font-semibold text-primary">{scanFailed ? 'Scan again' : 'Scan receipt'}</Text>
           </AnimatedPressable>
         )}
 

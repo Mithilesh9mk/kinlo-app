@@ -10,6 +10,7 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { useToast } from '../../components/Toast';
 import { uploadReceiptImage, uploadReceiptImageBytes, receiptImagePath, newTransactionId, encodeBase64 } from '../../lib/personalTransactions';
 import { stashPendingReceiptImage } from '../../lib/pendingReceiptImage';
+import { saveReceiptDraft } from '../../lib/receiptDrafts';
 import { prepareReceiptImage } from '../../lib/imagePrep';
 
 const AUTO_SCAN_KEY = 'kinlo.finance.autoScan.v1';
@@ -95,6 +96,7 @@ export default function FinanceShareScreen() {
         // navigate.
         stashPendingReceiptImage(txId, base64, mimeType);
         const path = await receiptImagePath(txId);
+        saveReceiptDraft(txId, path, base64, mimeType).catch((e) => console.error('Could not save receipt draft:', e));
         const upload = uploadUri
           ? new File(uploadUri).bytes().then((bytes) => uploadReceiptImageBytes(txId, bytes))
           : uploadReceiptImage(txId, base64);

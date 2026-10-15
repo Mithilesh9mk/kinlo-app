@@ -24,6 +24,7 @@ import {
   PersonalTransaction,
 } from '../../lib/personalTransactions';
 import { stashPendingReceiptImage, registerReceiptUpload } from '../../lib/pendingReceiptImage';
+import { saveReceiptDraft, listReceiptDrafts, deleteReceiptDraft, ReceiptDraft } from '../../lib/receiptDrafts';
 import { prepareReceiptImage } from '../../lib/imagePrep';
 import { File } from 'expo-file-system';
 import { withOfflineFallback } from '../../lib/offlineCache';
@@ -141,6 +142,7 @@ export default function FinanceHomeScreen() {
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [drafts, setDrafts] = useState<ReceiptDraft[]>([]);
   const [period, setPeriod] = useState<Period>('month');
   // A tapped bar's key ("week" -> a day, "month"/"all" -> a month). Cleared
   // whenever the period switches, since a bar from one period's series has
@@ -169,6 +171,7 @@ export default function FinanceHomeScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      listReceiptDrafts().then(setDrafts).catch(() => {});
     }, [load])
   );
 
@@ -296,6 +299,9 @@ export default function FinanceHomeScreen() {
       // we navigate.
       stashPendingReceiptImage(txId, base64, mimeType);
       const path = await receiptImagePath(txId);
+      // Local-only draft so the screenshot survives a failed scan or leaving
+      // the review screen (see lib/receiptDrafts.ts).
+      saveReceiptDraft(txId, path, base64, mimeType).catch((e) => console.error('Could not save receipt draft:', e));
       const upload = uploadUri
         ? new File(uploadUri).bytes().then((bytes) => uploadReceiptImageBytes(txId, bytes))
         : uploadReceiptImage(txId, base64);
@@ -597,6 +603,41 @@ export default function FinanceHomeScreen() {
                 </AnimatedListItem>
               ))}
             </View>
+          </View>
+        )}
+
+        {drafts.length > 0 && (
+          <View className="mb-5 rounded-2xl bg-surface-container border border-outline-variant/30 p-4">
+            <Text className="text-sm font-semibold text-on-surface mb-1">Unsaved scans</Text>
+            <Text className="text-xs text-on-surface-variant mb-3">
+              Saved on this device only. Open one to scan or finish it.
+            </Text>
+            {drafts.map((d) => (
+              <View key={d.id} className="flex-row items-center gap-2 mb-2">
+                <AnimatedPressable
+                  className="flex-1 flex-row items-center gap-2 h-11 px-3 rounded-xl bg-surface-container-highest"
+                  onPress={() =>
+                    router.push({ pathname: '/finance/entry', params: { id: d.id, path: d.path, autoScan: '0' } })
+                  }
+                >
+                  <MaterialIcons name="receipt-long" size={18} color="#004c22" />
+                  <Text className="flex-1 text-sm text-on-surface" numberOfLines={1}>
+                    Screenshot from {new Date(d.createdAt).toLocaleString()}
+                  </Text>
+                  <MaterialIcons name="chevron-right" size={18} color="#404940" />
+                </AnimatedPressable>
+                <AnimatedPressable
+                  className="w-11 h-11 rounded-xl items-center justify-center bg-surface-container-highest"
+                  accessibilityLabel="Discard unsaved scan"
+                  onPress={async () => {
+                    await deleteReceiptDraft(d.id).catch(() => {});
+                    setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                  }}
+                >
+                  <MaterialIcons name="delete-outline" size={18} color="#404940" />
+                </AnimatedPressable>
+              </View>
+            ))}
           </View>
         )}
 
