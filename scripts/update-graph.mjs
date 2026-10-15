@@ -54,8 +54,21 @@ if (!fs.existsSync(docsDir)) {
   fs.mkdirSync(docsDir, { recursive: true });
 }
 
+// Skip the rewrite when the file list is unchanged, so the timestamp alone
+// never dirties the working tree (this runs from the pre-commit hook).
+const graphJsonPath = path.join(docsDir, 'graph.json');
+try {
+  const previous = JSON.parse(fs.readFileSync(graphJsonPath, 'utf8'));
+  if (JSON.stringify(previous.layers) === JSON.stringify(aiReportData.layers)) {
+    console.log('✅ File list unchanged — graph report left as is.');
+    process.exit(0);
+  }
+} catch {
+  // No previous graph.json (or unreadable) — fall through and generate.
+}
+
 // Write graph.json
-fs.writeFileSync(path.join(docsDir, 'graph.json'), JSON.stringify(aiReportData, null, 2));
+fs.writeFileSync(graphJsonPath, JSON.stringify(aiReportData, null, 2));
 
 // Write GRAPH_REPORT.md
 const graphReportMd = [
