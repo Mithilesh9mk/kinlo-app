@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-15T07:40:00.223Z",
-  "totalFiles": 146,
+  "timestamp": "2026-10-15T08:02:40.941Z",
+  "totalFiles": 149,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -57,6 +57,7 @@
       "components/Avatar.tsx",
       "components/CrashReportBanner.tsx",
       "components/ErrorBoundary.tsx",
+      "components/FirstRunHintCard.tsx",
       "components/OfflineBanner.tsx",
       "components/ParetoChart.tsx",
       "components/Skeleton.tsx",
@@ -80,6 +81,7 @@
       "lib/imagePrep.ts",
       "lib/legal.ts",
       "lib/offlineCache.ts",
+      "lib/onboardingState.ts",
       "lib/pendingReceiptImage.ts",
       "lib/personalTransactions.ts",
       "lib/pushDispatcher.ts",
@@ -87,7 +89,8 @@
       "lib/recurrence.ts",
       "lib/reminders.ts",
       "lib/splitCalculator.ts",
-      "lib/supabase.ts"
+      "lib/supabase.ts",
+      "lib/useFirstRunHints.ts"
     ],
     "context": [
       "context/ExpenseContext.tsx",
