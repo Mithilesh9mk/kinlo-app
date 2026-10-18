@@ -536,6 +536,18 @@ export default function StatementScreen() {
             <View>
               {filtered.map((tx, index) => (
                 <AnimatedListItem key={tx.id} index={index}>
+                {/* Rows used to be inert. Split rows open the expense detail
+                    (same route Home's activity list uses); personal rows open
+                    the personal-spending entry. Layout is unchanged — the
+                    pressable only wraps the existing card. */}
+                <AnimatedPressable
+                  onPress={() =>
+                    tx.entryType === 'personal'
+                      ? router.push(`/finance/${tx.id}` as any)
+                      : router.push({ pathname: `/transaction/${tx.id}` })
+                  }
+                  accessibilityRole="button"
+                >
                 <View
                   className="p-5 rounded-2xl flex-col"
                   style={{
@@ -646,6 +658,7 @@ export default function StatementScreen() {
                     </View>
                   )}
                 </View>
+                </AnimatedPressable>
                 </AnimatedListItem>
               ))}
             </View>
