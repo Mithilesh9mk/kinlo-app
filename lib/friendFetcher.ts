@@ -1,6 +1,10 @@
 import { supabase } from './supabase';
 
-export async function getRelatedUsers(userId: string, columns: string = 'id, full_name, avatar_url, phone_number, email'): Promise<any[]> {
+// `strict`: throw when the final profile lookup errors instead of returning [].
+// Screens that would otherwise show "no friends" (the expense picker) opt in.
+// lib/balances.ts deliberately does not: a failed profile lookup there must not
+// take the money totals down with it (unknown names render as 'Unknown').
+export async function getRelatedUsers(userId: string, columns: string = 'id, full_name, avatar_url, phone_number, email', strict: boolean = false): Promise<any[]> {
   if (!userId) return [];
 
   // One round trip instead of nine. The fallback below builds the same list
@@ -119,11 +123,10 @@ export async function getRelatedUsers(userId: string, columns: string = 'id, ful
       .in('id', Array.from(relatedUserIds));
 
     if (usersError) {
-      // Throw, don't return []: same reason as the catch below. A profile-
-      // lookup error is a failure, not "zero friends", and callers (the
-      // picker, Friends, balances' offline fallback) all handle a throw.
+      // Strict callers get a real failure instead of a fake "zero friends".
       console.error('Error fetching related users profiles:', usersError);
-      throw usersError;
+      if (strict) throw usersError;
+      return [];
     }
 
     return users || [];

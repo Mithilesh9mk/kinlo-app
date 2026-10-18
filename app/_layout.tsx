@@ -168,15 +168,22 @@ export default function RootLayout() {
   // race the push to /onboarding/login.
   const { sharedPayloads } = useIncomingShare();
   const shareHandled = useRef(false);
+  // True once the two-factor check below has finished (pass or fail-open), so a
+  // shared image can't open a screen on top of the challenge. Declared here
+  // because the share effect reads it.
+  const [mfaChecked, setMfaChecked] = useState(false);
 
   useEffect(() => {
     if (shareHandled.current) return;
     if (!isReady || !session || !isOnboarded) return;
     if (sharedPayloads.length === 0) return;
+    // Wait for the 2FA check, and never push over the challenge screen itself;
+    // the effect re-runs when either changes, so the share is not lost.
+    if (!mfaChecked || segments[0] === 'mfa-challenge') return;
 
     shareHandled.current = true;
     router.push('/finance/share');
-  }, [sharedPayloads, isReady, session, isOnboarded, router]);
+  }, [sharedPayloads, isReady, session, isOnboarded, router, mfaChecked, segments]);
 
   // Two-factor step-up gate. Honest scope: this is enforced in the app only —
   // it does NOT make the database reject aal1 tokens (that would need RLS
@@ -189,6 +196,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!mfaUserId) {
       mfaCheckedFor.current = null;
+      setMfaChecked(false);
       return;
     }
     if (!isReady || !isOnboarded) return;
@@ -204,7 +212,8 @@ export default function RootLayout() {
           router.replace('/mfa-challenge');
         }
       })
-      .catch(() => console.warn('[mfa] assurance lookup threw; failing open'));
+      .catch(() => console.warn('[mfa] assurance lookup threw; failing open'))
+      .finally(() => setMfaChecked(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, isOnboarded, mfaUserId]);
 

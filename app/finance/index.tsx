@@ -154,7 +154,9 @@ export default function FinanceHomeScreen() {
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoadState('loading');
+    // Only show the loading state until something has loaded once; coming back
+    // to the screen with good data on it shouldn't blank to "Loading…".
+    else if (!hasLoadedRef.current) setLoadState('loading');
     try {
       const { data, cachedAt: resultCachedAt } = await withOfflineFallback(
         'finance.personalTransactions',

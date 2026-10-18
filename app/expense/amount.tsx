@@ -117,6 +117,11 @@ export default function AmountScreen() {
   // Set when the transaction being edited could not be loaded. Without it the
   // screen sat there as an empty, editable form that looked ready to edit.
   const [loadError, setLoadError] = React.useState(false);
+  // Set once the edit data has loaded. Needed because resetAfterPost() clears
+  // editTransactionId in the context; without this, Back to this screen after
+  // posting an edit looked "still loading" forever (route param set, context id
+  // gone).
+  const [editLoaded, setEditLoaded] = React.useState(false);
 
   useEffect(() => {
     const editTxId = params.editTxId as string;
@@ -215,6 +220,7 @@ export default function AmountScreen() {
             // row has moved on since. See migration 0028.
             (tx as any).updated_at
           );
+          setEditLoaded(true);
         } catch (e) {
           console.error("Failed to load tx for edit", e);
           setLoadError(true);
@@ -224,7 +230,7 @@ export default function AmountScreen() {
   };
 
   // Editing, but the transaction has not arrived yet: show nothing editable.
-  const editPending = !!params.editTxId && params.editTxId !== editTransactionId;
+  const editPending = !!params.editTxId && params.editTxId !== editTransactionId && !editLoaded;
 
   const appendValue = (val: string) => {
     if (val === '.') {

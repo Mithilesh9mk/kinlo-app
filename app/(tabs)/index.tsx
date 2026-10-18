@@ -440,7 +440,7 @@ export default function HomeScreen() {
     const userId = authData?.user?.id;
     if (!userId) return 0;
 
-    const [{ data: paidByMe }, { data: splitWithMe }] = await Promise.all([
+    const [{ data: paidByMe, error: paidErr }, { data: splitWithMe, error: splitErr }] = await Promise.all([
       supabase
         .from('transactions')
         .select('id, amount, paid_by, transaction_splits (user_id, share_amount)')
@@ -455,6 +455,10 @@ export default function HomeScreen() {
         .neq('type', 'settlement')
         .gte('created_at', sinceISO),
     ]);
+
+    // A failed query used to fall through as null -> a fake "₹0 spent" that was
+    // then cached. Throw so the tile shows '—' (or the offline cache) instead.
+    if (paidErr || splitErr) throw (paidErr || splitErr);
 
     const txMap = new Map<string, any>();
     for (const tx of paidByMe || []) txMap.set(tx.id, tx);

@@ -73,7 +73,7 @@ export default function FriendGroupPickerScreen() {
         // empty for a while because it reads transactions, which the RLS
         // recursion bug was breaking — an empty list looked identical to
         // having no friends.
-        const users = await getRelatedUsers(myId, 'id, full_name, avatar_url');
+        const users = await getRelatedUsers(myId, 'id, full_name, avatar_url', true);
 
         if (users) {
           setFriendsList(users.map((u: any) => ({

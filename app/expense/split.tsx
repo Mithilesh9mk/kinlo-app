@@ -91,7 +91,9 @@ export default function SplitExpenseScreen() {
   const inputDisplay = (p: { id: string; percentageShare?: number; exactAmount?: number }, field: 'percentageShare' | 'exactAmount') => {
     const num = p[field];
     const raw = rawInputs[`${p.id}:${field}`];
-    if (raw !== undefined && (parseFloat(raw) || 0) === (num || 0)) return raw;
+    // Only echo plain decimal text ("12", "0.", "0.5"); anything else (a comma,
+    // letters) would show something other than the value that is actually used.
+    if (raw !== undefined && /^\d*\.?\d*$/.test(raw) && (parseFloat(raw) || 0) === (num || 0)) return raw;
     return num?.toString() || '';
   };
 
