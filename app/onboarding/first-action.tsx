@@ -12,8 +12,9 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 // Onboarding is only marked complete once the profile save succeeds, here —
 // not at the end of sync.tsx — so app/_layout.tsx's gate (which reads the
 // persisted flag) resumes a mid-flow force-quit instead of skipping ahead.
-// Returns false if the save failed; the flag is then left unset.
-async function completeOnboarding(): Promise<boolean> {
+// Returns false if the save failed (the flag is then left unset), or
+// 'duplicate_phone' when the stored phone is already linked to another account.
+async function completeOnboarding(): Promise<boolean | 'duplicate_phone'> {
   try {
     const { supabase } = await import('../../lib/supabase');
     const { data: authData } = await supabase.auth.getUser();
@@ -42,7 +43,10 @@ async function completeOnboarding(): Promise<boolean> {
     if (Object.keys(payload).length > 1 || !existing) {
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Upsert timeout')), 8000));
       const result = (await Promise.race([supabase.from('users').upsert(payload), timeoutPromise])) as any;
-      if (result?.error) throw result.error;
+      if (result?.error) {
+        if (result.error.code === '23505') return 'duplicate_phone';
+        throw result.error;
+      }
     }
 
     await AsyncStorage.setItem('onboarding_completed', 'true');
@@ -72,6 +76,11 @@ export default function FirstActionScreen() {
   const finish = async (choice: 'friend' | 'scan' | 'skip') => {
     setPending(choice);
     const ok = await completeOnboarding();
+    if (ok === 'duplicate_phone') {
+      showToast('That phone number is already linked to another Kinlo account. Go back and change or clear it.');
+      setPending(null);
+      return;
+    }
     if (!ok) {
       showToast("Couldn't save your profile. Check your connection and try again.");
       setPending(null);

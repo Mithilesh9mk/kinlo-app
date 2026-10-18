@@ -15,6 +15,7 @@ import { fetchBalanceMap, fetchBalanceRows, balanceMapForScope, statusFor } from
 import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { sendDebtNudge, describeNudgeResult } from '../../lib/debtNudges';
+import { formatINR, tabularNums } from '../../lib/format';
 
 // Transaction with exact Date tags for mindful timeline filtering
 interface Transaction {
@@ -248,7 +249,7 @@ export default function FriendDetailScreen() {
               status: t.status || 'active',
               type: (t as any).type || 'expense',
               group_id: (t as any).group_id ?? null,
-              groupName: (t as any).group_id ? (groupTitleMap[(t as any).group_id] || 'Group') : null,
+              groupName: (t as any).group_id ? (groupTitleMap[(t as any).group_id] || 'Circle') : null,
             };
           });
 
@@ -607,6 +608,7 @@ export default function FriendDetailScreen() {
           <AnimatedPressable 
             onPress={() => router.back()}
             className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <MaterialIcons name="arrow-back" size={24} color="#004c22" />
           </AnimatedPressable>
@@ -669,11 +671,12 @@ export default function FriendDetailScreen() {
                   <View className="w-2 h-2 rounded-full bg-primary" />
                   <Text className="text-primary font-semibold text-xs uppercase tracking-wider">You are owed</Text>
                 </View>
-                <Text className="text-4xl font-bold text-primary">+₹{friend.balance.toFixed(2)}</Text>
+                <Text className="text-4xl font-bold text-primary" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatINR(friend.balance, { signed: true })}</Text>
                 <AnimatedPressable
                   onPress={handleSendReminder}
                   disabled={nudgeSending}
                   className="flex-row items-center gap-1.5 mt-3 px-4 py-2 rounded-full bg-primary-container active:scale-95 duration-100"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <MaterialIcons name="notifications-none" size={16} color="white" />
                   <Text className="text-white font-semibold text-xs">
@@ -689,7 +692,7 @@ export default function FriendDetailScreen() {
                   <View className="w-2 h-2 rounded-full bg-error" />
                   <Text className="text-error font-semibold text-xs uppercase tracking-wider">You owe</Text>
                 </View>
-                <Text className="text-4xl font-bold text-error">-₹{Math.abs(friend.balance).toFixed(2)}</Text>
+                <Text className="text-4xl font-bold text-error" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatINR(-Math.abs(friend.balance))}</Text>
               </View>
             )}
 
@@ -697,7 +700,7 @@ export default function FriendDetailScreen() {
               <View className="flex-col items-center">
                 <View className="flex-row items-center gap-2 bg-surface-container-highest px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-outline" />
-                  <Text className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider">Settled up</Text>
+                  <Text className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider">Settled</Text>
                 </View>
                 <Text className="text-4xl font-bold text-outline">Settled</Text>
               </View>
@@ -735,6 +738,7 @@ export default function FriendDetailScreen() {
               <AnimatedPressable 
                 onPress={() => setIsFilterSheetOpen(true)}
                 className="flex-row items-center gap-1 bg-surface-container-high px-3 py-1.5 rounded-full border border-outline-variant/30 active:scale-95"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <MaterialIcons name="calendar-today" size={12} color="#004c22" />
                 <Text className="text-primary text-[10px] font-bold uppercase tracking-wider pl-1">
@@ -753,7 +757,7 @@ export default function FriendDetailScreen() {
                   <Text className="flex-1 text-error text-xs font-medium pr-3">
                     Couldn't refresh. What you see may be out of date.
                   </Text>
-                  <AnimatedPressable onPress={retryLoad} className="px-3 py-1.5 rounded-full bg-error">
+                  <AnimatedPressable onPress={retryLoad} className="px-3 py-1.5 rounded-full bg-error" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Text className="text-white font-semibold text-xs">Retry</Text>
                   </AnimatedPressable>
                 </View>
@@ -848,10 +852,10 @@ export default function FriendDetailScreen() {
                                  ? (tx.paidBy === 'You' ? `You paid ${friend.name.split(' ')[0]}` : `${tx.paidBy.split(' ')[0]} paid you`)
                                  : tx.description}
                              </Text>
-                             <Text className="text-xs text-on-surface-variant mt-0.5" numberOfLines={1}>
+                             <Text className="text-xs text-on-surface-variant mt-0.5" numberOfLines={1} style={tabularNums}>
                                {isSettlement
                                  ? `Payment · ${tx.time}`
-                                 : `${tx.paidBy} paid ₹${tx.totalAmount.toFixed(2)} • ${tx.time}${tx.groupName ? ' • ' + tx.groupName : ''}`}
+                                 : `${tx.paidBy} paid ${formatINR(tx.totalAmount)} • ${tx.time}${tx.groupName ? ' • ' + tx.groupName : ''}`}
                                {!isSettlement && tx.status === 'settled' && ' • '}
                                {!isSettlement && tx.status === 'settled' && (
                                  <Text className="text-primary font-bold">Settled</Text>
@@ -870,8 +874,8 @@ export default function FriendDetailScreen() {
                               another debt. */}
                           {isSettlement ? (
                             <View className="items-end">
-                              <Text className="font-headline-md font-bold text-base" style={{ color: isVoided ? '#9ca3af' : '#4d5a51' }}>
-                                ₹{Math.abs(tx.share).toFixed(2)}
+                              <Text className="font-headline-md font-bold text-base" style={[{ color: isVoided ? '#9ca3af' : '#4d5a51' }, tabularNums]}>
+                                {formatINR(Math.abs(tx.share))}
                               </Text>
                               <View
                                 className="flex-row items-center px-2 py-0.5 rounded-full mt-1"
@@ -882,8 +886,8 @@ export default function FriendDetailScreen() {
                               </View>
                             </View>
                           ) : (
-                            <Text className={`font-headline-md font-bold text-base ${isVoided ? 'text-outline' : (isPositive ? 'text-primary' : 'text-error')}`}>
-                              {isPositive ? '+' : '-'}₹{Math.abs(tx.share).toFixed(2)}
+                            <Text className={`font-headline-md font-bold text-base ${isVoided ? 'text-outline' : (isPositive ? 'text-primary' : 'text-error')}`} style={tabularNums}>
+                              {isPositive ? '+' : '-'}{formatINR(Math.abs(tx.share))}
                             </Text>
                           )}
                         </View>
@@ -1022,7 +1026,7 @@ export default function FriendDetailScreen() {
                 >
                   <MaterialIcons name="check-circle" size={22} color="white" />
                   <Text className="text-white font-semibold text-base pl-3" style={{ marginLeft: 8 }}>
-                    Settle this Expense (₹{Math.abs(selectedTx.share).toFixed(2)})
+                    Settle this Expense ({formatINR(Math.abs(selectedTx.share))})
                   </Text>
                 </AnimatedPressable>
               )}
@@ -1050,7 +1054,7 @@ export default function FriendDetailScreen() {
                 onPress={() => handleDeleteTx()}
                 className="w-full h-14 bg-[#FEE2E2] rounded-2xl flex-row items-center px-4"
               >
-                <MaterialIcons name="delete" size={22} color="#DC2626" />
+                <MaterialIcons name="delete" size={22} color="#ba1a1a" />
                 <Text className="text-error font-semibold text-base pl-3" style={{ marginLeft: 8 }}>
                   Delete Transaction
                 </Text>
@@ -1078,7 +1082,7 @@ export default function FriendDetailScreen() {
             }}
           >
             <View className="w-12 h-12 bg-error-container/40 rounded-full items-center justify-center self-center mb-4">
-              <MaterialIcons name="lock-outline" size={24} color="#BA1A1A" />
+              <MaterialIcons name="lock-outline" size={24} color="#ba1a1a" />
             </View>
 
             <Text className="font-headline text-lg font-bold text-on-surface text-center mb-2">Request Permission?</Text>
@@ -1147,8 +1151,8 @@ export default function FriendDetailScreen() {
                       <Text className="font-semibold text-base text-on-surface">{scope.label}</Text>
                       <Text className="text-xs text-on-surface-variant mt-0.5">{owed ? 'You are owed' : 'You owe'}</Text>
                     </View>
-                    <Text className={`font-headline-md font-bold text-base ${owed ? 'text-primary' : 'text-error'}`}>
-                      {owed ? '+' : '-'}₹{Math.abs(scope.balance).toFixed(2)}
+                    <Text className={`font-headline-md font-bold text-base ${owed ? 'text-primary' : 'text-error'}`} style={tabularNums}>
+                      {owed ? '+' : '-'}{formatINR(Math.abs(scope.balance))}
                     </Text>
                   </AnimatedPressable>
                 );

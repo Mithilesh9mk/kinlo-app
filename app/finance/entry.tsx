@@ -7,6 +7,7 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Skeleton } from '../../components/Skeleton';
 import { useToast } from '../../components/Toast';
+import { useAlert } from '../../components/AppAlert';
 import { CATEGORIES, MAX_CATEGORY_LENGTH } from '../../lib/categories';
 import {
   parseReceipt,
@@ -19,6 +20,7 @@ import {
 } from '../../lib/personalTransactions';
 import { takePendingReceiptImage, getReceiptUploadOutcome, registerReceiptUpload } from '../../lib/pendingReceiptImage';
 import { getReceiptDraft, deleteReceiptDraft } from '../../lib/receiptDrafts';
+import { fetchMyPlan, FREE_SCANS_PER_MONTH, PlanInfo } from '../../lib/plan';
 
 type FieldName = 'amount' | 'merchant' | 'description' | 'category' | 'occurredAt';
 
@@ -35,6 +37,7 @@ export default function FinanceEntryScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; path?: string; autoScan?: string; editId?: string }>();
   const { showToast } = useToast();
+  const { showAlert } = useAlert();
 
   const isReview = !!params.path;
   const [txId] = useState(params.id || String(Date.now()));
@@ -62,6 +65,14 @@ export default function FinanceEntryScreen() {
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [storedPath, setStoredPath] = useState<string | null>(null);
   const [scanFailed, setScanFailed] = useState(false);
+  // Free-tier scan quota hit (server answered quota_exceeded). The screenshot
+  // stays saved as a draft; only the Scan again button is withheld.
+  const [quotaHit, setQuotaHit] = useState(false);
+  const [quotaDismissed, setQuotaDismissed] = useState(false);
+  // null = unknown (lookup failed or quota RPCs not deployed) -> show nothing.
+  const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const [editLoadError, setEditLoadError] = useState(false);
+  const [editLoadAttempt, setEditLoadAttempt] = useState(0);
   const [aspect, setAspect] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -73,9 +84,20 @@ export default function FinanceEntryScreen() {
   // Edit-existing-row mode: prefill from a saved transaction.
   useEffect(() => {
     if (!params.editId) return;
+    let cancelled = false;
+    setEditLoadError(false);
     (async () => {
-      const tx = await getPersonalTransaction(params.editId!);
-      if (!tx) return;
+      let tx: Awaited<ReturnType<typeof getPersonalTransaction>> = null;
+      try {
+        tx = await getPersonalTransaction(params.editId!);
+      } catch (e) {
+        console.error('Failed to load transaction for edit:', e);
+      }
+      if (cancelled) return;
+      if (!tx) {
+        setEditLoadError(true);
+        return;
+      }
       setAmount(String(tx.amount));
       setMerchant(tx.merchant ?? '');
       setDescription(tx.description ?? '');
@@ -88,7 +110,23 @@ export default function FinanceEntryScreen() {
         signedReceiptUrl(tx.sourceImagePath).then((url) => url && setImageUri(url));
       }
     })();
-  }, [params.editId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [params.editId, editLoadAttempt]);
+
+  // Quiet free-scan counter. Any failure just leaves it hidden.
+  async function refreshPlan() {
+    try {
+      const p = await fetchMyPlan();
+      setPlan(p);
+    } catch {
+      // ignore
+    }
+  }
+  useEffect(() => {
+    refreshPlan();
+  }, []);
 
   // Review mode: show the image immediately, then parse. If the capture
   // screen (picker or share sheet) stashed the bytes for this txId, use
@@ -159,6 +197,8 @@ export default function FinanceEntryScreen() {
 
     if (progressTimer.current) clearInterval(progressTimer.current);
     setScanFailed(false);
+    setQuotaHit(false);
+    setQuotaDismissed(false);
     setParsing(true);
     setParseProgress(0);
     const startTime = Date.now();
@@ -193,6 +233,13 @@ export default function FinanceEntryScreen() {
       setParsing(false);
 
       if (!result.ok) {
+        if ((result.error.code as string) === 'quota_exceeded') {
+          // Dedicated state instead of a toast; the draft is left untouched.
+          setQuotaHit(true);
+          setScanFailed(true);
+          refreshPlan();
+          return;
+        }
         // Distinct messages per cause: "couldn't read it" and "scanning is
         // misconfigured" need completely different reactions from the user,
         // and collapsing them hides outages behind what looks like a bad
@@ -203,20 +250,23 @@ export default function FinanceEntryScreen() {
           not_found: 'That image could not be opened — try adding it again',
           unauthorized: 'Please sign in again to scan screenshots',
           bad_request: 'That image could not be scanned — enter it manually',
-          upstream_error: result.error.message || 'Scanning is unavailable right now — enter it manually',
+          upstream_error: 'Scanning is unavailable right now — enter it manually',
         };
-        const message = result.error.message || messages[result.error.code] || 'Scanning failed — enter it manually';
+        const message = messages[result.error.code] || result.error.message || 'Scanning failed — enter it manually';
         showToast(message);
         setScanFailed(true);
+        refreshPlan();
         return;
       }
 
       applyExtraction(result.extraction);
+      refreshPlan();
     } catch (err) {
       if (progressTimer.current) clearInterval(progressTimer.current);
       setParsing(false);
       setScanFailed(true);
       showToast('Scanning failed — enter it manually');
+      refreshPlan();
     }
   }
 
@@ -254,7 +304,20 @@ export default function FinanceEntryScreen() {
   }
 
   const parsedAmount = parseFloat(amount || '0');
-  const canSave = parsedAmount > 0 && !saving && !parsing;
+  const dateError = parseDate(dateText.trim()) === null;
+  const canSave = parsedAmount > 0 && !saving && !parsing && !dateError;
+  const hasUnsavedEdits = editedFields.size > 0 || description.trim().length > 0 || dateError;
+
+  const handleClose = () => {
+    if (!hasUnsavedEdits || saving) {
+      router.back();
+      return;
+    }
+    showAlert('Discard changes?', 'Your edits to this expense will be lost.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+    ]);
+  };
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -322,7 +385,7 @@ export default function FinanceEntryScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       <View className="flex-row items-center justify-between px-5 h-16">
-        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 items-center justify-center rounded-full">
+        <AnimatedPressable onPress={handleClose} className="w-10 h-10 items-center justify-center rounded-full">
           <MaterialIcons name="close" size={24} color="#1c1c19" />
         </AnimatedPressable>
         <Text className="font-headline-md text-lg font-semibold text-on-surface">
@@ -357,7 +420,7 @@ export default function FinanceEntryScreen() {
           </AnimatedPressable>
         )}
 
-        {!parsing && !params.editId && (scanFailed || params.autoScan === '0') && (
+        {!parsing && !params.editId && !quotaHit && (scanFailed || params.autoScan === '0') && (
           <AnimatedPressable
             onPress={runScan}
             className="flex-row items-center justify-center gap-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5"
@@ -367,7 +430,7 @@ export default function FinanceEntryScreen() {
           </AnimatedPressable>
         )}
 
-        {!parsing && params.editId && imageUri && (
+        {!parsing && params.editId && imageUri && !quotaHit && (
           <AnimatedPressable
             onPress={runScan}
             className="flex-row items-center justify-center gap-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5"
@@ -375,6 +438,34 @@ export default function FinanceEntryScreen() {
             <MaterialIcons name="refresh" size={18} color="#004c22" />
             <Text className="text-sm font-semibold text-primary">Re-scan receipt</Text>
           </AnimatedPressable>
+        )}
+
+        {!parsing && quotaHit && !quotaDismissed && (
+          <View className="bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5">
+            <Text className="text-sm font-semibold text-on-surface mb-1">You've used your free scans this month</Text>
+            <Text className="text-xs text-on-surface-variant mb-3">
+              Free accounts include 3 receipt scans a month. You can still enter this expense by hand, or get Gold for unlimited scans.
+            </Text>
+            <AnimatedPressable
+              onPress={() => router.push('/gold' as any)}
+              className="w-full py-3 rounded-xl items-center justify-center bg-primary mb-2"
+            >
+              <Text className="font-semibold text-sm text-white">See Gold</Text>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => setQuotaDismissed(true)}
+              className="w-full py-3 rounded-xl items-center justify-center"
+              style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}
+            >
+              <Text className="font-semibold text-sm text-on-surface">Enter manually</Text>
+            </AnimatedPressable>
+          </View>
+        )}
+
+        {!parsing && !params.editId && isReview && plan && plan.plan === 'free' && plan.scansLimit !== null && !quotaHit && (
+          <Text className="text-[11px] text-on-surface-variant text-center mb-4">
+            {Math.min(plan.scansUsed, plan.scansLimit)} of {plan.scansLimit || FREE_SCANS_PER_MONTH} free scans used this month
+          </Text>
         )}
 
         {parsing && (
@@ -433,7 +524,27 @@ export default function FinanceEntryScreen() {
           </View>
         )}
 
-        {!parsing && (
+        {editLoadError && (
+          <View className="bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5">
+            <Text className="text-sm font-semibold text-on-surface mb-1">Couldn't load this expense</Text>
+            <Text className="text-xs text-on-surface-variant mb-3">Check your connection and try again.</Text>
+            <AnimatedPressable
+              onPress={() => setEditLoadAttempt((n) => n + 1)}
+              className="w-full py-3 rounded-xl items-center justify-center bg-primary mb-2"
+            >
+              <Text className="font-semibold text-sm text-white">Retry</Text>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => router.back()}
+              className="w-full py-3 rounded-xl items-center justify-center"
+              style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}
+            >
+              <Text className="font-semibold text-sm text-on-surface">Close</Text>
+            </AnimatedPressable>
+          </View>
+        )}
+
+        {!parsing && !editLoadError && (
           <>
             <View className="flex-row items-baseline justify-center mb-6 mt-2">
               <Text className="font-display-lg text-primary opacity-50 text-4xl font-bold mr-1">₹</Text>
@@ -472,14 +583,19 @@ export default function FinanceEntryScreen() {
               value={dateText}
               onChangeText={(t) => {
                 setDateText(t);
-                const d = parseDate(t);
+                const d = parseDate(t.trim());
                 if (d) { setOccurredAt(d); markEdited('occurredAt'); }
               }}
               placeholder="DD/MM/YYYY"
               placeholderTextColor="rgba(64,73,64,0.4)"
-              className="w-full text-sm text-on-surface px-4 py-3 rounded-2xl mb-4"
-              style={{ backgroundColor: 'rgba(255,255,255,0.65)', ...fieldBorder('occurredAt') }}
+              className={`w-full text-sm text-on-surface px-4 py-3 rounded-2xl ${dateError ? 'mb-1' : 'mb-4'}`}
+              style={{ backgroundColor: 'rgba(255,255,255,0.65)', ...(dateError ? { borderColor: '#ba1a1a', borderWidth: 1.5 } : fieldBorder('occurredAt')) }}
             />
+            {dateError && (
+              <Text className="text-xs mb-4 px-1" style={{ color: '#ba1a1a' }}>
+                Enter a valid date, e.g. 14/10/2026
+              </Text>
+            )}
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="w-full mb-6">
               {CATEGORIES.map((c, index) => {
@@ -599,5 +715,8 @@ function parseDate(text: string): Date | null {
   if (!m) return null;
   const [, dd, mm, yyyy] = m;
   const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-  return isNaN(d.getTime()) ? null : d;
+  if (isNaN(d.getTime())) return null;
+  // Reject rolled-over dates like 31/02 (JS would silently make it 3 March).
+  if (d.getDate() !== Number(dd) || d.getMonth() !== Number(mm) - 1 || Number(yyyy) < 2000) return null;
+  return d;
 }

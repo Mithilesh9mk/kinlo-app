@@ -30,15 +30,22 @@ export default function SuccessScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // Retrieve parameters or fall back to high-fidelity placeholder defaults
-  const amountStr = (params.amount as string) || '500.00';
+  // These used to fall back to invented values ("₹500.00", "Unknown Friend")
+  // that read as a real receipt when a param was missing. A missing param now
+  // shows nothing instead of a made-up figure.
+  const amountStr = (params.amount as string) || '';
   const amountVal = parseFloat(amountStr);
-  const formattedAmount = isNaN(amountVal) ? '₹500.00' : `₹${amountVal.toFixed(2)}`;
-  
-  const description = (params.description as string) || 'Expense';
-  const splitInfo = (params.splitInfo as string) || 'Split with Unknown Friend';
-  const detailText = (params.detailText as string) || 'Equal split';
-  const friendName = (params.friendName as string) || 'Unknown Friend';
+  const formattedAmount = isNaN(amountVal) ? '' : `₹${amountVal.toFixed(2)}`;
+
+  const description = (params.description as string) || '';
+  const splitInfo = (params.splitInfo as string) || '';
+  const detailText = (params.detailText as string) || '';
+  const friendName = (params.friendName as string) || '';
+  const transactionId = (params.transactionId as string) || '';
+
+  // Held so View Details can stop the auto-redirect to Home from firing on
+  // top of the screen it opens.
+  const redirectTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Animation values
   const checkScale = useRef(new Animated.Value(0)).current;
@@ -148,6 +155,7 @@ export default function SuccessScreen() {
         return prev - 1;
       });
     }, 1000);
+    redirectTimer.current = interval;
 
     return () => clearInterval(interval);
   }, []);
@@ -157,8 +165,15 @@ export default function SuccessScreen() {
   };
 
   const handleViewDetails = () => {
-    // Navigate back or to details
+    // Without an id (not passed) there is nothing to open, so behave as Home.
+    if (!transactionId) {
+      handleNavigateHome();
+      return;
+    }
+    if (redirectTimer.current) clearInterval(redirectTimer.current);
+    // Home first so Back from the detail returns there, not to the flow.
     router.replace('/');
+    router.push({ pathname: `/transaction/${transactionId}` });
   };
 
   return (
@@ -257,27 +272,40 @@ export default function SuccessScreen() {
           className="w-full max-w-xs rounded-3xl p-6 items-center"
         >
           {/* Amount */}
-          <Text className="font-display-lg text-4xl font-bold text-primary">{formattedAmount}</Text>
-          <Text className="font-body text-base text-on-surface-variant text-center mt-1">
-            {description}
-          </Text>
+          {!!formattedAmount && (
+            <Text className="font-display-lg text-4xl font-bold text-primary">{formattedAmount}</Text>
+          )}
+          {!!description && (
+            <Text className="font-body text-base text-on-surface-variant text-center mt-1">
+              {description}
+            </Text>
+          )}
 
-          {/* Divider */}
-          <View className="w-full h-[1px] bg-outline-variant/40 my-5" />
+          {/* Only shown when the split details were actually passed in */}
+          {!!splitInfo && (
+            <>
+              {/* Divider */}
+              <View className="w-full h-[1px] bg-outline-variant/40 my-5" />
 
-          {/* Split / Settlement Info Row */}
-          <View className="flex-row items-center justify-center space-x-2.5">
-            <View className="w-8 h-8 rounded-full bg-secondary-container items-center justify-center overflow-hidden border border-outline-variant/30">
-                <Text className="text-primary font-bold text-sm">
-                  {friendName.split(' ').map(n => n.charAt(0)).join('').toUpperCase().slice(0,2)}
+              {/* Split / Settlement Info Row */}
+              <View className="flex-row items-center justify-center space-x-2.5">
+                {!!friendName && (
+                  <View className="w-8 h-8 rounded-full bg-secondary-container items-center justify-center overflow-hidden border border-outline-variant/30">
+                      <Text className="text-primary font-bold text-sm">
+                        {friendName.split(' ').map(n => n.charAt(0)).join('').toUpperCase().slice(0,2)}
+                      </Text>
+                  </View>
+                )}
+                <Text className="font-body text-base text-on-surface font-medium">{splitInfo}</Text>
+              </View>
+
+              {!!detailText && (
+                <Text className="text-xs font-semibold text-on-surface-variant mt-2 text-center">
+                  {detailText}
                 </Text>
-            </View>
-            <Text className="font-body text-base text-on-surface font-medium">{splitInfo}</Text>
-          </View>
-          
-          <Text className="text-xs font-semibold text-on-surface-variant mt-2 text-center">
-            {detailText}
-          </Text>
+              )}
+            </>
+          )}
         </Animated.View>
       </View>
 

@@ -13,6 +13,7 @@ import { ParetoChart } from '../../components/ParetoChart';
 import { useToast } from '../../components/Toast';
 import { useAlert } from '../../components/AppAlert';
 import { categoryMeta } from '../../lib/categories';
+import { formatINR, tabularNums } from '../../lib/format';
 import {
   listPersonalTransactions,
   voidPersonalTransaction,
@@ -32,8 +33,7 @@ import { OfflineBanner } from '../../components/OfflineBanner';
 
 const AUTO_SCAN_KEY = 'kinlo.finance.autoScan.v1';
 
-const money = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: number) => formatINR(n);
 
 function monthLabel(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
@@ -362,6 +362,7 @@ export default function FinanceHomeScreen() {
       <View className="flex-row items-center justify-between px-5 h-16">
         <AnimatedPressable
           onPress={() => router.back()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           className="w-10 h-10 items-center justify-center rounded-full"
         >
           <MaterialIcons name="arrow-back" size={22} color="#1c1c19" />
@@ -371,6 +372,7 @@ export default function FinanceHomeScreen() {
             reverse, so this never reads as a dead end back to Profile. */}
         <AnimatedPressable
           onPress={() => router.push('/')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           className="flex-row items-center gap-1.5 pl-2.5 pr-3 h-9 rounded-full bg-secondary-container"
           accessibilityLabel="Split expenses"
         >
@@ -426,7 +428,7 @@ export default function FinanceHomeScreen() {
                 </AnimatedPressable>
               )}
             </View>
-            <Text className="font-headline-md text-3xl font-bold text-primary mt-1">{loadState === 'error' ? '—' : money(displayTotal)}</Text>
+            <Text className="font-headline-md text-3xl font-bold text-primary mt-1" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{loadState === 'error' ? '—' : money(displayTotal)}</Text>
             <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
               {loadState === 'error'
                 ? 'Could not load'
@@ -452,6 +454,7 @@ export default function FinanceHomeScreen() {
                 <AnimatedPressable
                   key={p}
                   onPress={() => { setPeriod(p); setSelectedBarKey(null); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
                     paddingHorizontal: 12,
                     paddingVertical: 6,
@@ -622,7 +625,7 @@ export default function FinanceHomeScreen() {
                       </View>
                     </View>
                     <View className="items-end">
-                      <Text className="font-bold text-sm text-on-surface">{money(c.amount)}</Text>
+                      <Text className="font-bold text-sm text-on-surface" style={tabularNums}>{money(c.amount)}</Text>
                       <Text className="text-[10px] text-on-surface-variant mt-0.5">{c.percentage}%</Text>
                     </View>
                   </View>
@@ -751,7 +754,7 @@ export default function FinanceHomeScreen() {
                             </Text>
                           </View>
                         </View>
-                        <Text className="font-bold text-base text-on-surface">{money(row.amount)}</Text>
+                        <Text className="font-bold text-base text-on-surface" style={tabularNums}>{money(row.amount)}</Text>
                       </AnimatedPressable>
                     </SwipeableRow>
                   </AnimatedListItem>

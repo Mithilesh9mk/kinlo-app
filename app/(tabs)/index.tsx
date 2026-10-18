@@ -21,6 +21,7 @@ import { Skeleton, SkeletonListRow } from '../../components/Skeleton';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { FirstRunHintCard } from '../../components/FirstRunHintCard';
 import { useFirstRunHints } from '../../lib/useFirstRunHints';
+import { formatINR, tabularNums } from '../../lib/format';
 
 interface Friend {
   id: string;
@@ -533,20 +534,20 @@ export default function HomeScreen() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const getBorderColor = (friend: Friend) => {
-    if (friend.status === 'owed') return 'border-[#1f6c3a]';
-    if (friend.status === 'owes') return 'border-[#ba1a1a]';
+    if (friend.status === 'owed') return 'border-primary';
+    if (friend.status === 'owes') return 'border-error';
     return 'border-[#bfc9bd]';
   };
 
   const getBalanceTextColor = (friend: Friend) => {
     if (friend.status === 'owed') return 'text-primary';
     if (friend.status === 'owes') return 'text-error';
-    return 'text-outline-variant';
+    return 'text-on-surface-variant';
   };
 
   const getBalanceLabel = (friend: Friend) => {
-    if (friend.status === 'owed') return `+₹${friend.balance.toFixed(0)}`;
-    if (friend.status === 'owes') return `-₹${friend.balance.toFixed(0)}`;
+    if (friend.status === 'owed') return formatINR(friend.balance, { decimals: 0, signed: true });
+    if (friend.status === 'owes') return formatINR(-friend.balance, { decimals: 0 });
     return 'Settled';
   };
 
@@ -560,15 +561,13 @@ export default function HomeScreen() {
   };
 
   const getBalanceCardLabel = () => {
-    if (totalBalance > 0) return "You're owed";
+    if (totalBalance > 0) return "You are owed";
     if (totalBalance < 0) return 'You owe';
-    return 'All settled';
+    return 'Settled';
   };
 
   const getBalanceCardAmount = () => {
-    if (totalBalance > 0) return `₹${totalBalance.toFixed(2)}`;
-    if (totalBalance < 0) return `-₹${Math.abs(totalBalance).toFixed(2)}`;
-    return '₹0.00';
+    return formatINR(totalBalance);
   };
 
   const getBalanceCardColor = () => {
@@ -607,6 +606,7 @@ export default function HomeScreen() {
             onPress={() => router.push('/finance')}
             className="w-10 h-10 rounded-full items-center justify-center active:bg-surface-container"
             accessibilityLabel="Personal spending"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <MaterialIcons name="document-scanner" size={22} color="#004c22" />
           </AnimatedPressable>
@@ -620,6 +620,7 @@ export default function HomeScreen() {
             onPress={() => router.push('/search')}
             className="w-10 h-10 rounded-full items-center justify-center active:bg-surface-container"
             accessibilityLabel="Search"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <MaterialIcons name="search" size={24} color="#004c22" />
           </AnimatedPressable>
@@ -634,6 +635,7 @@ export default function HomeScreen() {
                 ? `Activity, ${unreadActivityCount} unread`
                 : 'Activity'
             }
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <MaterialIcons name="history" size={24} color="#004c22" />
             {unreadActivityCount > 0 && (
@@ -712,7 +714,7 @@ export default function HomeScreen() {
                   </View>
                   <View className="items-center">
                     <Text className="text-xs font-semibold text-on-surface">{friend.name}</Text>
-                    <Text className={`text-[10px] font-bold mt-0.5 ${getBalanceTextColor(friend)}`}>
+                    <Text className={`text-[10px] font-bold mt-0.5 ${getBalanceTextColor(friend)}`} style={tabularNums}>
                       {getBalanceLabel(friend)}
                     </Text>
                   </View>
@@ -770,13 +772,20 @@ export default function HomeScreen() {
                   onPress={refreshBalances}
                   className="flex-row items-center px-4 py-2 rounded-full bg-error/10 mt-3"
                   accessibilityRole="button"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <MaterialIcons name="refresh" size={14} color="#b91c1c" />
+                  <MaterialIcons name="refresh" size={14} color="#ba1a1a" />
                   <Text className="font-bold text-[10px] uppercase tracking-wide text-error ml-1">Retry</Text>
                 </AnimatedPressable>
               </View>
             ) : (
-              <Text className={`text-5xl font-bold mb-6 ${getBalanceCardColor()}`}>{getBalanceCardAmount()}</Text>
+              <Text
+                className={`text-5xl font-bold mb-6 ${getBalanceCardColor()}`}
+                style={tabularNums}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >{getBalanceCardAmount()}</Text>
             )}
             <View className="flex-row gap-3 w-full">
               <AnimatedPressable 
@@ -809,8 +818,8 @@ export default function HomeScreen() {
             <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">
               <MaterialIcons name="trending-up" size={16} color="#004c22" />
             </View>
-            <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">Monthly Spend</Text>
-            <Text className="text-lg font-bold text-on-surface">{loadStatus.monthly === 'failed' ? '—' : `₹${monthlySpend.toFixed(0)}`}</Text>
+            <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">This month (split)</Text>
+            <Text className="text-lg font-bold text-on-surface" style={tabularNums}>{loadStatus.monthly === 'failed' ? '—' : formatINR(monthlySpend, { decimals: 0 })}</Text>
           </AnimatedPressable>
 
           <AnimatedPressable
@@ -820,8 +829,8 @@ export default function HomeScreen() {
             <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">
               <MaterialIcons name="today" size={16} color="#004c22" />
             </View>
-            <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">Today's Spend</Text>
-            <Text className="text-lg font-bold text-on-surface">{loadStatus.today === 'failed' ? '—' : `₹${todaySpend.toFixed(0)}`}</Text>
+            <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">Today (split)</Text>
+            <Text className="text-lg font-bold text-on-surface" style={tabularNums}>{loadStatus.today === 'failed' ? '—' : formatINR(todaySpend, { decimals: 0 })}</Text>
           </AnimatedPressable>
         </View>
 
@@ -892,7 +901,7 @@ export default function HomeScreen() {
                 <MaterialIcons name="document-scanner" size={24} color="#d97706" />
               </View>
               <View className="flex-1">
-                <Text className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: '#d97706' }}>Personal Spending</Text>
+                <Text className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: '#9a5511' }}>Personal Spending</Text>
                 {/* Once there is data the card reports it instead of repeating
                     a prompt the user has already acted on — that is what earns
                     it a permanent slot on Home rather than being a first-run
@@ -903,8 +912,8 @@ export default function HomeScreen() {
                   </Text>
                 ) : (
                   <>
-                    <Text className="font-bold text-on-surface text-lg" numberOfLines={1}>
-                      ₹{personalSummary.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <Text className="font-bold text-on-surface text-lg" numberOfLines={1} style={tabularNums}>
+                      {formatINR(personalSummary.total)}
                     </Text>
                     <Text className="text-xs text-on-surface-variant" numberOfLines={1}>
                       {personalSummary.count} expense{personalSummary.count === 1 ? '' : 's'} this month
@@ -921,7 +930,7 @@ export default function HomeScreen() {
         <View className="px-6 mb-4">
           <View className="flex-row justify-between items-center mb-4">
             <Text className="font-semibold text-xl text-on-surface">Recent Activity</Text>
-            <AnimatedPressable onPress={() => router.push('/statement')}>
+            <AnimatedPressable onPress={() => router.push('/statement')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text className="text-primary font-semibold text-sm">See all</Text>
             </AnimatedPressable>
           </View>
@@ -942,15 +951,16 @@ export default function HomeScreen() {
                   onPress={() => { setActivityLoading(true); fetchRecentActivity(); }}
                   className="flex-row items-center px-4 py-2 rounded-full bg-error/10 mt-3"
                   accessibilityRole="button"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <MaterialIcons name="refresh" size={14} color="#b91c1c" />
+                  <MaterialIcons name="refresh" size={14} color="#ba1a1a" />
                   <Text className="font-bold text-[10px] uppercase tracking-wide text-error ml-1">Retry</Text>
                 </AnimatedPressable>
               </View>
             ) : recentActivity.length === 0 ? (
               <View className="liquid-glass rounded-2xl p-6 items-center justify-center">
                 <Text className="font-semibold text-on-surface-variant">No recent activity</Text>
-                <AnimatedPressable onPress={() => router.push('/expense/amount')} className="mt-3">
+                <AnimatedPressable onPress={() => router.push('/expense/amount')} className="mt-3" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Text className="text-primary font-semibold text-sm">Add your first expense</Text>
                 </AnimatedPressable>
               </View>
@@ -993,28 +1003,28 @@ export default function HomeScreen() {
                       <Text className="text-xs text-on-surface-variant mt-0.5">
                         {isSettlement
                           ? `Payment • ${item.date}`
-                          : `${item.paidByName} paid ₹${item.amount.toFixed(0)}${item.locationLabel ? ` • ${item.locationLabel}` : ''} • ${item.date}`}
+                          : `${item.paidByName} paid ${formatINR(item.amount, { decimals: 0 })}${item.locationLabel ? ` • ${item.locationLabel}` : ''} • ${item.date}`}
                       </Text>
                       {/* A settlement is money changing hands, not a new charge.
                           Showing it with the same owe/owed wording made settling
                           look like it had created another debt. */}
-                      <Text className={`text-xs font-semibold mt-0.5 ${isVoided ? 'text-outline' : (isSettlement || item.status === 'settled' || item.displayAmount <= 0 ? 'text-[#1f6c3a]' : (item.isOwed ? 'text-[#1f6c3a]' : 'text-[#ba1a1a]'))}`}>
+                      <Text className={`text-xs font-semibold mt-0.5 ${isVoided ? 'text-outline' : (isSettlement || item.status === 'settled' || item.displayAmount <= 0 ? 'text-primary' : (item.isOwed ? 'text-primary' : 'text-error'))}`} style={tabularNums}>
                         {isVoided
                           ? 'Voided'
                           : isSettlement
                             ? 'Settled up'
                             : (item.status === 'settled' || item.displayAmount <= 0
                               ? 'Settled'
-                              : (item.isOwed ? `You get back ₹${item.displayAmount.toFixed(2)}` : `You owe ₹${item.displayAmount.toFixed(2)}`))}
+                              : (item.isOwed ? `You are owed ${formatINR(item.displayAmount)}` : `You owe ${formatINR(item.displayAmount)}`))}
                       </Text>
                     </View>
                     {isSettlement ? (
-                      <Text className="font-bold text-base" style={{ color: isVoided ? '#9ca3af' : '#4d5a51' }}>
-                        ₹{item.amount.toFixed(2)}
+                      <Text className="font-bold text-base" style={[tabularNums, { color: isVoided ? '#9ca3af' : '#4d5a51' }]}>
+                        {formatINR(item.amount)}
                       </Text>
                     ) : (
-                      <Text className={`font-bold text-base ${isVoided ? 'text-outline' : (item.displayAmount === 0 ? 'text-[#404940]' : (item.isOwed ? 'text-[#1f6c3a]' : 'text-[#ba1a1a]'))}`}>
-                        {item.displayAmount > 0 ? (item.isOwed ? '+' : '-') : ''}₹{item.displayAmount.toFixed(2)}
+                      <Text className={`font-bold text-base ${isVoided ? 'text-outline' : (item.displayAmount === 0 ? 'text-[#404940]' : (item.isOwed ? 'text-primary' : 'text-error'))}`} style={tabularNums}>
+                        {formatINR(item.displayAmount > 0 && !item.isOwed ? -item.displayAmount : item.displayAmount, { signed: true })}
                       </Text>
                     )}
                   </AnimatedPressable>

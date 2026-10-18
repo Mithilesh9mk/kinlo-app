@@ -22,6 +22,7 @@ import {
 import { getRelatedUsers } from '../../lib/friendFetcher';
 import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
+import { formatINR, tabularNums } from '../../lib/format';
 
 // DB-native category ids, matching the `category` column values this screen
 // already maps to labels below — not create.tsx's own UI ids (which get
@@ -570,8 +571,8 @@ export default function GroupDetailScreen() {
   // confirm.
   const describeOutstanding = (net: number) =>
     net > 0
-      ? `owed ₹${net.toFixed(2)} in this circle`
-      : `owes ₹${Math.abs(net).toFixed(2)} in this circle`;
+      ? `owed ${formatINR(net)} in this circle`
+      : `owes ${formatINR(Math.abs(net))} in this circle`;
 
   const handleRemoveMember = (memberId: string, memberName: string) => {
     const net = getMemberNetBalance(memberId);
@@ -864,6 +865,7 @@ export default function GroupDetailScreen() {
         <View className="flex-row items-center gap-4">
           <AnimatedPressable 
             onPress={() => router.back()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
           >
             <MaterialIcons name="arrow-back" size={24} color="#004c22" />
@@ -881,6 +883,7 @@ export default function GroupDetailScreen() {
               setIsSettingsSheetOpen(true);
             }}
             className="w-10 h-10 rounded-full border border-outline-variant bg-surface-container items-center justify-center active:bg-surface-container-high"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Circle settings"
           >
             <MaterialIcons name="settings" size={20} color="#004c22" />
@@ -892,7 +895,7 @@ export default function GroupDetailScreen() {
       {txError && !txLoading && loadedOnce && (
         <View className="mx-6 mt-2 mb-1 px-3 py-2 rounded-xl bg-error-container flex-row items-center justify-between">
           <Text className="text-xs font-medium text-error flex-1 mr-3">Couldn't refresh. Showing the last loaded data.</Text>
-          <AnimatedPressable onPress={retryLoad}>
+          <AnimatedPressable onPress={retryLoad} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text className="text-xs font-bold text-error">Retry</Text>
           </AnimatedPressable>
         </View>
@@ -914,13 +917,13 @@ export default function GroupDetailScreen() {
                 <View className="bg-secondary-container px-3 py-1 rounded-full">
                   <Text className="text-on-secondary-container font-label-sm text-xs">{group.categoryLabel}</Text>
                 </View>
-                <Text className="text-on-surface-variant font-label-sm text-xs opacity-60">• {group.memberCount} Members</Text>
+                <Text className="text-on-surface-variant font-label-sm text-xs">• {group.memberCount} Members</Text>
               </View>
               {titleReady
                 ? <Text className="font-headline-lg-mobile text-3xl text-on-background mb-1 font-bold">{group.title}</Text>
                 : <Skeleton width={160} height={28} radius={6} style={{ marginBottom: 4 }} />}
-              <Text className="font-body-md text-on-surface-variant">
-                Total Circle Spend: {dataUnknown ? '—' : `₹${group.totalSpend.toFixed(2)}`}
+              <Text style={tabularNums} className="font-body-md text-on-surface-variant">
+                Total Circle Spend (all time): {dataUnknown ? '—' : formatINR(group.totalSpend)}
               </Text>
             </View>
             <AnimatedPressable 
@@ -955,10 +958,10 @@ export default function GroupDetailScreen() {
             <View className="flex-col md:flex-row justify-between md:items-center gap-6 md:gap-0 z-10">
               <View className="items-center md:items-start">
                 <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Your Balance</Text>
-                <Text className={`font-display-lg text-5xl font-bold mb-4 ${
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={tabularNums} className={`font-display-lg text-5xl font-bold mb-4 ${
                   dataUnknown ? 'text-on-surface-variant' : group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
                 }`}>
-                  {dataUnknown ? '—' : group.userBalance > 0 ? `+₹${group.userBalance.toFixed(2)}` : group.userBalance < 0 ? `-₹${Math.abs(group.userBalance).toFixed(2)}` : 'Settled'}
+                  {dataUnknown ? '—' : group.userBalance > 0 || group.userBalance < 0 ? formatINR(group.userBalance, { signed: true }) : 'Settled'}
                 </Text>
                 {dataUnknown ? (
                   <Text className="text-sm text-on-surface-variant">
@@ -977,7 +980,7 @@ export default function GroupDetailScreen() {
                     <Text className={`font-label-md font-semibold text-sm ${
                       group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
                     }`}>
-                      {group.userBalance > 0 ? 'You are owed' : group.userBalance < 0 ? 'You owe' : 'Circle settled'}
+                      {group.userBalance > 0 ? 'You are owed' : group.userBalance < 0 ? 'You owe' : 'Settled'}
                     </Text>
                   </View>
                   
@@ -1010,14 +1013,14 @@ export default function GroupDetailScreen() {
                       <MaterialIcons name="info-outline" size={14} color="#707a6f" />
                     </AnimatedPressable>
                   </View>
-                  <Text className="font-headline-md text-xl font-bold text-on-background">
-                    {dataUnknown ? '—' : `₹${group.spentByYou.toFixed(2)}`}
+                  <Text style={tabularNums} className="font-headline-md text-xl font-bold text-on-background">
+                    {dataUnknown ? '—' : formatINR(group.spentByYou)}
                   </Text>
                 </View>
                 <View className="bg-surface/50 p-4 rounded-2xl border border-white/40 flex-1 md:flex-none">
                   <Text className="font-label-sm text-xs text-on-surface-variant mb-1">Your share</Text>
-                  <Text className="font-headline-md text-xl font-bold text-on-background">
-                    {dataUnknown ? '—' : `₹${group.yourShare.toFixed(2)}`}
+                  <Text style={tabularNums} className="font-headline-md text-xl font-bold text-on-background">
+                    {dataUnknown ? '—' : formatINR(group.yourShare)}
                   </Text>
                 </View>
               </View>
@@ -1032,6 +1035,7 @@ export default function GroupDetailScreen() {
               {/* Timeline filter trigger badge dropdown */}
               <AnimatedPressable 
                 onPress={() => setIsFilterSheetOpen(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 className="flex-row items-center gap-1 bg-surface-container-high px-3 py-1.5 rounded-full border border-outline-variant/30 active:scale-95"
               >
                 <MaterialIcons name="calendar-today" size={12} color="#004c22" />
@@ -1090,7 +1094,7 @@ export default function GroupDetailScreen() {
                     ? 'Voided'
                     : isSettlementRow
                       ? 'Settled up'
-                      : (tx.share > 0 ? `You are owed ₹${tx.share.toFixed(2)}` : tx.share < 0 ? `You owe ₹${Math.abs(tx.share).toFixed(2)}` : 'Settled');
+                      : (tx.share > 0 ? `You are owed ${formatINR(tx.share)}` : tx.share < 0 ? `You owe ${formatINR(Math.abs(tx.share))}` : 'Settled');
                   const isYouPaid = tx.paidBy === 'You';
                   
                   return (
@@ -1145,10 +1149,10 @@ export default function GroupDetailScreen() {
                         </View>
                       </View>
                       <View className="items-end justify-center">
-                        <Text className={`font-body-md font-bold text-base ${
+                        <Text style={tabularNums} className={`font-body-md font-bold text-base ${
                           isVoided ? 'text-outline' : (isSettlementRow ? 'text-on-background' : tx.share > 0 ? 'text-primary' : tx.share < 0 ? 'text-error' : 'text-on-background')
-                        }`}>₹{tx.totalAmount.toFixed(2)}</Text>
-                        <Text className={`font-label-sm text-xs mt-1 font-semibold ${
+                        }`}>{formatINR(tx.totalAmount)}</Text>
+                        <Text style={tabularNums} className={`font-label-sm text-xs mt-1 font-semibold ${
                           isVoided ? 'text-outline' : (isSettlementRow ? 'text-primary' : tx.share > 0 ? 'text-primary' : tx.share < 0 ? 'text-error' : 'text-on-surface-variant')
                         }`}>
                           {shareText}
@@ -1463,8 +1467,8 @@ export default function GroupDetailScreen() {
                           </Text>
                         </View>
                       </View>
-                      <Text className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
-                        ₹{s.amount.toFixed(2)}
+                      <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
+                        {formatINR(s.amount)}
                       </Text>
                     </AnimatedPressable>
                     </AnimatedListItem>
@@ -1597,6 +1601,7 @@ export default function GroupDetailScreen() {
                     setIsAddMembersSheetOpen(true);
                   }}
                   className="flex-row items-center"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <MaterialIcons name="person-add" size={16} color="#004c22" />
                   <Text className="text-primary font-semibold text-xs ml-1">Add</Text>
@@ -1625,6 +1630,7 @@ export default function GroupDetailScreen() {
                         onPress={() => handleRemoveMember(m.userId, m.fullName)}
                         disabled={removingMemberId === m.userId}
                         className="w-8 h-8 items-center justify-center"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         accessibilityLabel={`Remove ${m.fullName}`}
                       >
                         <MaterialIcons name="close" size={18} color="#ba1a1a" />

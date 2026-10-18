@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, ScrollView, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -228,6 +228,16 @@ export default function PermissionsScreen() {
                     )}
                   </AnimatedPressable>
                 )}
+                {notifState === 'denied' && (
+                  <AnimatedPressable
+                    onPress={() => { Linking.openSettings().catch(() => {}); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open Settings"
+                    className="self-start mt-2 px-4 h-9 border border-primary rounded-xl items-center justify-center"
+                  >
+                    <Text className="text-primary font-bold text-xs">Open Settings</Text>
+                  </AnimatedPressable>
+                )}
               </View>
             </View>
 
@@ -260,6 +270,16 @@ export default function PermissionsScreen() {
                     ) : (
                       <Text className="text-white font-bold text-xs">Allow contacts</Text>
                     )}
+                  </AnimatedPressable>
+                )}
+                {contactsState === 'denied' && (
+                  <AnimatedPressable
+                    onPress={() => { Linking.openSettings().catch(() => {}); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open Settings"
+                    className="self-start mt-2 px-4 h-9 border border-primary rounded-xl items-center justify-center"
+                  >
+                    <Text className="text-primary font-bold text-xs">Open Settings</Text>
                   </AnimatedPressable>
                 )}
               </View>

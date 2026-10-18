@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { fetchAnalytics, AnalyticsData, SpendScope, WindowPreset } from '../../lib/analytics';
 import { categoryMeta } from '../../lib/categories';
+import { formatINR, tabularNums } from '../../lib/format';
 
 // Premium HSL Tailored Kinlo Theme Colors
 const COLORS = {
@@ -24,8 +25,7 @@ const COLORS = {
   amber: '#d97706',
 };
 
-const money = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: number) => formatINR(n, { decimals: 2 });
 
 /** Display strings per window preset — one place so the toggle pill, the headline label, the
  *  "no expenses ___" phrase, and the drill-down clear-pill can never disagree with each other. */
@@ -117,7 +117,7 @@ export default function AnalyticsScreen() {
       }}
     >
       <Text className="font-headline-md font-bold text-primary text-xl">Insights</Text>
-      <AnimatedPressable onPress={() => load()} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
+      <AnimatedPressable onPress={() => load()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
         <MaterialIcons name="refresh" size={22} color="#1c1c19" />
       </AnimatedPressable>
     </View>
@@ -273,6 +273,7 @@ export default function AnalyticsScreen() {
                 <AnimatedPressable
                   key={tab.id}
                   onPress={() => changeScope(tab.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
                     paddingHorizontal: 16,
                     paddingVertical: 8,
@@ -306,6 +307,7 @@ export default function AnalyticsScreen() {
                 <AnimatedPressable
                   key={p}
                   onPress={() => { setWindowPreset(p); setSelectedMonthKey(null); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
                     paddingHorizontal: 10,
                     paddingVertical: 7,
@@ -342,7 +344,7 @@ export default function AnalyticsScreen() {
                     </AnimatedPressable>
                   )}
                 </View>
-                <Text className="font-display-lg text-4xl font-bold text-primary">{money(displaySpend)}</Text>
+                <Text className="font-display-lg text-4xl font-bold text-primary" style={tabularNums}>{money(displaySpend)}</Text>
                 <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
                   {displayCount === 0
                     ? `No expenses ${periodPhrase}`
@@ -462,7 +464,7 @@ export default function AnalyticsScreen() {
               <View>
                 <Text className="font-label-sm text-xs text-on-surface-variant uppercase tracking-wide">Expenses</Text>
                 <Text className="font-headline-md text-2xl font-bold text-primary mt-0.5">{displayCount}</Text>
-                <Text className="text-[9px] text-outline-variant font-semibold uppercase tracking-wider mt-1">{windowLabel}</Text>
+                <Text className="text-[9px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1">{windowLabel}</Text>
               </View>
             </View>
 
@@ -489,7 +491,7 @@ export default function AnalyticsScreen() {
                 <Text className="font-headline-md text-xl font-bold text-primary mt-0.5" numberOfLines={1}>
                   {displayTopCategory?.name || '—'}
                 </Text>
-                <Text className="text-[9px] text-outline-variant font-semibold uppercase tracking-wider mt-1">
+                <Text className="text-[9px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1">
                   {displayTopCategory ? money(displayTopCategory.amount) : 'No expenses yet'}
                 </Text>
               </View>
@@ -548,7 +550,7 @@ export default function AnalyticsScreen() {
                         </View>
                       </View>
                       <View className="items-end pl-2">
-                        <Text className="font-bold text-on-surface text-base">{money(c.amount)}</Text>
+                        <Text className="font-bold text-on-surface text-base" style={tabularNums}>{money(c.amount)}</Text>
                         <Text className="text-xs text-on-surface-variant font-medium mt-0.5">{c.percentage}%</Text>
                       </View>
                     </AnimatedPressable>
@@ -585,21 +587,26 @@ export default function AnalyticsScreen() {
                 <View className="gap-1.5">
                   <View className="flex-row justify-between items-center">
                     <Text className="text-sm font-semibold text-on-surface-variant">Your Monthly Average</Text>
-                    <Text className="text-sm font-bold text-primary">{money(view.myMonthlyAverage!)}</Text>
+                    <Text className="text-sm font-bold text-primary" style={tabularNums}>{money(view.myMonthlyAverage!)}</Text>
                   </View>
                   <View className="w-full h-8 bg-surface-container rounded-xl overflow-hidden justify-center pl-3">
                     <View
                       style={{ width: `${(view.myMonthlyAverage! / compareMax) * 100}%` }}
                       className="h-full bg-primary absolute left-0 top-0 rounded-l-xl"
                     />
-                    <Text className="text-white text-xs font-bold z-10">You</Text>
+                    <Text
+                      className="text-xs font-bold z-10"
+                      style={{ color: (view.myMonthlyAverage! / compareMax) < 0.2 ? COLORS.onSurface : '#ffffff' }}
+                    >
+                      You
+                    </Text>
                   </View>
                 </View>
 
                 <View className="gap-1.5">
                   <View className="flex-row justify-between items-center">
                     <Text className="text-sm font-semibold text-on-surface-variant">Others You Split With</Text>
-                    <Text className="text-sm font-bold text-on-surface">{money(data.groupMonthlyAverage!)}</Text>
+                    <Text className="text-sm font-bold text-on-surface" style={tabularNums}>{money(data.groupMonthlyAverage!)}</Text>
                   </View>
                   <View className="w-full h-8 bg-surface-container rounded-xl overflow-hidden justify-center pl-3">
                     <View

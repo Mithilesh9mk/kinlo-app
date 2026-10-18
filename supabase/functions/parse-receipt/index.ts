@@ -18,6 +18,17 @@ console.log("Hello from parse-receipt!")
 // Plain fetch, no SDK — avoids pinning an npm package version in Deno for a
 // single REST call.
 //
+// MONTHLY QUOTA (0061): Free = 3 scans per calendar month, Gold = unlimited,
+// enforced by the reserve_receipt_scan() RPC right after the 20/day limiter.
+// An explicit allowed === false is the ONLY thing that blocks (402
+// quota_exceeded). The check FAILS OPEN — if the RPC is missing (migration not
+// applied yet), errors, or returns an unexpected shape, we warn and proceed as
+// if allowed, so a quota problem can never break scanning. A scan that ends
+// without a usable extraction (every provider failed, not a payment
+// screenshot, bad_request, not_found, outer catch) is refunded through
+// release_receipt_scan(); any {ok:true} result is NOT refunded, even a
+// low-confidence one, since it cost real API money.
+//
 // NO SERVICE ROLE IN THIS FUNCTION. The only object it ever reads is one the
 // caller's own JWT can already read — Storage RLS (0037_receipts_bucket.sql)
 // is the authorization here, not this function. A service-role client would
@@ -344,6 +355,22 @@ async function callGeminiVision(
   return JSON.parse(responseText) as Record<string, unknown>
 }
 
+// Refund a reserved quota scan. Never throws; a failed refund only costs the
+// user one scan, so it is logged and swallowed.
+async function releaseScan(
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  scanId: string | null
+): Promise<void> {
+  if (!scanId) return
+  try {
+    const { error } = await client.rpc('release_receipt_scan', { p_scan_id: scanId })
+    if (error) console.warn('release_receipt_scan failed:', error)
+  } catch (e) {
+    console.warn('release_receipt_scan threw:', e)
+  }
+}
+
 // A result is "good" when it is clearly not a payment screenshot (nothing to
 // extract, no point retrying) or has an amount with decent confidence.
 function isGood(raw: Record<string, unknown>): boolean {
@@ -355,6 +382,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }
+
+  // Declared outside the try so the outer catch can refund too.
+  let scanId: string | null = null
+  // deno-lint-ignore no-explicit-any
+  let quotaClient: any = null
 
   try {
     const authHeader = req.headers.get('Authorization')
@@ -390,6 +422,35 @@ serve(async (req) => {
       return json({ ok: false, code: 'rate_limited', error: 'Too many receipt scans — try again later' }, 429)
     }
 
+    // Monthly free-tier quota (0061). Fails open: only an explicit
+    // allowed === false blocks; any error or odd shape proceeds unmetered.
+    quotaClient = callerClient
+    try {
+      const { data: reserveData, error: reserveError } = await callerClient.rpc('reserve_receipt_scan')
+      if (reserveError) {
+        console.warn('reserve_receipt_scan failed, proceeding:', reserveError)
+      } else {
+        const reserve = Array.isArray(reserveData) ? reserveData[0] : reserveData
+        if (reserve && typeof reserve === 'object') {
+          if (reserve.allowed === false) {
+            return json({
+              ok: false,
+              code: 'quota_exceeded',
+              error: 'You have used your free receipt scans for this month. Upgrade to Gold for unlimited scans.',
+              plan: 'free',
+              used: reserve.used,
+              limit: reserve.limit,
+            }, 402)
+          }
+          if (typeof reserve.scan_id === 'string' && reserve.scan_id) scanId = reserve.scan_id
+        } else {
+          console.warn('reserve_receipt_scan returned unexpected shape, proceeding')
+        }
+      }
+    } catch (quotaError) {
+      console.warn('reserve_receipt_scan threw, proceeding:', quotaError)
+    }
+
     const body = await req.json().catch(() => ({}))
     const { imagePath, imageBase64 } = body as {
       imagePath?: unknown
@@ -410,10 +471,12 @@ serve(async (req) => {
       try {
         bytes = decodeBase64(imageBase64)
       } catch {
+        await releaseScan(quotaClient, scanId)
         return json({ ok: false, code: 'bad_request', error: 'imageBase64 is not valid base64' }, 400)
       }
       const sniffed = sniffImageMimeType(bytes)
       if (!sniffed) {
+        await releaseScan(quotaClient, scanId)
         return json({ ok: false, code: 'bad_request', error: 'That does not look like a supported image' }, 400)
       }
       base64Image = imageBase64
@@ -423,6 +486,7 @@ serve(async (req) => {
       // into a clear 400 instead of a confusing downstream failure. RLS is
       // still what actually enforces ownership.
       if (!IMAGE_PATH_RE.test(imagePath)) {
+        await releaseScan(quotaClient, scanId)
         return json({ ok: false, code: 'bad_request', error: 'imagePath is not a valid receipts path' }, 400)
       }
 
@@ -433,17 +497,20 @@ serve(async (req) => {
       if (downloadError || !blob) {
         // Could mean "doesn't exist" or "not yours" — Storage RLS makes those
         // indistinguishable from here, which is the correct behaviour.
+        await releaseScan(quotaClient, scanId)
         return json({ ok: false, code: 'not_found', error: 'Image not found' }, 404)
       }
 
       const bytes = new Uint8Array(await blob.arrayBuffer())
       const sniffed = sniffImageMimeType(bytes)
       if (!sniffed) {
+        await releaseScan(quotaClient, scanId)
         return json({ ok: false, code: 'bad_request', error: 'That does not look like a supported image' }, 400)
       }
       mimeType = sniffed
       base64Image = encodeBase64(bytes)
     } else {
+      await releaseScan(quotaClient, scanId)
       return json({ ok: false, code: 'bad_request', error: 'imagePath or imageBase64 is required' }, 400)
     }
 
@@ -451,6 +518,7 @@ serve(async (req) => {
     const geminiKey = Deno.env.get('GEMINI_API_KEY')
     if (!anthropicKey && !geminiKey) {
       console.error('Neither ANTHROPIC_API_KEY nor GEMINI_API_KEY is set')
+      await releaseScan(quotaClient, scanId)
       return json({ ok: false, code: 'upstream_error', error: 'Extraction not configured: please set ANTHROPIC_API_KEY in Supabase secrets' }, 200)
     }
 
@@ -482,10 +550,12 @@ serve(async (req) => {
       }
     }
     if (!raw) {
+      await releaseScan(quotaClient, scanId)
       return json({ ok: false, code: 'upstream_error', error: lastError }, 200)
     }
 
     if (raw.is_payment_screenshot === false) {
+      await releaseScan(quotaClient, scanId)
       return json({ ok: false, code: 'not_a_payment_screenshot', error: 'This does not look like a payment screenshot' }, 200)
     }
 
@@ -493,6 +563,7 @@ serve(async (req) => {
     return json({ ok: true, extraction })
   } catch (error) {
     console.error('parse-receipt error:', error)
+    await releaseScan(quotaClient, scanId)
     return json({ ok: false, code: 'upstream_error', error: (error as Error).message }, 200)
   }
 })

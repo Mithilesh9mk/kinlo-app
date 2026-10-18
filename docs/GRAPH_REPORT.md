@@ -1,12 +1,12 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 15/10/2026, 2:04:53 pm
+> **Last Generated:** 18/10/2026, 11:45:34 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 150
-- **UI Screens (`app/`):** 45
+- **Total Tracked System Nodes:** 158
+- **UI Screens (`app/`):** 49
 - **Components (`components/`):** 13
-- **Business Logic (`lib/` & `context/`):** 29
-- **SQL Migrations (`supabase/migrations/`):** 59
+- **Business Logic (`lib/` & `context/`):** 32
+- **SQL Migrations (`supabase/migrations/`):** 60
 - **Edge Functions (`supabase/functions/`):** 4
 
 ---
@@ -35,12 +35,14 @@
 - `app/finance/_layout.tsx`
 - `app/friend/[id].tsx`
 - `app/friends/index.tsx`
+- `app/gold.tsx`
 - `app/group/create-members.tsx`
 - `app/group/create.tsx`
 - `app/group/[id].tsx`
 - `app/group/_layout.tsx`
 - `app/legal/[doc].tsx`
 - `app/legal/_layout.tsx`
+- `app/mfa-challenge.tsx`
 - `app/onboarding/avatar.tsx`
 - `app/onboarding/first-action.tsx`
 - `app/onboarding/login.tsx`
@@ -52,6 +54,8 @@
 - `app/onboarding/value.tsx`
 - `app/onboarding/_layout.tsx`
 - `app/search.tsx`
+- `app/security/two-factor.tsx`
+- `app/security/_layout.tsx`
 - `app/settle-success.tsx`
 - `app/settle-up.tsx`
 - `app/statement.tsx`
@@ -71,15 +75,18 @@
 - `lib/crashLog.ts`
 - `lib/debtNudges.ts`
 - `lib/drafts.ts`
+- `lib/format.ts`
 - `lib/friendFetcher.ts`
 - `lib/groups.ts`
 - `lib/idempotency.ts`
 - `lib/imagePrep.ts`
 - `lib/legal.ts`
+- `lib/mfa.ts`
 - `lib/offlineCache.ts`
 - `lib/onboardingState.ts`
 - `lib/pendingReceiptImage.ts`
 - `lib/personalTransactions.ts`
+- `lib/plan.ts`
 - `lib/pushDispatcher.ts`
 - `lib/recalculateSettlements.ts`
 - `lib/receiptDrafts.ts`
@@ -151,3 +158,4 @@
 - `supabase/migrations/0058_merge_paid_by_suppressed_from_activity.sql`
 - `supabase/migrations/0059_resplit_activity_event.sql`
 - `supabase/migrations/0060_personal_log_streak.sql`
+- `supabase/migrations/0061_plans_coupons_scan_quota.sql`

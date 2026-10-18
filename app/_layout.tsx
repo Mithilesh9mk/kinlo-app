@@ -21,6 +21,7 @@ import { ToastProvider } from '../components/Toast';
 import { AlertProvider } from '../components/AppAlert';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import { getAssurance } from '../lib/mfa';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import '../global.css'; // NativeWind v4 requires importing the CSS
 
@@ -177,6 +178,36 @@ export default function RootLayout() {
     router.push('/finance/share');
   }, [sharedPayloads, isReady, session, isOnboarded, router]);
 
+  // Two-factor step-up gate. Honest scope: this is enforced in the app only —
+  // it does NOT make the database reject aal1 tokens (that would need RLS
+  // changes, deliberately not done here). Users with no verified factor have
+  // next === 'aal1' and never see anything. FAILS OPEN: any lookup error or
+  // throw is logged and ignored, so a network blip can't lock anyone out.
+  // Checked once per signed-in user id (reset on sign-out).
+  const mfaCheckedFor = useRef<string | null>(null);
+  const mfaUserId = session?.user?.id;
+  useEffect(() => {
+    if (!mfaUserId) {
+      mfaCheckedFor.current = null;
+      return;
+    }
+    if (!isReady || !isOnboarded) return;
+    if (mfaCheckedFor.current === mfaUserId) return;
+    mfaCheckedFor.current = mfaUserId;
+    getAssurance()
+      .then((a) => {
+        if (!a.ok) {
+          console.warn('[mfa] assurance lookup failed; failing open');
+          return;
+        }
+        if (a.next === 'aal2' && a.current !== 'aal2' && segments[0] !== 'mfa-challenge') {
+          router.replace('/mfa-challenge');
+        }
+      })
+      .catch(() => console.warn('[mfa] assurance lookup threw; failing open'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, isOnboarded, mfaUserId]);
+
   // Hand off from native splash to this view the moment it's ready to paint
   // — same background colour as the splash (#fcf9f4), so the swap is
   // invisible rather than a flash to a different screen.
@@ -225,6 +256,8 @@ export default function RootLayout() {
                 <Stack.Screen name="finance" options={{ headerShown: false }} />
                 <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false, animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="mfa-challenge" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="security" options={{ headerShown: false }} />
               </Stack>
             </Animated.View>
           </AlertProvider>

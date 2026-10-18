@@ -26,7 +26,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 export default function SplitExpenseScreen() {
   const router = useRouter();
-  const { amount: amountStr, description, category, payer, payers, participants, setParticipants, splitMode, setSplitMode, groupId, editTransactionId, editTransactionStatus, editTransactionUpdatedAt, reset, discardDraft, flushDraftNow } = useExpense();
+  const { amount: amountStr, description, category, payer, payers, participants, setParticipants, splitMode, setSplitMode, groupId, editTransactionId, editTransactionStatus, editTransactionUpdatedAt, resetAfterPost, discardDraft, flushDraftNow } = useExpense();
   const { refreshBalances } = useGlobalBalances();
   const { showAlert } = useAlert();
   
@@ -426,9 +426,18 @@ Nothing was saved, so their version is intact.`
           description: description,
           splitInfo: splitDetails,
           detailText: `${splitMode === 'equal' ? 'Equal' : splitMode === 'shares' ? 'Shares' : splitMode === 'percent' ? 'Percentage' : 'Exact'} split`,
-          friendName: payerName
+          friendName: payerName,
+          // Lets "View Details" open the transaction just written.
+          transactionId: txId
         }
       });
+
+      // The expense is posted, so empty the form: otherwise Back from the
+      // success screen lands on earlier steps still holding it. After the
+      // navigation so this screen doesn't flash empty first. Every value the
+      // success screen shows was passed as a param above. resetAfterPost (not
+      // reset) so the cleared form isn't autosaved as a new draft.
+      resetAfterPost();
 
     } catch (e: any) {
       console.error(e);
@@ -548,7 +557,10 @@ Nothing was saved, so their version is intact.`
           <View className="space-y-4">
             <View className="flex-row justify-between items-center px-1 mb-2">
               <Text className="font-label-md text-sm text-on-surface-variant uppercase font-semibold">Participants</Text>
-              <Text className="font-label-sm text-xs text-primary font-semibold">Split between {includedCount} people</Text>
+              <Text className="font-label-sm text-xs text-primary font-semibold">{/* "(you + N)" so this count matches the picker's, which excludes You. */}
+                Split between {includedCount} {includedCount === 1 ? 'person' : 'people'}
+                {includedCount > 1 && includedParticipants.some(p => p.isYou) ? ` (you + ${includedCount - 1})` : ''}
+              </Text>
             </View>
 
             <View className="space-y-3">

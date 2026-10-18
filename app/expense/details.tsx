@@ -67,12 +67,22 @@ export default function ExpenseDetailsScreen() {
   }, [groupId, participants]);
 
   // Auto-populate participants when navigating from a group
+  // A failed member fetch used to fall back to a list of just "You", which let
+  // the expense go ahead as if the circle were empty. It now blocks Next and
+  // offers Retry instead.
+  const [membersError, setMembersError] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
+
   useEffect(() => {
     if (!paramGroupId || participants.length > 0) return;
 
     setGroupId(paramGroupId);
+    loadParticipants();
+  }, [paramGroupId]);
 
-    const loadParticipants = async () => {
+  const loadParticipants = async () => {
+      setMembersError(false);
+      setMembersLoading(true);
       const youParticipant: Participant = {
         id: 'you',
         name: 'You',
@@ -91,7 +101,7 @@ export default function ExpenseDetailsScreen() {
           .rpc('get_group_members', { target_group_id: paramGroupId });
 
         if (error || !data) {
-          setParticipants([youParticipant]);
+          setMembersError(true);
           return;
         }
 
@@ -119,12 +129,14 @@ export default function ExpenseDetailsScreen() {
 
         setParticipants(members.length > 0 ? members : [youParticipant]);
       } catch (err) {
-        setParticipants([youParticipant]);
+        setMembersError(true);
+      } finally {
+        setMembersLoading(false);
       }
-    };
+  };
 
-    loadParticipants();
-  }, [paramGroupId]);
+  // Next must not proceed while the circle's members are missing or loading.
+  const membersBlocked = membersError || membersLoading;
 
   useEffect(() => {
     // Direct navigation from a friend detail screen pre-selects that friend
@@ -182,6 +194,7 @@ export default function ExpenseDetailsScreen() {
   };
 
   const handleNextStep = () => {
+    if (membersBlocked) return;
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) {
       showAlert('Invalid amount', 'Please enter a valid amount greater than zero.');
@@ -305,6 +318,18 @@ export default function ExpenseDetailsScreen() {
               )}
             </View>
           </View>
+
+          {membersError && (
+            <View className="mb-4 p-4 rounded-xl border border-error/20 bg-error-container/30 flex-row items-center">
+              <MaterialIcons name="error-outline" size={20} color="#ba1a1a" />
+              <Text className="flex-1 text-sm text-error" style={{ marginLeft: 10 }}>
+                Couldn't load this circle's members.
+              </Text>
+              <AnimatedPressable onPress={loadParticipants} className="px-3 py-2 rounded-full bg-primary">
+                <Text className="text-white text-xs font-bold">Retry</Text>
+              </AnimatedPressable>
+            </View>
+          )}
 
           {/* Payer and Group Selection Rows */}
           <View 
@@ -435,9 +460,9 @@ export default function ExpenseDetailsScreen() {
         <AnimatedPressable
           scaleTo={0.9}
           onPress={handleNextStep}
-          disabled={selectedFriends.length === 0 && !selectedGroup}
+          disabled={(selectedFriends.length === 0 && !selectedGroup) || membersBlocked}
           className={`w-full max-w-xl mx-auto h-14 rounded-xl flex-row items-center justify-center space-x-2 transition-all shadow-lg ${
-            (selectedFriends.length === 0 && !selectedGroup) ? 'bg-outline-variant/30 opacity-50' : 'bg-primary shadow-primary/20'
+            ((selectedFriends.length === 0 && !selectedGroup) || membersBlocked) ?'bg-outline-variant/30 opacity-50' : 'bg-primary shadow-primary/20'
           }`}
         >
           <Text className="text-white font-bold text-lg font-body-lg">Next Step</Text>

@@ -79,10 +79,13 @@ export default function NameSetupScreen() {
       } else {
         await AsyncStorage.removeItem('onboarding_email');
       }
-      if (phoneText.trim()) {
-        await AsyncStorage.setItem('onboarding_phone', phoneText.trim());
+      // A cleared field must not leave an old number behind. A non-empty one
+      // is only stored after the save below succeeds, so a refused (23505)
+      // duplicate never lingers in storage.
+      if (!phoneText.trim()) {
+        await AsyncStorage.removeItem('onboarding_phone');
       }
-      
+
       // Update phone number and name in Supabase
       const saveStartedAt = new Date().toISOString();
       try {
@@ -118,7 +121,8 @@ export default function NameSetupScreen() {
 
              // Anything else is a transient/unknown failure. Not worth
              // blocking onboarding over: the sync step upserts name and
-             // phone again a screen later, so this usually self-heals.
+             // phone again a screen later (from the onboarding_phone key
+             // written below), so this usually self-heals.
            } else if (phoneText.trim()) {
              // Core Functionality Audit 2026-08-31 P2 §4.6: this is the
              // primary path that creates a connection_requests row (the
@@ -149,9 +153,14 @@ export default function NameSetupScreen() {
            }
         }
       } catch (dbErr) {
+        // Same reasoning as above: a dropped connection here must not stop
+        // onboarding; the phone is kept locally and re-sent later.
         console.log('Could not sync phone to Supabase yet:', dbErr);
       }
 
+      if (phoneText.trim()) {
+        await AsyncStorage.setItem('onboarding_phone', phoneText.trim());
+      }
       setIsSubmitting(false);
       router.push('/onboarding/avatar');
     } catch (e) {

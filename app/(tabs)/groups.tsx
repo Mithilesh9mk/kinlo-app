@@ -6,7 +6,8 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { fetchBalanceRows, groupBalanceMap, formatBalanceLabel } from '../../lib/balances';
+import { fetchBalanceRows, groupBalanceMap } from '../../lib/balances';
+import { formatINR, tabularNums } from '../../lib/format';
 import { withOfflineFallback } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
 
@@ -18,7 +19,6 @@ interface Group {
   categoryIcon: string;
   memberCount: number;
   members: string[];
-  lastActivity?: string;
   subText?: string;
   balanceText: string;
   isDebt?: boolean;
@@ -77,8 +77,7 @@ export default function GroupsScreen() {
         categoryIcon: cat.icon,
         memberCount: members?.length || 0,
         members: [],
-        lastActivity: 'Active',
-        balanceText: formatBalanceLabel(balance),
+        balanceText: Math.abs(balance) > 0.005 ? formatINR(balance, { decimals: 0, signed: true }) : 'Settled',
         isDebt: balance < -0.005,
       });
     }
@@ -137,7 +136,6 @@ export default function GroupsScreen() {
           
           const formattedGroup: Group = {
             ...parsed,
-            lastActivity: 'Just Created • Active Now',
             balanceText: 'Settled'
           };
           return [formattedGroup, ...prev];
@@ -309,12 +307,12 @@ export default function GroupsScreen() {
                 
                 <Text className="font-headline-md text-xl mb-2">{group.title}</Text>
                 <Text className="font-label-md text-sm text-on-surface-variant mb-6">
-                  {group.memberCount} Members • {group.lastActivity}
+                  {group.memberCount} {group.memberCount === 1 ? 'Member' : 'Members'}
                 </Text>
                 
                 <View className="pt-4 border-t border-white/35 flex-row justify-between items-center">
                   <Text className="font-label-md text-sm text-on-surface-variant">Balance</Text>
-                  <Text className={`font-bold text-lg ${group.isDebt ? 'text-[#E25E4E]' : 'text-primary'}`}>
+                  <Text className={`font-bold text-lg ${group.isDebt ? 'text-error' : 'text-primary'}`} style={tabularNums}>
                     {group.balanceText}
                   </Text>
                 </View>
@@ -344,7 +342,7 @@ export default function GroupsScreen() {
           bottom inset + height, plus a gap. */}
       <AnimatedPressable
         onPress={handleCreateGroupPress}
-        className="absolute right-6 w-16 h-16 rounded-full bg-primary items-center justify-center shadow-lg z-30"
+        className="absolute right-6 w-16 h-16 rounded-2xl bg-primary items-center justify-center shadow-lg z-30"
         style={{ bottom: (Platform.OS === 'ios' ? 26 : 16) + 64 + 16 }}
       >
         <MaterialIcons name="group-add" size={32} color="white" />

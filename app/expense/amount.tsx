@@ -114,15 +114,25 @@ export default function AmountScreen() {
     })();
   }, [params.editTxId, editTransactionId]);
 
+  // Set when the transaction being edited could not be loaded. Without it the
+  // screen sat there as an empty, editable form that looked ready to edit.
+  const [loadError, setLoadError] = React.useState(false);
+
   useEffect(() => {
     const editTxId = params.editTxId as string;
     if (editTxId && editTxId !== editTransactionId) {
-      const loadEditData = async () => {
+      loadEditData();
+    }
+  }, [params.editTxId]);
+
+  const loadEditData = async () => {
+        const editTxId = params.editTxId as string;
+        setLoadError(false);
         setIsLoading(true);
         try {
           const { data: { user } } = await supabase.auth.getUser();
-          if (!user) return;
-          
+          if (!user) throw new Error('Not signed in');
+
           const { data: tx, error: txError } = await supabase
             .from('transactions')
             .select(`
@@ -180,13 +190,14 @@ export default function AmountScreen() {
           );
         } catch (e) {
           console.error("Failed to load tx for edit", e);
+          setLoadError(true);
         } finally {
           setIsLoading(false);
         }
-      };
-      loadEditData();
-    }
-  }, [params.editTxId]);
+  };
+
+  // Editing, but the transaction has not arrived yet: show nothing editable.
+  const editPending = !!params.editTxId && params.editTxId !== editTransactionId;
 
   const appendValue = (val: string) => {
     if (val === '.') {
@@ -226,6 +237,36 @@ export default function AmountScreen() {
       });
     }
   };
+
+  if (editPending) {
+    return (
+      <SafeAreaView className="flex-1 bg-background items-center justify-center px-8" edges={['top', 'bottom']}>
+        {loadError ? (
+          <>
+            <MaterialIcons name="error-outline" size={40} color="#ba1a1a" />
+            <Text className="text-lg font-bold text-on-surface mt-3 text-center">Couldn't load this expense</Text>
+            <Text className="text-sm text-on-surface-variant mt-1 text-center">
+              Check your connection and try again. Nothing has been changed.
+            </Text>
+            <AnimatedPressable
+              onPress={loadEditData}
+              className="mt-6 w-full max-w-xs h-14 rounded-2xl items-center justify-center bg-primary"
+            >
+              <Text className="text-white font-semibold text-base">Retry</Text>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => router.back()}
+              className="mt-3 w-full max-w-xs h-14 rounded-2xl items-center justify-center bg-surface-container-highest"
+            >
+              <Text className="text-on-surface-variant font-semibold text-base">Close</Text>
+            </AnimatedPressable>
+          </>
+        ) : (
+          <ActivityIndicator color="#004c22" />
+        )}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>

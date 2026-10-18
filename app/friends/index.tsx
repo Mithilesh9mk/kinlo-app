@@ -13,6 +13,7 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
 import { SkeletonListRow } from '../../components/Skeleton';
+import { formatINR, tabularNums } from '../../lib/format';
 
 interface Friend {
   id: string;
@@ -144,20 +145,20 @@ export default function FriendsScreen() {
   );
 
   const getBorderColor = (friend: Friend) => {
-    if (friend.status === 'owed') return 'border-[#1f6c3a]';
-    if (friend.status === 'owes') return 'border-[#ba1a1a]';
+    if (friend.status === 'owed') return 'border-primary';
+    if (friend.status === 'owes') return 'border-error';
     return 'border-[#bfc9bd]';
   };
 
   const getBalanceTextColor = (friend: Friend) => {
-    if (friend.status === 'owed') return 'text-[#1f6c3a]';
-    if (friend.status === 'owes') return 'text-[#ba1a1a]';
+    if (friend.status === 'owed') return 'text-primary';
+    if (friend.status === 'owes') return 'text-error';
     return 'text-[#707a6f]';
   };
 
   const getBalanceLabel = (friend: Friend) => {
-    if (friend.status === 'owed') return `+₹${friend.balance.toFixed(0)}`;
-    if (friend.status === 'owes') return `-₹${friend.balance.toFixed(0)}`;
+    if (friend.status === 'owed') return formatINR(friend.balance, { decimals: 0, signed: true });
+    if (friend.status === 'owes') return formatINR(-friend.balance, { decimals: 0 });
     return 'Settled';
   };
 
@@ -168,7 +169,7 @@ export default function FriendsScreen() {
         className="px-6 pb-4 flex-row items-center justify-between bg-surface z-20 shadow-sm border-b border-outline-variant/20"
         style={{ paddingTop: Math.max(insets.top, 24) }}
       >
-        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95">
+        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <MaterialIcons name="arrow-back" size={24} color="#404940" />
         </AnimatedPressable>
         <Text className="font-bold text-xl text-on-surface">All Friends</Text>
@@ -187,7 +188,7 @@ export default function FriendsScreen() {
             className="flex-1 ml-3 text-base text-on-surface font-body"
           />
           {searchQuery.length > 0 && (
-            <AnimatedPressable onPress={() => setSearchQuery('')}>
+            <AnimatedPressable onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialIcons name="close" size={20} color="#707a6f" />
             </AnimatedPressable>
           )}
@@ -208,7 +209,7 @@ export default function FriendsScreen() {
                 className="items-center mr-3 bg-surface-container-low rounded-2xl px-4 py-3"
                 style={{ width: 112 }}
               >
-                <AnimatedPressable onPress={() => dismissMatch(match.id)} className="absolute top-1.5 right-1.5 z-10">
+                <AnimatedPressable onPress={() => dismissMatch(match.id)} className="absolute top-1.5 right-1.5 z-10" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialIcons name="close" size={14} color="#707a6f" />
                 </AnimatedPressable>
                 {/* size is required here: without it Avatar falls back to
@@ -227,6 +228,7 @@ export default function FriendsScreen() {
                   onPress={() => addMatchAsFriend(match)}
                   disabled={addingMatchId === match.id}
                   className="mt-2 bg-primary rounded-lg px-3 py-1.5"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text className="text-white text-xs font-semibold">
                     {addingMatchId === match.id ? '...' : 'Add'}
@@ -245,7 +247,7 @@ export default function FriendsScreen() {
           <Text className="flex-1 ml-2 text-xs text-on-surface-variant">
             Couldn't refresh — balances may be out of date.
           </Text>
-          <AnimatedPressable onPress={retryFetch}>
+          <AnimatedPressable onPress={retryFetch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text className="text-xs font-bold text-primary">Retry</Text>
           </AnimatedPressable>
         </View>
@@ -301,7 +303,7 @@ export default function FriendsScreen() {
                 <Text className="text-xs text-on-surface-variant mt-0.5">{item.phoneNumber || 'No phone added'}</Text>
               </View>
               <View className="items-end">
-                <Text className={`text-sm font-bold ${getBalanceTextColor(item)}`}>
+                <Text className={`text-sm font-bold ${getBalanceTextColor(item)}`} style={tabularNums}>
                   {getBalanceLabel(item)}
                 </Text>
               </View>

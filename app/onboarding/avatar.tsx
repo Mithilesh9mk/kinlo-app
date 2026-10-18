@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
+import { useAlert } from '../../components/AppAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -29,6 +30,8 @@ const AURAS = [
 export default function AvatarSelectionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAlert();
+  const [failedPresets, setFailedPresets] = useState<Record<number, boolean>>({});
 
   // Defaults to null (initials) rather than forcing a preset pick — the
   // preset URLs are ephemeral AI-generated links that eventually 404, and
@@ -99,6 +102,11 @@ export default function AvatarSelectionScreen() {
     } catch (e) {
       console.error(e);
       setIsSubmitting(false);
+      showAlert(
+        "Couldn't save your choice",
+        'Something went wrong saving your avatar. Please try again.',
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Retry', onPress: () => { void handleContinue(); } }]
+      );
     }
   };
 
@@ -200,7 +208,17 @@ export default function AvatarSelectionScreen() {
                           borderColor: isActive ? '#004c22' : 'transparent',
                         }}
                       >
-                        <Image source={{ uri: av }} className="w-14 h-14 rounded-full" />
+                        {failedPresets[index] ? (
+                          <View className="w-14 h-14 rounded-full bg-[#caead6] items-center justify-center">
+                            <Text className="text-primary font-bold text-base">{nameInitials}</Text>
+                          </View>
+                        ) : (
+                          <Image
+                            source={{ uri: av }}
+                            className="w-14 h-14 rounded-full"
+                            onError={() => setFailedPresets((prev) => ({ ...prev, [index]: true }))}
+                          />
+                        )}
                         {isActive && (
                           <View className="absolute bottom-0 right-0 bg-primary w-5 h-5 rounded-full items-center justify-center border border-white">
                             <MaterialIcons name="check" size={12} color="white" />

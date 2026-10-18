@@ -12,6 +12,20 @@ const GOOGLE_REDIRECT_URL = 'kinlo://onboarding/name-setup';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Plain-language versions of the Supabase auth errors people actually hit.
+// Anything unrecognised falls back to the original message.
+function friendlyAuthError(message: string | undefined, fallback: string): string {
+  const m = (message || '').toLowerCase();
+  if (!m) return fallback;
+  if (m.includes('invalid login credentials')) return 'Incorrect email or password.';
+  if (m.includes('email not confirmed')) return 'Please confirm your email first. Check your inbox for the link.';
+  if (m.includes('rate limit') || m.includes('too many requests')) return 'Too many attempts. Please wait a few minutes and try again.';
+  if (m.includes('network request failed') || m.includes('failed to fetch') || m.includes('network error')) {
+    return 'Could not reach the server. Check your connection and try again.';
+  }
+  return message as string;
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -25,6 +39,7 @@ export default function LoginScreen() {
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const [isSendingMagicLink, setIsSendingMagicLink] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -95,7 +110,7 @@ export default function LoginScreen() {
       // (or the AppState safety net) clears it from here.
     } catch (err: any) {
       console.warn('[DEBUG] LoginScreen: google sign-in error:', err.message);
-      setAuthError(err.message || 'Failed to sign in with Google');
+      setAuthError(friendlyAuthError(err.message, 'Failed to sign in with Google'));
       setIsLoading(false);
       setActiveMethod(null);
       googleRedirectHandled.current = true;
@@ -126,7 +141,12 @@ export default function LoginScreen() {
     const refresh_token = params.get('refresh_token');
     if (!access_token || !refresh_token) {
       // A redirect with neither tokens nor an error isn't one we recognise
-      // — leave the spinner running rather than guess.
+      // (e.g. a PKCE ?code= return). This client uses the implicit flow with
+      // no code verifier, so exchangeCodeForSession can't succeed here —
+      // recover cleanly instead of leaving the buttons disabled.
+      setAuthError("Sign-in didn't finish. Try again.");
+      setIsLoading(false);
+      setActiveMethod(null);
       return;
     }
 
@@ -190,7 +210,7 @@ export default function LoginScreen() {
       // We keep isLoading true so the UI doesn't glitch while the browser is open.
     } catch (err: any) {
       console.warn(`[DEBUG] LoginScreen: ${provider} sign-in error:`, err.message);
-      setAuthError(err.message || `Failed to sign in with ${provider}`);
+      setAuthError(friendlyAuthError(err.message, `Failed to sign in with ${provider}`));
       setIsLoading(false);
       setActiveMethod(null);
     }
@@ -220,7 +240,7 @@ export default function LoginScreen() {
         });
         
         if (error) {
-          setAuthError(error.message);
+          setAuthError(friendlyAuthError(error.message, 'Authentication failed'));
         } else {
           if (data.session) {
             // Already logged in (email confirmation disabled)
@@ -237,13 +257,13 @@ export default function LoginScreen() {
         });
         
         if (error) {
-          setAuthError(error.message);
+          setAuthError(friendlyAuthError(error.message, 'Authentication failed'));
         } else if (data.session) {
           await completeLogin();
         }
       }
     } catch (e: any) {
-      setAuthError(e.message || 'Authentication failed');
+      setAuthError(friendlyAuthError(e.message, 'Authentication failed'));
     } finally {
       setIsSendingMagicLink(false);
     }
@@ -264,12 +284,12 @@ export default function LoginScreen() {
         redirectTo: 'kinlo://onboarding/reset-password',
       });
       if (error) {
-        setAuthError(error.message);
+        setAuthError(friendlyAuthError(error.message, 'Failed to send reset link.'));
       } else {
         setAuthNotice('✅ Password reset link sent to your email.');
       }
     } catch (e: any) {
-      setAuthError(e.message || 'Failed to send reset link.');
+      setAuthError(friendlyAuthError(e.message, 'Failed to send reset link.'));
     } finally {
       setIsSendingMagicLink(false);
     }
@@ -417,12 +437,27 @@ export default function LoginScreen() {
                     accessibilityLabel="Password"
                     placeholder="Enter password (min 6 chars)"
                     placeholderTextColor="rgba(64, 73, 64, 0.4)"
-                    secureTextEntry={true}
+                    secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
                     style={{ marginLeft: 6 }}
                   />
+                  <AnimatedPressable
+                    onPress={() => setShowPassword((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    hitSlop={8}
+                  >
+                    <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#707a6f" />
+                  </AnimatedPressable>
                 </View>
+
+                {/* Why the submit button is still grey */}
+                {emailText.length > 0 && !emailText.includes('@') ? (
+                  <Text className="text-[11px] text-on-surface-variant/70 font-medium pl-1">Enter a valid email</Text>
+                ) : passwordText.length > 0 && passwordText.length < 6 ? (
+                  <Text className="text-[11px] text-on-surface-variant/70 font-medium pl-1">Password must be at least 6 characters</Text>
+                ) : null}
 
                 {/* Forgot Password Link */}
                 {!isSignUp && (

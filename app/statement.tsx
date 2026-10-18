@@ -13,6 +13,7 @@ import { AnimatedListItem } from '../components/AnimatedListItem';
 import { listPersonalTransactions } from '../lib/personalTransactions';
 import { readCache, writeCache, isLikelyNetworkError } from '../lib/offlineCache';
 import { OfflineBanner } from '../components/OfflineBanner';
+import { formatINR, tabularNums } from '../lib/format';
 
 // 'Personal' and 'Split' partition the feed by which ledger a row came from;
 // 'You Paid' / 'You Owe' partition it by debt direction. Those two ideas are
@@ -405,6 +406,7 @@ export default function StatementScreen() {
       >
         <AnimatedPressable 
           onPress={() => router.back()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
@@ -431,16 +433,21 @@ export default function StatementScreen() {
             // Unknown, not zero: "₹0.00" would claim the user is settled.
             <Text className="font-display-lg text-5xl font-bold text-on-surface-variant">—</Text>
           ) : (
-            <Text className={`font-display-lg text-5xl font-bold ${
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+              style={tabularNums}
+              className={`font-display-lg text-5xl font-bold ${
               net > 0 ? 'text-primary' : net < 0 ? 'text-error' : 'text-on-surface'
             }`}>
-              {net > 0 ? '+' : net < 0 ? '-' : ''}₹{Math.abs(net).toFixed(2)}
+              {formatINR(net, { signed: true })}
             </Text>
           )}
           {netKnown && net !== 0 && (
             <View className={`mt-3 px-4 py-1.5 rounded-full ${net > 0 ? 'bg-[#DCFCE7]' : 'bg-error-container'}`}>
               <Text className={`font-label-md font-semibold text-sm ${net > 0 ? 'text-primary' : 'text-error'}`}>
-                {net > 0 ? 'You are owed overall' : 'You owe overall'}
+                {net > 0 ? 'You are owed' : 'You owe'}
               </Text>
             </View>
           )}
@@ -453,7 +460,7 @@ export default function StatementScreen() {
           <View className="mx-5 mb-4 px-4 py-3 rounded-xl bg-error-container flex-row items-center">
             <MaterialIcons name="error-outline" size={18} color="#b91c1c" />
             <Text className="text-sm text-on-surface flex-1 ml-2">Could not load your net balance.</Text>
-            <AnimatedPressable onPress={fetchStatement} className="px-3 py-1.5">
+            <AnimatedPressable onPress={fetchStatement} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} className="px-3 py-1.5">
               <Text className="text-primary font-semibold text-sm">Retry</Text>
             </AnimatedPressable>
           </View>
@@ -601,19 +608,19 @@ export default function StatementScreen() {
                           rather than borrowing the debt palette. */}
                       <Text
                         className="font-body-md font-bold text-base"
-                        style={{
+                        style={[tabularNums, {
                           color: tx.entryType === 'personal'
                             ? '#1c1c19'
                             : tx.userShare > 0 ? '#004c22' : '#ba1a1a',
-                        }}
+                        }]}
                       >
-                        {tx.entryType === 'personal' ? '' : tx.userShare > 0 ? '+' : '-'}₹{Math.abs(tx.userShare).toFixed(2)}
+                        {tx.entryType === 'personal' ? '' : tx.userShare > 0 ? '+' : '-'}{formatINR(Math.abs(tx.userShare))}
                       </Text>
                       {/* For a personal row the total and the user's share are
                           the same number — printing it twice reads as a bug. */}
                       {tx.entryType === 'split' && (
-                        <Text className="font-label-sm text-[10px] text-on-surface-variant mt-1">
-                          Total: ₹{tx.totalAmount.toFixed(2)}
+                        <Text style={tabularNums} className="font-label-sm text-[10px] text-on-surface-variant mt-1">
+                          Total: {formatINR(tx.totalAmount)}
                         </Text>
                       )}
                     </View>

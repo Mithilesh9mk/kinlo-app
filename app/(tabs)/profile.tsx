@@ -7,7 +7,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Skeleton } from '../../components/Skeleton';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import Constants from 'expo-constants';
+import { fetchMyPlan, FREE_SCANS_PER_MONTH, PlanInfo } from '../../lib/plan';
 import { fetchBalances } from '../../lib/balances';
 import { useToast } from '../../components/Toast';
 import {
@@ -283,7 +285,6 @@ export default function ProfileScreen() {
   const [isPaymentsOpen, setIsPaymentsOpen] = useState(false);
   const [isSecurityOpen, setIsSecurityOpen] = useState(false);
   const [isDataOpen, setIsDataOpen] = useState(false);
-  const [isPlanOpen, setIsPlanOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   // 1. Payments & Wallet Settings
@@ -295,11 +296,6 @@ export default function ProfileScreen() {
   const [autoConvert] = useState<boolean>(true);
 
   // 2. Security & Privacy Toggles
-  const [backupSmsEnabled, setBackupSmsEnabled] = useState(true);
-  
-  const [biometricsEnabled, setBiometricsEnabled] = useState(true);
-  const [findPhoneEnabled, setFindPhoneEnabled] = useState(true);
-  const [searchDirectoryEnabled, setSearchDirectoryEnabled] = useState(true);
   // Intentionally empty: there is no session-tracking backend. Fake sessions in
   // cities the user has never visited read as a real security alert.
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
@@ -313,9 +309,16 @@ export default function ProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionPreview, setDeletionPreview] = useState<DeletionPreview | null>(null);
 
-  // 4. Subscriptions Plan Status Panel
-  // Billing isn't built; everyone is on Basic.
-  const [userPlan] = useState<'basic' | 'gold'>('basic');
+  // 4. Plan status — read from the server (get_my_plan) each time the tab is
+  // focused so a coupon redeemed on /gold shows up on return. null = unknown.
+  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchMyPlan().then((p) => { if (!cancelled) setPlanInfo(p); });
+      return () => { cancelled = true; };
+    }, [])
+  );
 
   // Personal Spending: whether "Add from screenshot" auto-runs extraction on
   // upload, or leaves the review screen blank for manual entry. A real,
@@ -542,12 +545,6 @@ export default function ProfileScreen() {
   };
 
   // 2. Security Modal
-  const handleToggleBiometrics = () => {
-    const nextState = !biometricsEnabled;
-    setBiometricsEnabled(nextState);
-    triggerToast(nextState ? 'Biometric lock FaceID/TouchID enabled!' : 'Biometric lock disabled.');
-  };
-
   const handleRevokeSession = (sessionId: string, deviceName: string) => {
     setSessions(prev => prev.filter(s => s.id !== sessionId));
     triggerToast(`Session on ${deviceName} terminated successfully!`);
@@ -796,7 +793,7 @@ export default function ProfileScreen() {
             style={styles.liquidGlass}
           >
             <Text className="font-headline-md text-base font-bold text-on-surface uppercase tracking-wider pl-1 mb-4">
-              Enterprise Configuration
+              Settings
             </Text>
 
             <View className="gap-4">
@@ -894,7 +891,7 @@ export default function ProfileScreen() {
 
               {/* Menu Row 4: Subscriptions */}
               <AnimatedPressable 
-                onPress={() => setIsPlanOpen(true)}
+                onPress={() => router.push('/gold' as any)}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
@@ -903,18 +900,18 @@ export default function ProfileScreen() {
                     <MaterialIcons name="stars" size={20} color="#d97706" />
                   </View>
                   <View>
-                    <Text className="font-semibold text-base text-on-surface">Kinlo Gold Status</Text>
-                    <Text className="text-xs text-on-surface-variant">OCR scan targets, Advanced Bento tiers</Text>
+                    <Text className="font-semibold text-base text-on-surface">Kinlo Gold</Text>
+                    {/* planInfo null = couldn't find out; stay neutral, no error. */}
+                    {planInfo && (
+                      <Text className="text-xs text-on-surface-variant">
+                        {planInfo.plan === 'gold'
+                          ? `Gold${planInfo.goldUntil ? ` · until ${new Date(planInfo.goldUntil).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`
+                          : `Free · ${planInfo.scansUsed} of ${planInfo.scansLimit ?? FREE_SCANS_PER_MONTH} receipt scans used this month`}
+                      </Text>
+                    )}
                   </View>
                 </View>
-                <View className="flex-row items-center gap-1">
-                  <View className={`px-2 py-0.5 rounded-full ${userPlan === 'gold' ? 'bg-[#DCFCE7]' : 'bg-[#e5e7eb]'}`}>
-                    <Text className={`font-bold text-[9px] uppercase tracking-wider ${userPlan === 'gold' ? 'text-primary' : 'text-on-surface-variant'}`}>
-                      {userPlan === 'gold' ? 'Active' : 'Basic'}
-                    </Text>
-                  </View>
-                  <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
-                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
               </AnimatedPressable>
 
               {/* Menu Row 5: Support */}
@@ -1067,7 +1064,7 @@ export default function ProfileScreen() {
               <Text className="text-error font-bold text-sm">Log Out</Text>
             </AnimatedPressable>
             <Text className="text-[10px] text-outline font-bold uppercase tracking-wider">
-              Version 2.4.0 (Organic Build)
+              Version {Constants.expoConfig?.version ?? '1.0.0'}
             </Text>
           </View>
 
@@ -1353,47 +1350,41 @@ export default function ProfileScreen() {
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
             <View className="max-w-xl mx-auto w-full gap-6">
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-3" style={{ opacity: 0.6 }}>
+                {/* Real TOTP setup lives on its own route (app/security/two-factor). */}
+                <AnimatedPressable
+                  onPress={() => { setIsSecurityOpen(false); router.push('/security/two-factor' as any); }}
+                  activeOpacity={0.8}
+                  className="flex-row items-center justify-between"
+                >
+                  <View className="flex-row items-center gap-3">
                     <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                       <MaterialIcons name="phonelink-lock" size={20} color="#004c22" />
                     </View>
                     <View>
                       <Text className="font-semibold text-base text-on-surface">Two-factor authentication</Text>
-                      <Text className="text-xs text-on-surface-variant">Google Authenticator / 1Password</Text>
+                      <Text className="text-xs text-on-surface-variant">Authenticator app code at sign-in</Text>
                     </View>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+                </AnimatedPressable>
+
+                {/* Inert: local state + toast only, no backend, nothing reads it. */}
+                <View className="flex-row items-center justify-between border-t border-outline-variant/20 pt-4">
+                  <View style={{ marginRight: 8, opacity: 0.6 }}>
+                    <Text className="font-semibold text-sm text-on-surface">SMS Backup Codes</Text>
+                    <Text className="text-[11px] text-on-surface-variant">Verify via SMS if Authenticator unavailable</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
                     <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
                 </View>
-
-                <AnimatedPressable 
-                  onPress={() => {
-                    const next = !backupSmsEnabled;
-                    setBackupSmsEnabled(next);
-                    triggerToast(next ? 'Backup alert SMS enabled!' : 'Backup alerts disabled.');
-                  }}
-                  activeOpacity={0.8}
-                  className="flex-row items-center justify-between border-t border-outline-variant/20 pt-4"
-                >
-                  <View style={{ marginRight: 8 }}>
-                    <Text className="font-semibold text-sm text-on-surface">SMS Backup Codes</Text>
-                    <Text className="text-[11px] text-on-surface-variant">Verify via SMS if Authenticator unavailable</Text>
-                  </View>
-                  <View className={`w-10 h-5 rounded-full p-0.5 flex-row items-center transition-colors ${
-                    backupSmsEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
-                  }`}>
-                    <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
-                  </View>
-                </AnimatedPressable>
               </View>
 
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Biometrics & Directory Privacy</Text>
                 
                 <View className="flex-row items-center justify-between py-2 border-b border-outline-variant/20 pb-4">
-                  <View className="flex-row items-center gap-3">
+                  <View className="flex-row items-center gap-3" style={{ opacity: 0.6 }}>
                     <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                       <MaterialIcons name="fingerprint" size={20} color="#004c22" />
                     </View>
@@ -1402,48 +1393,30 @@ export default function ProfileScreen() {
                       <Text className="text-xs text-on-surface-variant">Lock with FaceID / TouchID lock scanner</Text>
                     </View>
                   </View>
-                  <AnimatedPressable onPress={handleToggleBiometrics} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${biometricsEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}><View className="w-4 h-4 bg-white rounded-full shadow-sm" /></AnimatedPressable>
+                  <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                  </View>
                 </View>
 
-                <AnimatedPressable 
-                  onPress={() => {
-                    const next = !findPhoneEnabled;
-                    setFindPhoneEnabled(next);
-                    triggerToast(next ? 'Friends can find you by phone' : 'Phone lookup disabled.');
-                  }}
-                  activeOpacity={0.8}
-                  className="flex-row items-center justify-between py-2 border-b border-outline-variant/20 pb-4"
-                >
-                  <View style={{ marginRight: 8 }}>
+                <View className="flex-row items-center justify-between py-2 border-b border-outline-variant/20 pb-4">
+                  <View style={{ marginRight: 8, opacity: 0.6 }}>
                     <Text className="font-semibold text-sm text-on-surface">Allow Search by Phone</Text>
                     <Text className="text-[11px] text-on-surface-variant">Let users find your contact splits easily</Text>
                   </View>
-                  <View className={`w-10 h-5 rounded-full p-0.5 flex-row items-center transition-colors ${
-                    findPhoneEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
-                  }`}>
-                    <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
+                  <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
-                </AnimatedPressable>
+                </View>
 
-                <AnimatedPressable 
-                  onPress={() => {
-                    const next = !searchDirectoryEnabled;
-                    setSearchDirectoryEnabled(next);
-                    triggerToast(next ? 'Visible in circle directories' : 'Hidden from circle search.');
-                  }}
-                  activeOpacity={0.8}
-                  className="flex-row items-center justify-between py-2"
-                >
-                  <View style={{ marginRight: 8 }}>
+                <View className="flex-row items-center justify-between py-2">
+                  <View style={{ marginRight: 8, opacity: 0.6 }}>
                     <Text className="font-semibold text-sm text-on-surface">Circle Directory Visibility</Text>
                     <Text className="text-[11px] text-on-surface-variant">Make profile visible inside circle searches</Text>
                   </View>
-                  <View className={`w-10 h-5 rounded-full p-0.5 flex-row items-center transition-colors ${
-                    searchDirectoryEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
-                  }`}>
-                    <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
+                  <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
-                </AnimatedPressable>
+                </View>
               </View>
 
               <View className="p-6 rounded-3xl relative" style={styles.liquidGlass}>
@@ -1511,7 +1484,7 @@ export default function ProfileScreen() {
               <View className="p-6 rounded-3xl gap-6" style={styles.liquidGlass}>
                 <View>
                   <View className="flex-row items-center justify-between">
-                    <Text className="font-headline text-base font-bold text-on-surface">Mindful Statement Exporter</Text>
+                    <Text className="font-headline text-base font-bold text-on-surface">Statement Exporter</Text>
                     <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
                       <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                     </View>
@@ -1573,70 +1546,6 @@ export default function ProfileScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* MODAL 4: PLAN STATUS CENTER */}
-      <Modal
-        visible={isPlanOpen}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setIsPlanOpen(false)}
-      >
-        <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
-          <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
-            <AnimatedPressable onPress={() => setIsPlanOpen(false)} className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container">
-              <MaterialIcons name="arrow-back" size={24} color="#004c22" />
-            </AnimatedPressable>
-            <Text className="font-headline text-lg font-bold text-primary">Gold Premium</Text>
-            <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
-              <MaterialIcons name="stars" size={20} color="#d97706" />
-            </View>
-          </View>
-
-          <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="max-w-xl mx-auto w-full gap-6">
-              <View className="p-6 rounded-3xl relative overflow-hidden items-center text-center" style={[styles.liquidGlass, { borderWidth: 1, borderColor: '#d97706' }]}>
-                <View className="absolute -top-12 -right-12 w-48 h-48 bg-[#fef3c7]/40 rounded-full blur-3xl" />
-                <View className="w-16 h-16 rounded-full bg-[#fef3c7] items-center justify-center mb-3">
-                  <MaterialIcons name="military-tech" size={36} color="#d97706" />
-                </View>
-                <Text className="font-headline text-xl font-bold text-[#d97706]">Kinlo Gold</Text>
-                <Text className="text-xs text-on-surface-variant mt-1 mb-5">Experience the mindful, zero-fee splits suite</Text>
-                
-                <View className="bg-white/60 p-4 border border-outline-variant/35 rounded-2xl w-full flex-row justify-between items-center">
-                  <View className="items-start">
-                    <Text className="text-[10px] text-outline font-bold uppercase tracking-wider">Active Plan</Text>
-                    <Text className="text-base font-bold text-on-surface mt-0.5">{userPlan === 'gold' ? 'Gold Monthly Pro' : 'Kinlo Basic Free'}</Text>
-                  </View>
-                  <View className={`px-3 py-1.5 ${SOON_PILL}`}>
-                    <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
-                <Text className="font-headline text-base font-bold text-on-surface">Gold Features Bento Grid</Text>
-                <View className="flex-row justify-between flex-wrap">
-                  {[
-                    { id: '1', title: 'Receipt OCR', icon: 'document-scanner', color: '#004c22', desc: 'Included free — see Personal Spending' },
-                    { id: '2', title: 'Zero Fees', icon: 'money-off', color: '#166534', desc: 'Zero cost on cashouts' },
-                    { id: '3', title: 'Bento Insights', icon: 'auto-graph', color: '#27633b', desc: 'Rich analytics filters' },
-                    { id: '4', title: 'Infinite Circles', icon: 'all-inclusive', color: COLORS.amber, desc: 'Uncapped circle sizes' },
-                  ].map((f, fIdx) => (
-                    <AnimatedListItem key={f.id} index={fIdx}>
-                    <View className="p-4 bg-white/50 border border-outline-variant/20 rounded-2xl w-[48%] mb-4 gap-1">
-                      <MaterialIcons name={f.icon as any} size={18} color={f.color} />
-                      <Text className="font-bold text-xs text-on-surface">{f.title}</Text>
-                      <Text className="text-[9px] text-outline font-medium">{f.desc}</Text>
-                    </View>
-                    </AnimatedListItem>
-                  ))}
-                </View>
-              </View>
-
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
       {/* MODAL 5: HELP CENTER FAQs & Automated BUG REPORTER */}
       <Modal
         visible={isSupportOpen}
@@ -1660,7 +1569,7 @@ export default function ProfileScreen() {
                 <View className="gap-2">
                   {[
                     { id: 'q1', q: 'How does Kinlo calculate share mathematics?', a: 'Kinlo takes the dynamic entered amount and divides it equally among active participants. When selecting percentage or exact modes, it validates ratios ensuring splits sum up to 100% or total amount respectively.' },
-                    { id: 'q2', q: 'What is Plaid banking integration?', a: 'Plaid connects bank account structures securely, letting users record actual settlement cashouts without leaving the splits tab. No transactions occur; it only aggregates balance logs.' },
+                    { id: 'q2', q: 'Can I connect my bank account?', a: 'Not yet. Bank sync is not available in Kinlo right now. You can still add expenses and settle up manually.' },
                     { id: 'q3', q: 'Can I delete collaborative expenses?', a: 'Only the original transaction creator (addedBy owner) can execute direct deletions. If a friend added the cost, deleting triggers a request permission overlay to respect ledger integrity.' },
                   ].map((faq, faqIdx) => {
                     const isExpanded = expandedFaq === faq.id;
@@ -1687,7 +1596,7 @@ export default function ProfileScreen() {
                       <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                     </View>
                   </View>
-                  <Text className="text-xs text-on-surface-variant mt-0.5">Automated hardware diagnostic metadata appended</Text>
+                  <Text className="text-xs text-on-surface-variant mt-0.5">Device details will be attached once bug reporting launches</Text>
                 </View>
                 <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-start gap-3" style={{ minHeight: 90 }}>
                   <MaterialIcons name="bug-report" size={20} color="#707a6f" style={{ marginTop: 2 }} />
@@ -1695,7 +1604,7 @@ export default function ProfileScreen() {
                 </View>
 
                 <View className="bg-surface-container-high/40 p-4 border border-outline-variant/20 rounded-2xl gap-2">
-                  <Text className="text-[9px] text-outline font-bold uppercase tracking-wider">Device Diagnostic logs harvested:</Text>
+                  <Text className="text-[9px] text-outline font-bold uppercase tracking-wider">Device details (shown for reference, not collected):</Text>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Layout dimensions:</Text><Text className="text-[10px] text-primary font-bold">{SCREEN_WIDTH}px x {SCREEN_HEIGHT}px</Text></View>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Operating System:</Text><Text className="text-[10px] text-primary font-bold">{Platform.OS === 'web' ? 'Web Browser' : Platform.OS}</Text></View>
                 </View>

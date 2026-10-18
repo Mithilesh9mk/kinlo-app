@@ -73,6 +73,12 @@ export interface TemporaryExpenseState {
   setEditModeData: (txId: string, status: string, amount: string, desc: string, cat: string, p: Payer, parts: Participant[], mode: SplitMode, gid?: string, updatedAt?: string) => void;
   
   reset: () => void;
+  /**
+   * Clears the form after a successful post without the autosave effect
+   * writing the emptied state back out as a fresh draft. Use this, not reset(),
+   * once an expense has been posted.
+   */
+  resetAfterPost: () => void;
 
   /** Replaces the whole in-progress expense from a saved draft. */
   restoreDraft: (draft: ExpenseDraft) => void;
@@ -152,6 +158,12 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   // the thing we are about to offer to restore.
   const hydrated = useRef(false);
 
+  // Set by resetAfterPost(). The reset below changes every autosave dependency
+  // (payers and participants are always fresh arrays), so the effect is certain
+  // to run once for it; that one run must not save, or the cleared form would be
+  // written back as a draft right after discardDraft() removed the real one.
+  const skipNextSave = useRef(false);
+
   const currentDraft = (): ExpenseDraft => ({
     amount, description, category, splitMode,
     groupId: groupId ?? null,
@@ -161,6 +173,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (!hydrated.current) { hydrated.current = true; return; }
+    if (skipNextSave.current) { skipNextSave.current = false; return; }
     if (editTransactionId) return;
     void saveDraft(currentDraft());
   }, [amount, description, category, splitMode, groupId, payers, participants, editTransactionId]);
@@ -193,6 +206,13 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     setEditTransactionUpdatedAt(undefined);
   };
 
+  // Callers discard the stored draft first (discardDraft); this only has to make
+  // sure the reset itself does not create a new one.
+  const resetAfterPost = () => {
+    skipNextSave.current = true;
+    reset();
+  };
+
   return (
     <ExpenseContext.Provider
       value={{
@@ -217,6 +237,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         editTransactionUpdatedAt,
         setEditModeData,
         reset,
+        resetAfterPost,
         restoreDraft,
         flushDraftNow,
         discardDraft,
