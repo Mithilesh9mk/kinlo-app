@@ -173,7 +173,7 @@ export default function StatementScreen() {
           .select('id, title')
           .in('id', [...allGroupIds]);
         if (groups) {
-          for (const g of groups) groupMap[g.id] = g.title || 'Group';
+          for (const g of groups) groupMap[g.id] = g.title || 'Circle';
         }
       }
 

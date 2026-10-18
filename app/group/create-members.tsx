@@ -276,7 +276,7 @@ export default function CreateCircleMembersScreen() {
           style={{ opacity: isSubmitting ? 0.7 : 1 }}
         >
           <Text className="text-white font-semibold text-base">
-            {isSubmitting ? 'Creating…' : `Create Group (${selectedContacts.length} selected)`}
+            {isSubmitting ? 'Creating…' : `Create Circle (${selectedContacts.length} selected)`}
           </Text>
         </AnimatedPressable>
       </View>

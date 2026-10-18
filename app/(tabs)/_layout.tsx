@@ -67,7 +67,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="groups"
         options={{
-          tabBarLabel: 'Groups',
+          tabBarLabel: 'Circles',
           tabBarIcon: ({ color }) => <MaterialIcons name="group" size={22} color={color} />,
         }}
       />

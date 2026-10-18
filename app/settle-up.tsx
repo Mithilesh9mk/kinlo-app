@@ -291,6 +291,13 @@ export default function SettleUpScreen() {
         // over the settlement we just wrote if the user came back and
         // recorded another payment.
         idempotencyKey.current = newTransactionId();
+      } else {
+        // No session means nothing was written. Falling through would show the
+        // success screen for a payment that was never recorded.
+        showAlert('Not signed in', 'Please sign in again. Nothing was saved.');
+        submitInFlight.current = false;
+        setIsSubmitting(false);
+        return;
       }
     } catch (e) {
       console.log('Error processing settlement', e);
@@ -340,7 +347,7 @@ export default function SettleUpScreen() {
         }
         const upiId = data.upi_address;
 
-        const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(selectedFriendName)}&am=${amount}&cu=INR&tn=Kinlo`;
+        const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(selectedFriendName)}&am=${amount.toFixed(2)}&cu=INR&tn=Kinlo`;
         const canOpen = await Linking.canOpenURL(uri);
 
         if (canOpen) {
@@ -353,7 +360,17 @@ export default function SettleUpScreen() {
         }
       } catch (e) {
         console.error(e);
-        processSettlement(activeMethod.label);
+        // A launch error means no payment happened as far as we know, so never
+        // record money silently — the user decides whether they paid by hand.
+        pendingUpiPayment.current = false;
+        showAlert(
+          'Could not open UPI app',
+          `We couldn't open your UPI app. If you already paid ${selectedFriendName} another way, you can record it manually.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Record manually', onPress: () => processSettlement(activeMethod.label) },
+          ]
+        );
       }
     } else {
       processSettlement(activeMethod.label);

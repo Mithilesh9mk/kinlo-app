@@ -21,7 +21,7 @@ const CATEGORIES: Category[] = [
     icon: 'flight', 
     label: 'Travel', 
     imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCgkyzIDtgvgZCAuFUj8rMWjdKxVlzhMXyH8Q59cwljilvYUAxqBnn7kPAmEkR2x3WQcaRqfydCokewhWX96PzzASGvDTjUSR4Q92HTO0EBt6BBe_R33rKIT8ccvDh15bN79qtWHMBauovkh-PY-yHlyKcw1DHbA-AQ6EFNFdzNqG7FO3Jg7xzGCSu5cwLiYnb77VPmyJvAAUda4NvquS4sue32s9Bi5nLIx8W24ksNLPPE5isptc5XmyrZJOw8-dCmWmWXfjgj13M',
-    quote: '"Group travel expenses, beautifully simplified."'
+    quote: '"Circle travel expenses, beautifully simplified."'
   },
   { 
     id: 'food', 
@@ -49,7 +49,7 @@ const CATEGORIES: Category[] = [
     icon: 'more-horiz', 
     label: 'Other', 
     imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD-wA_X6nheJY217P1eftJNx1UmH_SnNLYCpT5WmEfPPtsptIx5IlBL0mxRtt2aa-8EJ14lkNF3U7R2uQ8kd9bXwF17ng8SG3GT7fX1GZKnmAr_PslOP-Dy72kQL60EfEzFUx8gfwvprdbb29GwP5_sdmKpq0-6BCxsuXL7-ByBaQTjxV3wz6no4ZbDNWndM4bNCnxdIWzmqWA7BUv97JSakNqOZfS920quJivmYg2UZfatMBp81uI8N109kVrF3bcKb-mVXBPT348',
-    quote: '"Mindfully manage shared accounts and group activities."'
+    quote: '"Mindfully manage shared accounts and circle activities."'
   }
 ];
 
@@ -62,7 +62,7 @@ export default function CreateCircleIdentityScreen() {
 
   const handleNext = () => {
     if (!groupName.trim()) {
-      showToast('Please enter a group name');
+      showToast('Please enter a circle name');
       return;
     }
     router.push({
@@ -119,7 +119,7 @@ export default function CreateCircleIdentityScreen() {
             }}
           >
             <Text className="font-label-md text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-              Group Name
+              Circle Name
             </Text>
             <View className="relative w-full">
               <TextInput

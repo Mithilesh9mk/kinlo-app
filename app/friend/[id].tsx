@@ -174,7 +174,7 @@ export default function FriendDetailScreen() {
               .select('id, title')
               .in('id', groupIds);
             if (groups) {
-              for (const g of groups) groupTitleMap[g.id] = g.title || 'Group';
+              for (const g of groups) groupTitleMap[g.id] = g.title || 'Circle';
             }
           }
 
@@ -400,9 +400,9 @@ export default function FriendDetailScreen() {
           .select('id, title')
           .in('id', groupBalances.map(g => g.gid));
         const groupTitleMap: Record<string, string> = {};
-        if (groups) for (const g of groups) groupTitleMap[g.id] = g.title || 'Group';
+        if (groups) for (const g of groups) groupTitleMap[g.id] = g.title || 'Circle';
         for (const g of groupBalances) {
-          scopes.push({ groupId: g.gid, label: groupTitleMap[g.gid] || 'Group', balance: g.bal });
+          scopes.push({ groupId: g.gid, label: groupTitleMap[g.gid] || 'Circle', balance: g.bal });
         }
       }
 

@@ -321,7 +321,7 @@ export default function HomeScreen() {
         let friendName = '';
         let locationLabel = '';
         const groupId = tx.group_id || undefined;
-        const groupName = groupId ? (groupMap[groupId] || 'Group') : undefined;
+        const groupName = groupId ? (groupMap[groupId] || 'Circle') : undefined;
 
         // If I paid, others owe me (Total - My Share)
         if (isPayerMe) {

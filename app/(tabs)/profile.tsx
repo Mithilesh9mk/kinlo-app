@@ -21,6 +21,7 @@ import { fetchDeletionPreview, deleteMyAccount, DeletionPreview } from '../../li
 import { clearOfflineCache } from '../../lib/offlineCache';
 import { fetchConnectionRequests } from '../../lib/connections';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
+import * as Device from 'expo-device';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -38,6 +39,11 @@ const COLORS = {
   clayRed: '#b91c1c',
   amber: '#d97706',
 };
+
+// One look for every "Coming soon" label on this screen. amber isn't a token in
+// tailwind.config.js, so bg-amber/* and border-amber/* silently render nothing.
+const SOON_PILL = 'bg-[#fef3c7] border border-[#fcd34d] rounded-full';
+const SOON_TEXT = 'font-bold uppercase tracking-wider text-[#92400e]';
 
 interface ActiveSession {
   id: string;
@@ -109,7 +115,6 @@ export default function ProfileScreen() {
   
   // Settings main switches states
   const [pushEnabled, setPushEnabled] = useState(true);
-  const [darkModeSim, setDarkModeSim] = useState(false);
   const [syncEnabled, setSyncEnabled] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -290,9 +295,6 @@ export default function ProfileScreen() {
   const [autoConvert] = useState<boolean>(true);
 
   // 2. Security & Privacy Toggles
-  const [mfaEnabled, setMfaEnabled] = useState(false);
-  const [isMfaSetupOpen, setIsMfaSetupOpen] = useState(false);
-  const [mfaVerifyCode, setMfaVerifyCode] = useState('');
   const [backupSmsEnabled, setBackupSmsEnabled] = useState(true);
   
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
@@ -306,14 +308,14 @@ export default function ProfileScreen() {
   // 3. Data & Export Compliance (GDPR Right to Be Forgotten)
   const [exportRange, setExportRange] = useState<string>('1year');
   const [exportFormat, setExportFormat] = useState<string>('pdf');
-  const [isExporting, setIsExporting] = useState(false);
   const [isDeleteBlockOpen, setIsDeleteBlockOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionPreview, setDeletionPreview] = useState<DeletionPreview | null>(null);
 
   // 4. Subscriptions Plan Status Panel
-  const [userPlan, setUserPlan] = useState<'basic' | 'gold'>('basic');
+  // Billing isn't built; everyone is on Basic.
+  const [userPlan] = useState<'basic' | 'gold'>('basic');
 
   // Personal Spending: whether "Add from screenshot" auto-runs extraction on
   // upload, or leaves the review screen blank for manual entry. A real,
@@ -336,7 +338,6 @@ export default function ProfileScreen() {
   // 5. Enterprise Support FAQ sheet & Bug report
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
   const [bugDesc, setBugDesc] = useState('');
-  const [isSubmittingBug, setIsSubmittingBug] = useState(false);
 
   const { showToast: triggerToast } = useToast();
 
@@ -371,10 +372,7 @@ export default function ProfileScreen() {
     const phoneChanged = tempPhone.trim() !== userPhone;
     const saveStartedAt = new Date().toISOString();
 
-    setUsername(tempName);
-    setUserEmail(tempEmail);
-    setUserPhone(tempPhone.trim());
-    setUpiAddress(tempUpi.trim());
+    let saved = false;
     try {
       await AsyncStorage.setItem('onboarding_name', tempName.trim());
       await AsyncStorage.setItem('onboarding_email', tempEmail.trim());
@@ -384,12 +382,20 @@ export default function ProfileScreen() {
       const { supabase } = await import('../../lib/supabase');
       const { data: authData } = await supabase.auth.getUser();
       if (authData?.user) {
-        await supabase.from('users').update({
+        const { error: updateError } = await supabase.from('users').update({
           phone_number: tempPhone.trim() || null,
           full_name: tempName.trim(),
           upi_address: tempUpi.trim() || null
         }).eq('id', authData.user.id);
+        if (updateError) throw updateError;
       }
+
+      // Only reflect the new values on screen once they actually saved.
+      setUsername(tempName);
+      setUserEmail(tempEmail);
+      setUserPhone(tempPhone.trim());
+      setUpiAddress(tempUpi.trim());
+      saved = true;
 
       // Core Functionality Audit 2026-08-31 P2 §4.6: a placeholder's owner
       // previously found out someone claimed their number only by opening
@@ -421,20 +427,19 @@ export default function ProfileScreen() {
     } catch (e) {
       console.error('Failed to save profile changes:', e);
     }
-    setIsEditOpen(false);
-    triggerToast('Profile updated successfully!');
+    if (saved) {
+      setIsEditOpen(false);
+      triggerToast('Profile updated successfully!');
+    } else {
+      // Leave the sheet open so what the user typed isn't lost.
+      triggerToast("Couldn't save your profile. Check your connection and try again.");
+    }
   };
 
   const handleTogglePush = () => {
     const next = !pushEnabled;
     setPushEnabled(next);
     triggerToast(next ? 'Push alerts enabled!' : 'Push alerts disabled!');
-  };
-
-  const handleToggleDarkMode = () => {
-    const next = !darkModeSim;
-    setDarkModeSim(next);
-    triggerToast(next ? 'Dark theme simulation active!' : 'Light theme restored.');
   };
 
   const handleToggleSync = async () => {
@@ -537,30 +542,6 @@ export default function ProfileScreen() {
   };
 
   // 2. Security Modal
-  const handleToggleMfa = () => {
-    if (!mfaEnabled) {
-      setMfaVerifyCode('');
-      setIsMfaSetupOpen(true);
-    } else {
-      setMfaEnabled(false);
-      triggerToast('Two-Factor Authentication deactivated.');
-    }
-  };
-
-  const handleVerifyMfaCode = () => {
-    if (mfaVerifyCode.length !== 6) {
-      triggerToast('Please enter a valid 6-digit verification code.');
-      return;
-    }
-    setMfaEnabled(true);
-    setIsMfaSetupOpen(false);
-    triggerToast('Two-Factor Authentication activated successfully!');
-  };
-
-  const handleCopySecretKey = () => {
-    triggerToast('Secret setup key copied to clipboard!');
-  };
-
   const handleToggleBiometrics = () => {
     const nextState = !biometricsEnabled;
     setBiometricsEnabled(nextState);
@@ -576,16 +557,6 @@ export default function ProfileScreen() {
     setSessions(prev => prev.filter(s => s.isActiveNow));
     setIsRevokeAllConfirmOpen(false);
     triggerToast('All other active sessions revoked.');
-  };
-
-  // 3. GDPR Statement Exporter
-  const handleExportStatement = () => {
-    setIsExporting(true);
-    triggerToast(`Compiling splits. Generating ${exportFormat.toUpperCase()} statement...`);
-    setTimeout(() => {
-      setIsExporting(false);
-      triggerToast(`${exportFormat.toUpperCase()} statement exported successfully!`);
-    }, 2000);
   };
 
   const handleDeleteAccountAttempt = async () => {
@@ -645,32 +616,9 @@ export default function ProfileScreen() {
   };
 
   // 4. Subscriptions Manager
-  const handleTogglePlan = () => {
-    if (userPlan === 'basic') {
-      setUserPlan('gold');
-      triggerToast('Upgraded to Kinlo Gold Premium! ✨');
-    } else {
-      setUserPlan('basic');
-      triggerToast('Plan downgraded to Kinlo Basic.');
-    }
-  };
-
   // 5. Help Center FAQs / Bug reporter
   const toggleFaq = (faqId: string) => {
     setExpandedFaq(prev => prev === faqId ? null : faqId);
-  };
-
-  const handleSubmitBugReport = () => {
-    if (!bugDesc.trim()) {
-      triggerToast('Please describe the issue before submitting.');
-      return;
-    }
-    setIsSubmittingBug(true);
-    setTimeout(() => {
-      setIsSubmittingBug(false);
-      setBugDesc('');
-      triggerToast('Bug report logged successfully! ID: ZS-9428');
-    }, 1500);
   };
 
   return (
@@ -985,10 +933,6 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 <View className="flex-row items-center gap-2">
-                  <View className="flex-row items-center gap-1 bg-[#dcfce7] px-2 py-0.5 rounded-full">
-                    <View className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    <Text className="text-primary font-bold text-[9px] uppercase tracking-wide">Pulsing Health</Text>
-                  </View>
                   <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
                 </View>
               </AnimatedPressable>
@@ -1048,26 +992,20 @@ export default function ProfileScreen() {
                 </View>
               </AnimatedPressable>
 
-              <AnimatedPressable 
-                onPress={handleToggleDarkMode}
-                activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
-              >
-                <View className="flex-row items-center gap-4">
+              <View className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4">
+                <View className="flex-row items-center gap-4" style={{ opacity: 0.6 }}>
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="dark-mode" size={20} color="#004c22" />
                   </View>
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Appearance</Text>
-                    <Text className="text-xs text-on-surface-variant">Simulate dark theme</Text>
+                    <Text className="text-xs text-on-surface-variant">Dark theme</Text>
                   </View>
                 </View>
-                <View className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${
-                  darkModeSim ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
-                }`}>
-                  <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                  <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
-              </AnimatedPressable>
+              </View>
 
               <AnimatedPressable
                 onPress={handleToggleSync}
@@ -1318,8 +1256,8 @@ export default function ProfileScreen() {
                     </View>
                   ))}
                 </View>
-                <View className="absolute top-4 right-4 bg-amber/15 border border-amber/30 px-3 py-1 rounded-full z-10">
-                  <Text className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d97706' }}>Coming Soon</Text>
+                <View className={`absolute top-4 right-4 px-3 py-1 z-10 ${SOON_PILL}`}>
+                  <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
 
@@ -1350,8 +1288,8 @@ export default function ProfileScreen() {
                   <MaterialIcons name="add" size={16} color="#004c22" />
                   <Text className="text-primary font-bold text-xs uppercase tracking-wider">Link Bank / Plaid Connect</Text>
                 </AnimatedPressable>
-                <View className="absolute top-4 right-4 bg-amber/15 border border-amber/30 px-3 py-1 rounded-full z-10">
-                  <Text className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d97706' }}>Coming Soon</Text>
+                <View className={`absolute top-4 right-4 px-3 py-1 z-10 ${SOON_PILL}`}>
+                  <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
 
@@ -1385,8 +1323,8 @@ export default function ProfileScreen() {
                     </View>
                   </View>
                 </View>
-                <View className="absolute top-4 right-4 bg-amber/15 border border-amber/30 px-3 py-1 rounded-full z-10">
-                  <Text className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d97706' }}>Coming Soon</Text>
+                <View className={`absolute top-4 right-4 px-3 py-1 z-10 ${SOON_PILL}`}>
+                  <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
             </View>
@@ -1416,35 +1354,19 @@ export default function ProfileScreen() {
             <View className="max-w-xl mx-auto w-full gap-6">
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-3">
+                  <View className="flex-row items-center gap-3" style={{ opacity: 0.6 }}>
                     <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                       <MaterialIcons name="phonelink-lock" size={20} color="#004c22" />
                     </View>
                     <View>
-                      <Text className="font-semibold text-base text-on-surface">Authenticator App</Text>
+                      <Text className="font-semibold text-base text-on-surface">Two-factor authentication</Text>
                       <Text className="text-xs text-on-surface-variant">Google Authenticator / 1Password</Text>
                     </View>
                   </View>
-                  <AnimatedPressable onPress={handleToggleMfa} activeOpacity={0.8} className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${mfaEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'}`}>
-                    <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </AnimatedPressable>
-                </View>
-
-                {isMfaSetupOpen && (
-                  <View className="bg-primary/5 p-4 rounded-2xl border border-primary/10 gap-4 mt-3">
-                    <Text className="text-xs font-bold text-primary uppercase tracking-wide">Setup Authenticator App</Text>
-                    <Text className="text-xs text-on-surface-variant leading-relaxed">1. Copy the secret key below and import it into Google Authenticator.</Text>
-                    <View className="p-3 bg-white border border-outline-variant/30 rounded-xl flex-row justify-between items-center">
-                      <Text className="font-bold text-sm text-primary select-all">ZENS-PLIT-MIND-FUL9</Text>
-                      <AnimatedPressable onPress={handleCopySecretKey} className="p-1"><MaterialIcons name="content-copy" size={16} color="#004c22" /></AnimatedPressable>
-                    </View>
-                    <Text className="text-xs text-on-surface-variant leading-relaxed">2. Input the generated 6-digit verification code below to activate.</Text>
-                    <View className="flex-row gap-2 items-center justify-center">
-                      <TextInput value={mfaVerifyCode} onChangeText={setMfaVerifyCode} placeholder="Enter code (123456)" placeholderTextColor="rgba(64, 73, 64, 0.4)" keyboardType="numeric" maxLength={6} className="p-3 bg-white border border-outline-variant/30 rounded-xl flex-1 text-center font-bold text-base focus:outline-none" />
-                      <AnimatedPressable onPress={handleVerifyMfaCode} className="bg-primary px-5 h-[46px] rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-bold text-xs uppercase tracking-wide">Verify</Text></AnimatedPressable>
-                    </View>
+                  <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
-                )}
+                </View>
 
                 <AnimatedPressable 
                   onPress={() => {
@@ -1507,14 +1429,14 @@ export default function ProfileScreen() {
                   onPress={() => {
                     const next = !searchDirectoryEnabled;
                     setSearchDirectoryEnabled(next);
-                    triggerToast(next ? 'Visible in group directories' : 'Hidden from group search.');
+                    triggerToast(next ? 'Visible in circle directories' : 'Hidden from circle search.');
                   }}
                   activeOpacity={0.8}
                   className="flex-row items-center justify-between py-2"
                 >
                   <View style={{ marginRight: 8 }}>
-                    <Text className="font-semibold text-sm text-on-surface">Group Directory Visibility</Text>
-                    <Text className="text-[11px] text-on-surface-variant">Make profile visible inside group searches</Text>
+                    <Text className="font-semibold text-sm text-on-surface">Circle Directory Visibility</Text>
+                    <Text className="text-[11px] text-on-surface-variant">Make profile visible inside circle searches</Text>
                   </View>
                   <View className={`w-10 h-5 rounded-full p-0.5 flex-row items-center transition-colors ${
                     searchDirectoryEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
@@ -1557,8 +1479,8 @@ export default function ProfileScreen() {
                     </View>
                   ))}
                 </View>
-                <View className="absolute top-4 right-4 bg-amber/15 border border-amber/30 px-3 py-1 rounded-full z-10">
-                  <Text className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d97706' }}>Coming Soon</Text>
+                <View className={`absolute top-4 right-4 px-3 py-1 z-10 ${SOON_PILL}`}>
+                  <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
             </View>
@@ -1588,7 +1510,12 @@ export default function ProfileScreen() {
             <View className="max-w-xl mx-auto w-full gap-6">
               <View className="p-6 rounded-3xl gap-6" style={styles.liquidGlass}>
                 <View>
-                  <Text className="font-headline text-base font-bold text-on-surface">Mindful Statement Exporter</Text>
+                  <View className="flex-row items-center justify-between">
+                    <Text className="font-headline text-base font-bold text-on-surface">Mindful Statement Exporter</Text>
+                    <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                      <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                    </View>
+                  </View>
                   <Text className="text-xs text-on-surface-variant mt-0.5">Download split ledgers in secure audit formats</Text>
                 </View>
 
@@ -1629,13 +1556,9 @@ export default function ProfileScreen() {
                   </View>
                 </View>
 
-                <AnimatedPressable onPress={handleExportStatement} disabled={isExporting} className="w-full h-13 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm active:scale-95 duration-100">
-                  {isExporting ? <ActivityIndicator size="small" color="white" /> : (
-                    <>
-                      <MaterialIcons name="cloud-download" size={18} color="white" />
-                      <Text className="text-white font-bold text-sm">Export Statement</Text>
-                    </>
-                  )}
+                <AnimatedPressable disabled className="w-full h-12 bg-primary rounded-2xl flex-row items-center justify-center gap-2" style={{ opacity: 0.4 }}>
+                  <MaterialIcons name="cloud-download" size={18} color="white" />
+                  <Text className="text-white font-bold text-sm">Export Statement</Text>
                 </AnimatedPressable>
               </View>
 
@@ -1676,14 +1599,16 @@ export default function ProfileScreen() {
                   <MaterialIcons name="military-tech" size={36} color="#d97706" />
                 </View>
                 <Text className="font-headline text-xl font-bold text-[#d97706]">Kinlo Gold</Text>
-                <Text className="text-xs text-on-surface-variant mt-1 mb-5">{userPlan === 'gold' ? 'Active Pro Tier Member · Bills May 28' : 'Experience the mindful, zero-fee splits suite'}</Text>
+                <Text className="text-xs text-on-surface-variant mt-1 mb-5">Experience the mindful, zero-fee splits suite</Text>
                 
                 <View className="bg-white/60 p-4 border border-outline-variant/35 rounded-2xl w-full flex-row justify-between items-center">
                   <View className="items-start">
                     <Text className="text-[10px] text-outline font-bold uppercase tracking-wider">Active Plan</Text>
                     <Text className="text-base font-bold text-on-surface mt-0.5">{userPlan === 'gold' ? 'Gold Monthly Pro' : 'Kinlo Basic Free'}</Text>
                   </View>
-                  <AnimatedPressable onPress={handleTogglePlan} className="bg-primary px-4 py-2.5 rounded-xl shadow-sm active:scale-95"><Text className="text-white font-bold text-xs uppercase tracking-wide">{userPlan === 'gold' ? 'Downgrade' : 'Upgrade (₹399)'}</Text></AnimatedPressable>
+                  <View className={`px-3 py-1.5 ${SOON_PILL}`}>
+                    <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
+                  </View>
                 </View>
               </View>
 
@@ -1694,7 +1619,7 @@ export default function ProfileScreen() {
                     { id: '1', title: 'Receipt OCR', icon: 'document-scanner', color: '#004c22', desc: 'Included free — see Personal Spending' },
                     { id: '2', title: 'Zero Fees', icon: 'money-off', color: '#166534', desc: 'Zero cost on cashouts' },
                     { id: '3', title: 'Bento Insights', icon: 'auto-graph', color: '#27633b', desc: 'Rich analytics filters' },
-                    { id: '4', title: 'Infinite Circles', icon: 'all-inclusive', color: COLORS.amber, desc: 'Uncapped group sizes' },
+                    { id: '4', title: 'Infinite Circles', icon: 'all-inclusive', color: COLORS.amber, desc: 'Uncapped circle sizes' },
                   ].map((f, fIdx) => (
                     <AnimatedListItem key={f.id} index={fIdx}>
                     <View className="p-4 bg-white/50 border border-outline-variant/20 rounded-2xl w-[48%] mb-4 gap-1">
@@ -1725,10 +1650,7 @@ export default function ProfileScreen() {
               <MaterialIcons name="arrow-back" size={24} color="#004c22" />
             </AnimatedPressable>
             <Text className="font-headline text-lg font-bold text-primary">Help & Support</Text>
-            <View className="flex-row items-center gap-1 bg-[#dcfce7] px-2.5 py-1 rounded-full">
-              <View className="w-1.5 h-1.5 rounded-full bg-primary" />
-              <Text className="text-primary font-bold text-[9px] uppercase tracking-wide">Pulsing Healthy</Text>
-            </View>
+            <View className="w-10 h-10" />
           </View>
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
@@ -1759,21 +1681,25 @@ export default function ProfileScreen() {
 
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <View>
-                  <Text className="font-headline text-base font-bold text-on-surface">Report a Bug & Diagnostic Logs</Text>
+                  <View className="flex-row items-center justify-between">
+                    <Text className="font-headline text-base font-bold text-on-surface">Report a Bug & Diagnostic Logs</Text>
+                    <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                      <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                    </View>
+                  </View>
                   <Text className="text-xs text-on-surface-variant mt-0.5">Automated hardware diagnostic metadata appended</Text>
                 </View>
                 <View className="p-3 bg-white border border-outline-variant/35 rounded-2xl flex-row items-start gap-3" style={{ minHeight: 90 }}>
                   <MaterialIcons name="bug-report" size={20} color="#707a6f" style={{ marginTop: 2 }} />
-                  <TextInput value={bugDesc} onChangeText={setBugDesc} placeholder="Describe what occurred... (e.g. keypads layout overlap)" placeholderTextColor="rgba(64, 73, 64, 0.4)" multiline={true} numberOfLines={4} className="flex-1 font-body text-sm text-on-surface p-0 focus:outline-none" style={{ minHeight: 70 }} />
+                  <TextInput value={bugDesc} onChangeText={setBugDesc} editable={false} placeholder="Describe what occurred... (e.g. keypads layout overlap)" placeholderTextColor="rgba(64, 73, 64, 0.4)" multiline={true} numberOfLines={4} className="flex-1 font-body text-sm text-on-surface p-0 focus:outline-none" style={{ minHeight: 70 }} />
                 </View>
 
                 <View className="bg-surface-container-high/40 p-4 border border-outline-variant/20 rounded-2xl gap-2">
                   <Text className="text-[9px] text-outline font-bold uppercase tracking-wider">Device Diagnostic logs harvested:</Text>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Layout dimensions:</Text><Text className="text-[10px] text-primary font-bold">{SCREEN_WIDTH}px x {SCREEN_HEIGHT}px</Text></View>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Operating System:</Text><Text className="text-[10px] text-primary font-bold">{Platform.OS === 'web' ? 'Web Browser' : Platform.OS}</Text></View>
-                  <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Network Latency speed:</Text><Text className="text-[10px] text-primary font-bold">42ms</Text></View>
                 </View>
-                <AnimatedPressable onPress={handleSubmitBugReport} disabled={isSubmittingBug} className="w-full h-12 bg-primary rounded-2xl flex-row items-center justify-center active:scale-95">{isSubmittingBug ? <ActivityIndicator size="small" color="white" /> : <><MaterialIcons name="send" size={16} color="white" /><Text className="text-white font-bold text-xs uppercase tracking-wide">Submit Bug Diagnostics</Text></>}</AnimatedPressable>
+                <AnimatedPressable disabled className="w-full h-12 bg-primary rounded-2xl flex-row items-center justify-center gap-2" style={{ opacity: 0.4 }}><MaterialIcons name="send" size={16} color="white" /><Text className="text-white font-bold text-xs uppercase tracking-wide">Submit Bug Diagnostics</Text></AnimatedPressable>
               </View>
             </View>
           </ScrollView>
@@ -1816,7 +1742,7 @@ export default function ProfileScreen() {
                 <Text className="text-xs text-on-surface-variant leading-relaxed">
                   {deletionPreview.sharedExpenses} shared{' '}
                   {deletionPreview.sharedExpenses === 1 ? 'expense' : 'expenses'}
-                  {deletionPreview.openGroups > 0 ? ` and ${deletionPreview.openGroups} group${deletionPreview.openGroups === 1 ? '' : 's'}` : ''}
+                  {deletionPreview.openGroups > 0 ? ` and ${deletionPreview.openGroups} circle${deletionPreview.openGroups === 1 ? '' : 's'}` : ''}
                   {' '}stay on the other people&apos;s records, shown as &ldquo;Deleted user&rdquo;. Removing them
                   would change someone else&apos;s balance.
                 </Text>
@@ -1887,7 +1813,7 @@ export default function ProfileScreen() {
           <View className="w-full max-w-sm rounded-3xl p-6" style={{ backgroundColor: '#fcf9f4', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.4)', elevation: 4 }}>
             <View className="w-12 h-12 bg-error-container/40 rounded-full items-center justify-center self-center mb-4"><MaterialIcons name="warning" size={24} color="#BA1A1A" /></View>
             <Text className="font-headline text-lg font-bold text-on-surface text-center mb-2">Revoke All Other Sessions?</Text>
-            <Text className="text-sm text-on-surface-variant text-center leading-relaxed mb-6">This action will immediately terminate all remote logged-in active sessions on other devices. You will remain logged in on this iPhone.</Text>
+            <Text className="text-sm text-on-surface-variant text-center leading-relaxed mb-6">This action will immediately terminate all remote logged-in active sessions on other devices. You will remain logged in on this {Device.modelName ?? Platform.OS}.</Text>
             <View className="flex-row gap-3">
               <AnimatedPressable onPress={() => setIsRevokeAllConfirmOpen(false)} className="flex-1 h-12 rounded-xl border border-outline-variant items-center justify-center bg-white/40"><Text className="text-on-surface-variant font-semibold text-sm">Cancel</Text></AnimatedPressable>
               <AnimatedPressable onPress={handleConfirmRevokeAll} className="flex-1 h-12 bg-error rounded-xl items-center justify-center shadow-sm"><Text className="text-white font-semibold text-sm">Revoke All</Text></AnimatedPressable>

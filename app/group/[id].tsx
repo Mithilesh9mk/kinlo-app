@@ -180,7 +180,7 @@ export default function GroupDetailScreen() {
           const { data: authData } = await supabase.auth.getUser();
           const currentUserId = authData?.user?.id;
           if (!currentUserId) {
-            throw new Error('You appear to be signed out. Sign in again to see this group.');
+            throw new Error('You appear to be signed out. Sign in again to see this circle.');
           }
           setUserId(currentUserId);
 
@@ -457,7 +457,7 @@ export default function GroupDetailScreen() {
             }));
             setTxError(null);
           } else {
-            setTxError(err?.message || 'Could not load this group.');
+            setTxError(err?.message || 'Could not load this circle.');
           }
         } finally {
           // In `finally` so a failed load stops showing placeholders — a
@@ -520,13 +520,13 @@ export default function GroupDetailScreen() {
           [groupId]: { ...base, title: editTitle.trim(), category: editCategory, categoryLabel: label },
         };
       });
-      triggerToast('Group updated');
+      triggerToast('Circle updated');
       setIsSettingsSheetOpen(false);
     } catch (e: any) {
       // Plain client write, not a crafted RPC message — could be a raw RLS
       // or constraint error. Log it, don't show it.
       console.error('Failed to rename group:', e?.message);
-      triggerToast('Could not update this group. Please try again.');
+      triggerToast('Could not update this circle. Please try again.');
     } finally {
       setIsSavingSettings(false);
     }
@@ -552,15 +552,15 @@ export default function GroupDetailScreen() {
   // confirm.
   const describeOutstanding = (net: number) =>
     net > 0
-      ? `owed ₹${net.toFixed(2)} in this group`
-      : `owes ₹${Math.abs(net).toFixed(2)} in this group`;
+      ? `owed ₹${net.toFixed(2)} in this circle`
+      : `owes ₹${Math.abs(net).toFixed(2)} in this circle`;
 
   const handleRemoveMember = (memberId: string, memberName: string) => {
     const net = getMemberNetBalance(memberId);
     if (Math.abs(net) > 0.005) {
       showAlert(
         'Settle up first',
-        `${memberName} is still ${describeOutstanding(net)}. Everyone needs to be settled up with the whole group before they can be removed.`,
+        `${memberName} is still ${describeOutstanding(net)}. Everyone needs to be settled up with the whole circle before they can be removed.`,
         [{ text: 'OK' }]
       );
       return;
@@ -568,7 +568,7 @@ export default function GroupDetailScreen() {
 
     showAlert(
       'Remove member?',
-      `Remove ${memberName} from this group?`,
+      `Remove ${memberName} from this circle?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -579,7 +579,7 @@ export default function GroupDetailScreen() {
             try {
               await removeGroupMember({ groupId, memberId });
               await loadMembers();
-              triggerToast(`${memberName} removed from the group`);
+              triggerToast(`${memberName} removed from the circle`);
             } catch (e: any) {
               triggerToast(e?.message || 'Could not remove this member.');
             } finally {
@@ -597,7 +597,7 @@ export default function GroupDetailScreen() {
     if (Math.abs(net) > 0.005) {
       showAlert(
         'Settle up first',
-        `You're still ${describeOutstanding(net)}. Settle up with everyone in the group before you can leave.`,
+        `You're still ${describeOutstanding(net)}. Settle up with everyone in the circle before you can leave.`,
         [
           { text: 'OK' },
           {
@@ -613,8 +613,8 @@ export default function GroupDetailScreen() {
     }
 
     showAlert(
-      'Leave this group?',
-      'You will no longer see this group or its expenses.',
+      'Leave this circle?',
+      'You will no longer see this circle or its expenses.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -624,10 +624,10 @@ export default function GroupDetailScreen() {
             try {
               await removeGroupMember({ groupId, memberId: userId });
               setIsSettingsSheetOpen(false);
-              triggerToast('You left the group');
+              triggerToast('You left the circle');
               router.replace('/groups');
             } catch (e: any) {
-              triggerToast(e?.message || 'Could not leave this group.');
+              triggerToast(e?.message || 'Could not leave this circle.');
             }
           },
         },
@@ -863,7 +863,7 @@ export default function GroupDetailScreen() {
               setIsSettingsSheetOpen(true);
             }}
             className="w-10 h-10 rounded-full border border-outline-variant bg-surface-container items-center justify-center active:bg-surface-container-high"
-            accessibilityLabel="Group settings"
+            accessibilityLabel="Circle settings"
           >
             <MaterialIcons name="settings" size={20} color="#004c22" />
           </AnimatedPressable>
@@ -893,7 +893,7 @@ export default function GroupDetailScreen() {
                 ? <Text className="font-headline-lg-mobile text-3xl text-on-background mb-1 font-bold">{group.title}</Text>
                 : <Skeleton width={160} height={28} radius={6} style={{ marginBottom: 4 }} />}
               <Text className="font-body-md text-on-surface-variant">
-                Total Group Spend: ₹{group.totalSpend.toFixed(2)}
+                Total Circle Spend: ₹{group.totalSpend.toFixed(2)}
               </Text>
             </View>
             <AnimatedPressable 
@@ -945,7 +945,7 @@ export default function GroupDetailScreen() {
                     <Text className={`font-label-md font-semibold text-sm ${
                       group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
                     }`}>
-                      {group.userBalance > 0 ? 'You are owed' : group.userBalance < 0 ? 'You owe' : 'Group settled'}
+                      {group.userBalance > 0 ? 'You are owed' : group.userBalance < 0 ? 'You owe' : 'Circle settled'}
                     </Text>
                   </View>
                   
@@ -1307,7 +1307,7 @@ export default function GroupDetailScreen() {
             {/* Top drag indicator */}
             <View className="w-10 h-1 bg-outline-variant/60 rounded-full self-center mb-6" />
 
-            <Text className="font-headline text-lg font-bold text-on-surface mb-2">Group Settlements</Text>
+            <Text className="font-headline text-lg font-bold text-on-surface mb-2">Circle Settlements</Text>
             <Text className="text-sm text-on-surface-variant mb-4">Select a settlement to record payment</Text>
 
             {/* How this group settles up (§17.2). Changing it rebuilds the
@@ -1333,7 +1333,7 @@ export default function GroupDetailScreen() {
                       const err = await setGroupSimplification(groupId, mode.simplify);
                       setSwitchingMode(false);
                       if (err) {
-                        triggerToast(err.message || 'Could not change how this group settles up.');
+                        triggerToast(err.message || 'Could not change how this circle settles up.');
                         return;
                       }
                       setSimplifyDebts(mode.simplify);
@@ -1367,14 +1367,14 @@ export default function GroupDetailScreen() {
 
             <Text className="text-xs text-on-surface-variant mb-6 leading-relaxed">
               {simplifyDebts
-                ? 'Debts are combined so the group settles in as few payments as possible. You may be asked to pay someone you did not buy anything from.'
+                ? 'Debts are combined so the circle settles in as few payments as possible. You may be asked to pay someone you did not buy anything from.'
                 : 'Each debt stays with the person it came from. More payments, but every one matches an actual expense.'}
-              {' This applies to everyone in the group.'}
+              {' This applies to everyone in the circle.'}
             </Text>
 
             <ScrollView className="max-h-[300px]" contentContainerStyle={{ paddingBottom: 24 }}>
               {settlements.length === 0 ? (
-                <Text className="text-on-surface-variant text-center py-6">No pending settlements found in this group.</Text>
+                <Text className="text-on-surface-variant text-center py-6">No pending settlements found in this circle.</Text>
               ) : (
                 settlements.map((s, index) => {
                   const isYouPaying = s.fromName === 'You';
@@ -1496,16 +1496,16 @@ export default function GroupDetailScreen() {
             style={{ backgroundColor: '#fcf9f4', borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.4)', maxHeight: '85%' }}
           >
             <View className="w-10 h-1 bg-outline-variant/60 rounded-full self-center mb-6" />
-            <Text className="font-headline text-lg font-bold text-on-surface mb-4">Group Settings</Text>
+            <Text className="font-headline text-lg font-bold text-on-surface mb-4">Circle Settings</Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text className="font-label-sm text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-                Group Name
+                Circle Name
               </Text>
               <TextInput
                 value={editTitle}
                 onChangeText={setEditTitle}
-                placeholder="Group name"
+                placeholder="Circle name"
                 placeholderTextColor="rgba(64, 73, 64, 0.4)"
                 className="w-full bg-white/70 border border-outline-variant/30 rounded-2xl px-4 py-3 font-body text-base text-on-surface mb-5"
               />
@@ -1596,7 +1596,7 @@ export default function GroupDetailScreen() {
                 onPress={handleLeaveGroup}
                 className="w-full h-12 bg-[#FEE2E2] rounded-2xl items-center justify-center mb-2"
               >
-                <Text className="text-error font-semibold text-sm">Leave Group</Text>
+                <Text className="text-error font-semibold text-sm">Leave Circle</Text>
               </AnimatedPressable>
             </ScrollView>
           </View>
@@ -1668,7 +1668,7 @@ export default function GroupDetailScreen() {
                   })}
                 {addMemberCandidates.length === 0 && (
                   <Text className="text-sm text-on-surface-variant text-center py-6">
-                    Everyone you're connected to is already in this group.
+                    Everyone you're connected to is already in this circle.
                   </Text>
                 )}
               </View>

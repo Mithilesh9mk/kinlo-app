@@ -202,7 +202,7 @@ export default function SearchScreen() {
 
   const sections: { key: string; title: string; data: SearchRow[] }[] = [
     { key: 'friends', title: 'Friends', data: friendResults.map((item): SearchRow => ({ type: 'friend', item })) },
-    { key: 'groups', title: 'Groups', data: groupResults.map((item): SearchRow => ({ type: 'group', item })) },
+    { key: 'groups', title: 'Circles', data: groupResults.map((item): SearchRow => ({ type: 'group', item })) },
     { key: 'split', title: 'Split Expenses', data: splitResults.map((item): SearchRow => ({ type: 'split', item })) },
     { key: 'personal', title: 'Personal Expenses', data: personalResults.map((item): SearchRow => ({ type: 'personal', item })) },
   ].filter((s) => s.data.length > 0);
@@ -225,7 +225,7 @@ export default function SearchScreen() {
           <TextInput
             value={query}
             onChangeText={onChangeQuery}
-            placeholder="Search friends, groups, and expenses"
+            placeholder="Search friends, circles, and expenses"
             placeholderTextColor="rgba(64, 73, 64, 0.5)"
             className="flex-1 ml-3 text-base text-on-surface font-body"
             autoFocus
@@ -242,7 +242,7 @@ export default function SearchScreen() {
         <View className="flex-1 items-center justify-center px-8">
           <MaterialIcons name="search" size={56} color="#bfc9bd" />
           <Text className="text-sm text-on-surface-variant mt-4 text-center leading-relaxed">
-            Search friends, groups, and expenses
+            Search friends, circles, and expenses
           </Text>
         </View>
       )}

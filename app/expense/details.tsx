@@ -60,7 +60,7 @@ export default function ExpenseDetailsScreen() {
 
   useEffect(() => {
     if (groupId) {
-      setSelectedGroup({ id: groupId, title: paramGroupName || 'Group', icon: 'group', memberCount: participants.length });
+      setSelectedGroup({ id: groupId, title: paramGroupName || 'Circle', icon: 'group', memberCount: participants.length });
     } else {
       setSelectedGroup(null);
     }
@@ -249,7 +249,7 @@ export default function ExpenseDetailsScreen() {
       if (selectedFriends.length === 2) return `${selectedFriends[0].name.split(' ')[0]} & ${selectedFriends[1].name.split(' ')[0]}`;
       return `${selectedFriends[0].name.split(' ')[0]} & ${selectedFriends.length - 1} others`;
     }
-    return 'Select friend or group';
+    return 'Select friend or circle';
   };
 
   return (

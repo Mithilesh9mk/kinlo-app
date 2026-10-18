@@ -32,6 +32,7 @@ export default function SplitExpenseScreen() {
   
   const totalAmount = parseFloat(amountStr || '0');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
 
   // Idempotency key for this expense attempt, so a double-tap retries the same
   // row instead of minting a second transaction. Mirrors settle-up.tsx.
@@ -77,6 +78,21 @@ export default function SplitExpenseScreen() {
     setParticipants(participants.map(p =>
       p.id === id ? { ...p, [field]: numValue } : p
     ));
+    if (field !== 'shareUnits') {
+      setRawInputs(prev => ({ ...prev, [`${id}:${field}`]: value }));
+    }
+  };
+
+  // The numeric field can't hold half-typed text: "0." parses to 0 and rendering
+  // that back ate the dot, so decimals like 0.5 could not be typed. The raw text
+  // is kept only for display; calculations still read the parsed number. If the
+  // number was changed some other way (draft restore, mode switch) the raw text
+  // no longer parses to it and is ignored, so it can never show a stale value.
+  const inputDisplay = (p: { id: string; percentageShare?: number; exactAmount?: number }, field: 'percentageShare' | 'exactAmount') => {
+    const num = p[field];
+    const raw = rawInputs[`${p.id}:${field}`];
+    if (raw !== undefined && (parseFloat(raw) || 0) === (num || 0)) return raw;
+    return num?.toString() || '';
   };
 
   // Calculate current shares
@@ -365,7 +381,7 @@ Nothing was saved, so their version is intact.`
         if (groupUserIds.length > 0) {
           dispatchPushNotification(
             groupUserIds,
-            editTransactionId ? 'Group Expense Updated ✏️' : 'New Group Expense 💸',
+            editTransactionId ? 'Circle Expense Updated ✏️' : 'New Circle Expense 💸',
             editTransactionId
               ? `${currentUser.user_metadata?.full_name || 'Someone'} edited "${description}" — now ₹${totalAmount.toFixed(2)}.`
               : `${currentUser.user_metadata?.full_name || 'Someone'} added "${description}" for ₹${totalAmount.toFixed(2)}.`
@@ -374,18 +390,23 @@ Nothing was saved, so their version is intact.`
       }
 
 
-      // 6. Update Global Balances (Local Context)
-      await refreshBalances();
-      
-      // The save succeeded, so retire this key. The screen stays mounted behind
-      // the success route, and without rotating we'd upsert over the expense we
-      // just wrote if the user navigated back and submitted again.
+      // The save succeeded, so retire this key. Without rotating we'd upsert
+      // over the expense we just wrote if the screen were somehow reused.
       idempotencyKey.current = newTransactionId();
 
       // The draft has become a transaction. Keeping it would offer to
       // "resume" an expense that already exists, which is how you end up
-      // posting the same thing twice.
+      // posting the same thing twice. Done before the refresh below so a
+      // refresh failure can't leave the draft behind.
       discardDraft();
+
+      // 6. Update Global Balances (Local Context). The expense is already
+      // saved, so a failed refresh must not surface as a failed save.
+      try {
+        await refreshBalances();
+      } catch (e) {
+        console.warn('Balance refresh after save failed:', e);
+      }
 
       // 7. Navigate to success
       const payerName = payer.isYou ? 'You' : payer.name;
@@ -395,10 +416,10 @@ Nothing was saved, so their version is intact.`
       // me" is true in every case.
       let splitDetails = `Split between ${includedCount} ${includedCount === 1 ? 'person' : 'people'}`;
       if (groupId) {
-        splitDetails = `Split in Group`;
+        splitDetails = `Split in Circle`;
       }
 
-      router.push({
+      router.replace({
         pathname: '/expense/success',
         params: {
           amount: totalAmount.toFixed(2),
@@ -610,7 +631,7 @@ Nothing was saved, so their version is intact.`
                       {splitMode === 'percent' && p.included && (
                         <View className="flex-row items-center border-b border-primary pb-1">
                           <TextInput
-                            value={p.percentageShare?.toString() || ''}
+                            value={inputDisplay(p, 'percentageShare')}
                             onChangeText={(val) => handleInputChange(p.id, 'percentageShare', val)}
                             placeholder="0"
                             keyboardType="numeric"
@@ -646,7 +667,7 @@ Nothing was saved, so their version is intact.`
                         <View className="flex-row items-center border-b border-primary pb-1">
                           <Text className="font-headline-md font-bold text-lg text-primary">₹</Text>
                           <TextInput
-                            value={p.exactAmount?.toString() || ''}
+                            value={inputDisplay(p, 'exactAmount')}
                             onChangeText={(val) => handleInputChange(p.id, 'exactAmount', val)}
                             placeholder="0.00"
                             keyboardType="numeric"

@@ -204,7 +204,7 @@ export default function GroupsScreen() {
             <View className="flex-1 mr-4">
               <Text className="font-headline-lg-mobile text-3xl font-semibold text-primary mb-2">Your Circles</Text>
               <Text className="font-body-md text-on-surface-variant max-w-lg">
-                Manage shared expenses and balances across your different groups with mindful clarity.
+                Manage shared expenses and balances across your different circles with mindful clarity.
               </Text>
             </View>
             <AnimatedPressable

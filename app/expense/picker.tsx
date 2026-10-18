@@ -101,7 +101,7 @@ export default function FriendGroupPickerScreen() {
 
             groupsFormatted.push({
               id: g.id,
-              title: g.title || 'Group',
+              title: g.title || 'Circle',
               icon: g.category === 'trip' ? 'flight' : (g.category === 'home' ? 'home' : 'group'),
               memberCount: groupMembers.length,
               members: groupMembers
@@ -113,7 +113,7 @@ export default function FriendGroupPickerScreen() {
         console.error(err);
         // Surface it. An empty friend list is indistinguishable from a failed
         // one, and the failed case used to look like "you have no friends".
-        setLoadError(err?.message || 'Could not load your friends and groups.');
+        setLoadError(err?.message || 'Could not load your friends and circles.');
       } finally {
         setLoading(false);
       }
@@ -253,7 +253,7 @@ export default function FriendGroupPickerScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search friends or groups..."
+            placeholder="Search friends or circles..."
             placeholderTextColor="rgba(64, 73, 64, 0.5)"
             className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-2xl py-3.5 pl-12 pr-4 font-body text-base shadow-sm focus:border-primary"
           />
@@ -276,7 +276,7 @@ export default function FriendGroupPickerScreen() {
             className={`flex-1 py-2.5 rounded-lg items-center ${activeTab === 'groups' ? 'bg-white shadow-sm' : ''}`}
           >
             <Text className={`font-semibold text-sm ${activeTab === 'groups' ? 'text-primary' : 'text-on-surface-variant'}`}>
-              Groups
+              Circles
             </Text>
           </AnimatedPressable>
         </View>
