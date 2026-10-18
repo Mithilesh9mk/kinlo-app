@@ -328,7 +328,10 @@ export default function AnalyticsScreen() {
           {/* 1. Spending in the selected window */}
           <View className="p-6 rounded-3xl relative overflow-hidden" style={styles.liquidGlass}>
             <View className="flex-row justify-between items-start mb-4">
-              <View className="gap-1">
+              {/* flexShrink only matters when the row would overflow (a very
+                  large total next to the change pill); normal amounts keep
+                  their natural width, so the layout is unchanged. */}
+              <View className="gap-1" style={{ flexShrink: 1 }}>
                 <View className="flex-row items-center gap-2">
                   <Text className="font-label-md text-sm text-on-surface-variant font-semibold">
                     {scope === 'personal' ? 'Personal Spending' : 'Your Spending'} · {windowLabel}
@@ -344,7 +347,7 @@ export default function AnalyticsScreen() {
                     </AnimatedPressable>
                   )}
                 </View>
-                <Text className="font-display-lg text-4xl font-bold text-primary" style={tabularNums}>{money(displaySpend)}</Text>
+                <Text className="font-display-lg text-4xl font-bold text-primary" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(displaySpend)}</Text>
                 <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
                   {displayCount === 0
                     ? `No expenses ${periodPhrase}`
