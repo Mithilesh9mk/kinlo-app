@@ -144,17 +144,44 @@ export default function AmountScreen() {
 
           if (txError || !tx) throw txError;
 
+          // Names for the other people on this expense. Best-effort only: the
+          // edit must open even if this lookup fails, in which case they keep
+          // the generic 'Friend' label exactly as before.
+          const profiles: Record<string, { name: string; image?: string }> = {};
+          try {
+            const otherIds = Array.from(new Set<string>([
+              tx.paid_by,
+              ...tx.transaction_splits.map((s: any) => s.user_id),
+            ])).filter((id) => id && id !== user.id);
+            if (otherIds.length > 0) {
+              const { data: people } = await supabase
+                .from('users')
+                .select('id, full_name, avatar_url')
+                .in('id', otherIds);
+              for (const u of people || []) {
+                if (u.full_name) profiles[u.id] = { name: u.full_name, image: u.avatar_url || undefined };
+              }
+            }
+          } catch (nameErr) {
+            console.warn('Could not load names for edit:', nameErr);
+          }
+          const nameOf = (id: string) => (id === user.id ? 'You' : profiles[id]?.name || 'Friend');
+          const initialsOf = (name: string) =>
+            name.split(' ').map((n) => n.charAt(0)).join('').toUpperCase().slice(0, 2);
+
           const payerP: Payer = {
             id: tx.paid_by,
-            name: tx.paid_by === user.id ? 'You' : 'Friend',
+            name: nameOf(tx.paid_by),
+            image: profiles[tx.paid_by]?.image,
+            initials: profiles[tx.paid_by] ? initialsOf(profiles[tx.paid_by].name) : undefined,
             isYou: tx.paid_by === user.id
           };
 
-          // To fully populate participants, we ideally need names. 
-          // Since this is a prototype, we'll map existing splits:
           const parts: Participant[] = tx.transaction_splits.map((s: any) => ({
             id: s.user_id,
-            name: s.user_id === user.id ? 'You' : 'Friend',
+            name: nameOf(s.user_id),
+            image: profiles[s.user_id]?.image,
+            initials: profiles[s.user_id] ? initialsOf(profiles[s.user_id].name) : undefined,
             included: true,
             isYou: s.user_id === user.id,
             exactAmount: Number(s.share_amount),

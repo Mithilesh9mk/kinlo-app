@@ -119,8 +119,11 @@ export async function getRelatedUsers(userId: string, columns: string = 'id, ful
       .in('id', Array.from(relatedUserIds));
 
     if (usersError) {
+      // Throw, don't return []: same reason as the catch below. A profile-
+      // lookup error is a failure, not "zero friends", and callers (the
+      // picker, Friends, balances' offline fallback) all handle a throw.
       console.error('Error fetching related users profiles:', usersError);
-      return [];
+      throw usersError;
     }
 
     return users || [];
