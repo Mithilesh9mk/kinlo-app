@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, TextInput, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
@@ -60,7 +60,14 @@ interface RecentActivity {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { totalBalance, loading: balancesLoading, cachedAt: balancesCachedAt, refreshBalances } = useGlobalBalances();
+  const { totalBalance, loading: balancesLoading, error: balancesError, cachedAt: balancesCachedAt, refreshBalances } = useGlobalBalances();
+  // The context keeps the previous snapshot when a refresh fails, so `error`
+  // alone can't tell "no data ever" from "stale-but-real data". Only show the
+  // error branch if a balance has never loaded successfully this session and
+  // no offline cache is standing in for it.
+  const balanceEverLoaded = useRef(false);
+  if (!balancesLoading && !balancesError) balanceEverLoaded.current = true;
+  const balanceFailed = !!balancesError && !balancesLoading && !balanceEverLoaded.current && !balancesCachedAt;
 
   // Oldest cachedAt across every source feeding this screen — the one
   // OfflineBanner shown reflects the stalest thing on the page, not just
@@ -83,6 +90,22 @@ export default function HomeScreen() {
   // arrived, so a slow connection looked like an empty account rather than a
   // loading one. These drive the placeholders below.
   const [activityLoading, setActivityLoading] = useState(true);
+
+  // A failed fetch used to only console.error, leaving the 0 / [] initial
+  // state on screen, which read as "no activity" and "₹0 spent". 'failed' is
+  // only ever set when nothing has loaded yet — a failed refresh after a good
+  // load keeps the data already in state.
+  const [loadStatus, setLoadStatus] = useState<Record<'recent' | 'monthly' | 'today', 'pending' | 'ok' | 'failed'>>({
+    recent: 'pending',
+    monthly: 'pending',
+    today: 'pending',
+  });
+  const markLoad = useCallback((key: 'recent' | 'monthly' | 'today', ok: boolean) => {
+    setLoadStatus((prev) => {
+      const next = ok ? 'ok' : prev[key] === 'ok' ? 'ok' : 'failed';
+      return prev[key] === next ? prev : { ...prev, [key]: next };
+    });
+  }, []);
 
   // Was a hardcoded lh3.googleusercontent.com preset URL — an ephemeral
   // AI-generated link that eventually 404s. Avatar's onError already caught
@@ -146,7 +169,7 @@ export default function HomeScreen() {
   // First-run guidance cards. Only trust "no activity" once the live load has
   // finished — not while loading, and not when showing offline-cached data.
   const { showSplit, showPersonal, dismiss: dismissHint } = useFirstRunHints({
-    activityReady: !activityLoading && staleSources.recent === null,
+    activityReady: !activityLoading && staleSources.recent === null && loadStatus.recent !== 'failed',
     activityCount: recentActivity.length,
   });
 
@@ -216,14 +239,16 @@ export default function HomeScreen() {
       );
       setRecentActivity(recent);
       setStaleSources((prev) => ({ ...prev, recent: cachedAt }));
+      markLoad('recent', true);
     } catch (e) {
       console.error('Failed to fetch recent activity:', e);
+      markLoad('recent', false);
     } finally {
       // In `finally` so a failed load stops showing placeholders too — a
       // skeleton that never resolves is worse than an empty state.
       setActivityLoading(false);
     }
-  }, []);
+  }, [markLoad]);
 
   const fetchRecentActivityLive = useCallback(async (): Promise<RecentActivity[]> => {
       const { data: authData } = await supabase.auth.getUser();
@@ -453,10 +478,12 @@ export default function HomeScreen() {
       );
       setMonthlySpend(data);
       setStaleSources((prev) => ({ ...prev, monthly: cachedAt }));
+      markLoad('monthly', true);
     } catch (e) {
       console.error('Failed to fetch monthly spend:', e);
+      markLoad('monthly', false);
     }
-  }, [fetchSpendSince]);
+  }, [fetchSpendSince, markLoad]);
 
   const [todaySpend, setTodaySpend] = useState(0);
   const fetchTodaySpend = useCallback(async () => {
@@ -469,10 +496,12 @@ export default function HomeScreen() {
       );
       setTodaySpend(data);
       setStaleSources((prev) => ({ ...prev, today: cachedAt }));
+      markLoad('today', true);
     } catch (e) {
       console.error('Failed to fetch today spend:', e);
+      markLoad('today', false);
     }
-  }, [fetchSpendSince]);
+  }, [fetchSpendSince, markLoad]);
 
   useEffect(() => {
     fetchMonthlySpend();
@@ -731,6 +760,21 @@ export default function HomeScreen() {
             <Text className="text-sm font-medium text-on-surface-variant uppercase tracking-wider mb-2">{getBalanceCardLabel()}</Text>
             {balancesLoading ? (
               <Skeleton width={186} height={44} radius={12} style={{ marginBottom: 24 }} />
+            ) : balanceFailed ? (
+              // "—", not "All settled ₹0.00": a failed load is not the same as
+              // owing nothing.
+              <View className="items-center mb-6">
+                <Text className="text-5xl font-bold text-on-surface-variant">—</Text>
+                <Text className="text-xs text-on-surface-variant mt-2">Couldn't refresh your balance</Text>
+                <AnimatedPressable
+                  onPress={refreshBalances}
+                  className="flex-row items-center px-4 py-2 rounded-full bg-error/10 mt-3"
+                  accessibilityRole="button"
+                >
+                  <MaterialIcons name="refresh" size={14} color="#b91c1c" />
+                  <Text className="font-bold text-[10px] uppercase tracking-wide text-error ml-1">Retry</Text>
+                </AnimatedPressable>
+              </View>
             ) : (
               <Text className={`text-5xl font-bold mb-6 ${getBalanceCardColor()}`}>{getBalanceCardAmount()}</Text>
             )}
@@ -766,7 +810,7 @@ export default function HomeScreen() {
               <MaterialIcons name="trending-up" size={16} color="#004c22" />
             </View>
             <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">Monthly Spend</Text>
-            <Text className="text-lg font-bold text-on-surface">₹{monthlySpend.toFixed(0)}</Text>
+            <Text className="text-lg font-bold text-on-surface">{loadStatus.monthly === 'failed' ? '—' : `₹${monthlySpend.toFixed(0)}`}</Text>
           </AnimatedPressable>
 
           <AnimatedPressable
@@ -777,7 +821,7 @@ export default function HomeScreen() {
               <MaterialIcons name="today" size={16} color="#004c22" />
             </View>
             <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">Today's Spend</Text>
-            <Text className="text-lg font-bold text-on-surface">₹{todaySpend.toFixed(0)}</Text>
+            <Text className="text-lg font-bold text-on-surface">{loadStatus.today === 'failed' ? '—' : `₹${todaySpend.toFixed(0)}`}</Text>
           </AnimatedPressable>
         </View>
 
@@ -889,6 +933,20 @@ export default function HomeScreen() {
                   <SkeletonListRow avatarSize={44} />
                 </View>
               ))
+            ) : loadStatus.recent === 'failed' ? (
+              // Not the empty state: that copy is only true after a successful
+              // load that returned zero rows.
+              <View className="bg-error/5 p-5 rounded-2xl border border-error/20 items-center">
+                <Text className="text-sm font-bold text-error">Couldn't load recent activity</Text>
+                <AnimatedPressable
+                  onPress={() => { setActivityLoading(true); fetchRecentActivity(); }}
+                  className="flex-row items-center px-4 py-2 rounded-full bg-error/10 mt-3"
+                  accessibilityRole="button"
+                >
+                  <MaterialIcons name="refresh" size={14} color="#b91c1c" />
+                  <Text className="font-bold text-[10px] uppercase tracking-wide text-error ml-1">Retry</Text>
+                </AnimatedPressable>
+              </View>
             ) : recentActivity.length === 0 ? (
               <View className="liquid-glass rounded-2xl p-6 items-center justify-center">
                 <Text className="font-semibold text-on-surface-variant">No recent activity</Text>

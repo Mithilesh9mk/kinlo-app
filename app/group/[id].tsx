@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, Modal, TextInput, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Avatar } from '../../components/Avatar';
 import { Skeleton, SkeletonListRow } from '../../components/Skeleton';
@@ -104,6 +104,13 @@ export default function GroupDetailScreen() {
   // txLoading false and the fallback (empty, ₹0) group object rendered
   // silently, indistinguishable from a group with genuinely nothing in it.
   const [txError, setTxError] = useState<string | null>(null);
+  // True once a load has succeeded (or fell back to cache). Separates "never
+  // loaded" from "loaded, a later refresh failed" so a failed refresh keeps the
+  // data on screen, and "no expenses" / "settled" only ever follow a real load.
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  // Bumping this changes the focus callback below, which re-runs the existing
+  // fetch — retry and pull-to-refresh reuse it rather than duplicating it.
+  const [reloadTick, setReloadTick] = useState(0);
 
   // Gates the header title. Without this, the very first render always used
   // the fallback below — which, absent a route param, derived a "title" by
@@ -445,6 +452,7 @@ export default function GroupDetailScreen() {
             return prev;
           });
           setTxError(null);
+          setLoadedOnce(true);
         } catch (err: any) {
           console.error('Error loading dynamic group data:', err);
           const cached = isLikelyNetworkError(err)
@@ -456,6 +464,7 @@ export default function GroupDetailScreen() {
               [groupId]: { ...cached.data, cachedAt: cached.cachedAt },
             }));
             setTxError(null);
+            setLoadedOnce(true);
           } else {
             setTxError(err?.message || 'Could not load this circle.');
           }
@@ -469,7 +478,7 @@ export default function GroupDetailScreen() {
 
       fetchLiveGroupData();
       loadMembers();
-    }, [groupId, loadMembers])
+    }, [groupId, loadMembers, reloadTick])
   );
 
   const { showToast: triggerToast } = useToast();
@@ -495,6 +504,15 @@ export default function GroupDetailScreen() {
       transactions: []
     };
   }
+
+  const retryLoad = () => {
+    setTxError(null);
+    setTxLoading(true);
+    setReloadTick(t => t + 1);
+  };
+  // Balance/totals are unknown until a load succeeds; the fallback group object
+  // holds zeros that would otherwise read as "Circle settled" / ₹0.00.
+  const dataUnknown = !loadedOnce && (txLoading || !!txError);
 
   const handleAddExpense = () => {
     // Navigate to expense amount setting pass selected group info
@@ -871,13 +889,22 @@ export default function GroupDetailScreen() {
       </View>
 
       <OfflineBanner cachedAt={group.cachedAt} />
-      {txError && !txLoading && !group.cachedAt && (
-        <View className="mx-6 mt-2 mb-1 px-3 py-2 rounded-xl bg-error-container">
-          <Text className="text-xs font-medium text-error">{txError}</Text>
+      {txError && !txLoading && loadedOnce && (
+        <View className="mx-6 mt-2 mb-1 px-3 py-2 rounded-xl bg-error-container flex-row items-center justify-between">
+          <Text className="text-xs font-medium text-error flex-1 mr-3">Couldn't refresh. Showing the last loaded data.</Text>
+          <AnimatedPressable onPress={retryLoad}>
+            <Text className="text-xs font-bold text-error">Retry</Text>
+          </AnimatedPressable>
         </View>
       )}
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={txLoading && loadedOnce} onRefresh={retryLoad} tintColor="#004c22" colors={['#004c22']} />
+        }
+      >
         <View className="px-5 pt-8 max-w-7xl mx-auto w-full">
           
           {/* Header Section */}
@@ -893,7 +920,7 @@ export default function GroupDetailScreen() {
                 ? <Text className="font-headline-lg-mobile text-3xl text-on-background mb-1 font-bold">{group.title}</Text>
                 : <Skeleton width={160} height={28} radius={6} style={{ marginBottom: 4 }} />}
               <Text className="font-body-md text-on-surface-variant">
-                Total Circle Spend: ₹{group.totalSpend.toFixed(2)}
+                Total Circle Spend: {dataUnknown ? '—' : `₹${group.totalSpend.toFixed(2)}`}
               </Text>
             </View>
             <AnimatedPressable 
@@ -929,10 +956,15 @@ export default function GroupDetailScreen() {
               <View className="items-center md:items-start">
                 <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Your Balance</Text>
                 <Text className={`font-display-lg text-5xl font-bold mb-4 ${
-                  group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
+                  dataUnknown ? 'text-on-surface-variant' : group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
                 }`}>
-                  {group.userBalance > 0 ? `+₹${group.userBalance.toFixed(2)}` : group.userBalance < 0 ? `-₹${Math.abs(group.userBalance).toFixed(2)}` : 'Settled'}
+                  {dataUnknown ? '—' : group.userBalance > 0 ? `+₹${group.userBalance.toFixed(2)}` : group.userBalance < 0 ? `-₹${Math.abs(group.userBalance).toFixed(2)}` : 'Settled'}
                 </Text>
+                {dataUnknown ? (
+                  <Text className="text-sm text-on-surface-variant">
+                    {txLoading ? 'Loading balance…' : "Couldn't load your balance"}
+                  </Text>
+                ) : (
                 <View className="flex-row items-center gap-2">
                   <View className={`flex-row items-center gap-2 px-4 py-2 rounded-xl ${
                     group.userBalance > 0 ? 'bg-[#DCFCE7]' : group.userBalance < 0 ? 'bg-error-container' : 'bg-surface-container-high'
@@ -960,6 +992,7 @@ export default function GroupDetailScreen() {
                     </AnimatedPressable>
                   )}
                 </View>
+                )}
               </View>
 
               <View className="flex-row gap-4">
@@ -978,13 +1011,13 @@ export default function GroupDetailScreen() {
                     </AnimatedPressable>
                   </View>
                   <Text className="font-headline-md text-xl font-bold text-on-background">
-                    ₹{group.spentByYou.toFixed(2)}
+                    {dataUnknown ? '—' : `₹${group.spentByYou.toFixed(2)}`}
                   </Text>
                 </View>
                 <View className="bg-surface/50 p-4 rounded-2xl border border-white/40 flex-1 md:flex-none">
                   <Text className="font-label-sm text-xs text-on-surface-variant mb-1">Your share</Text>
                   <Text className="font-headline-md text-xl font-bold text-on-background">
-                    ₹{group.yourShare.toFixed(2)}
+                    {dataUnknown ? '—' : `₹${group.yourShare.toFixed(2)}`}
                   </Text>
                 </View>
               </View>
@@ -1024,6 +1057,16 @@ export default function GroupDetailScreen() {
                   <SkeletonListRow avatarSize={48} />
                 </View>
               ))
+            ) : txError && !loadedOnce ? (
+              // A failed load must not read as "No expenses yet".
+              <View className="p-8 items-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl">
+                <MaterialIcons name="error-outline" size={40} color="#b91c1c" />
+                <Text className="text-on-surface font-bold text-lg mb-1 mt-3">Couldn't load this circle's expenses</Text>
+                <Text className="text-on-surface-variant text-center max-w-xs text-sm">{txError}</Text>
+                <AnimatedPressable onPress={retryLoad} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+                  <Text className="text-white font-semibold">Retry</Text>
+                </AnimatedPressable>
+              </View>
             ) : filteredTxs.length === 0 ? (
               // Empty State for newly created groups
               <View className="p-8 items-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl">

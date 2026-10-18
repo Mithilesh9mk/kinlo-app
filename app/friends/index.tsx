@@ -12,6 +12,7 @@ import AddFriendModal from '../../components/AddFriendModal';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
+import { SkeletonListRow } from '../../components/Skeleton';
 
 interface Friend {
   id: string;
@@ -29,6 +30,9 @@ export default function FriendsScreen() {
   const router = useRouter();
 
   const [friendsList, setFriendsList] = useState<Friend[]>([]);
+  // Without this, "no friends yet" showed during the first load and after a
+  // failed fetch — both states where we don't actually know the answer.
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const { showToast } = useToast();
@@ -111,10 +115,21 @@ export default function FriendsScreen() {
       mapped.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
       setFriendsList(mapped);
+      setLoadState('ready');
     } catch (e) {
       console.error('Failed to fetch friends:', e);
+      // Don't clear friendsList: a failed refresh keeps the last good list
+      // on screen (with a banner) instead of claiming there are no friends.
+      setLoadState('error');
     }
   }, []);
+
+  const retryFetch = () => {
+    // Only go back to the skeleton when there is nothing to show; otherwise
+    // the existing list stays put while the banner's retry runs.
+    if (friendsList.length === 0) setLoadState('loading');
+    fetchFriends();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -223,13 +238,42 @@ export default function FriendsScreen() {
         </View>
       )}
 
+      {/* Refresh failed but we still have a list: keep it, flag it as possibly stale */}
+      {loadState === 'error' && friendsList.length > 0 && (
+        <View className="mx-6 mb-2 px-4 py-2.5 rounded-xl bg-surface-container flex-row items-center">
+          <MaterialIcons name="error-outline" size={18} color="#b91c1c" />
+          <Text className="flex-1 ml-2 text-xs text-on-surface-variant">
+            Couldn't refresh — balances may be out of date.
+          </Text>
+          <AnimatedPressable onPress={retryFetch}>
+            <Text className="text-xs font-bold text-primary">Retry</Text>
+          </AnimatedPressable>
+        </View>
+      )}
+
       {/* Friends List */}
       <FlatList
         data={filteredFriends}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120, paddingTop: 8 }}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={() => (
+        ListEmptyComponent={() => loadState === 'loading' ? (
+          <View>
+            {[0, 1, 2, 3, 4].map(i => <SkeletonListRow key={i} avatarSize={56} />)}
+          </View>
+        ) : loadState === 'error' && friendsList.length === 0 ? (
+          // Never fall through to "no friends yet" on a failed load — we don't know.
+          <View className="items-center justify-center mt-20 px-8">
+            <MaterialIcons name="error-outline" size={40} color="#b91c1c" />
+            <Text className="text-on-surface font-bold text-lg mb-1 mt-3">Couldn't load your friends</Text>
+            <Text className="text-on-surface-variant text-center max-w-xs text-sm">
+              Check your connection and try again.
+            </Text>
+            <AnimatedPressable onPress={retryFetch} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+              <Text className="text-white font-bold">Retry</Text>
+            </AnimatedPressable>
+          </View>
+        ) : (
           <View className="items-center justify-center mt-20 px-8">
             <MaterialIcons name="people-outline" size={64} color="#bfc9bd" />
             <Text className="text-lg font-semibold text-on-surface-variant mt-4 text-center">

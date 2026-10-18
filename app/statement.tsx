@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { fetchBalances } from '../lib/balances';
 import { useGlobalBalances } from '../context/GlobalBalancesContext';
-import { SkeletonListRow } from '../components/Skeleton';
+import { Skeleton, SkeletonListRow } from '../components/Skeleton';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { AnimatedListItem } from '../components/AnimatedListItem';
 import { listPersonalTransactions } from '../lib/personalTransactions';
@@ -63,7 +63,14 @@ export default function StatementScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('All');
-  const [runningNetBalance, setRunningNetBalance] = useState(0);
+  // null = not known yet (loading) or failed. 0 is a real answer ("settled"),
+  // so it must not double as the placeholder — that showed ₹0.00 while
+  // loading, and after a failed fetch.
+  const [runningNetBalance, setRunningNetBalance] = useState<number | null>(null);
+  // Separate from loadError: a failed balance call says nothing about whether
+  // the transaction list loaded, so it must not replace an already-loaded list.
+  const [balanceError, setBalanceError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>('A friend');
 
@@ -126,8 +133,11 @@ export default function StatementScreen() {
         try {
           const { totalBalance } = await fetchBalances();
           setRunningNetBalance(totalBalance);
+          setBalanceError(false);
         } catch (balErr) {
           console.warn('Could not load net balance for statement:', balErr);
+          setRunningNetBalance(null);
+          setBalanceError(true);
         }
         setLoading(false);
         return;
@@ -294,9 +304,12 @@ export default function StatementScreen() {
       try {
         const { totalBalance } = await fetchBalances();
         setRunningNetBalance(totalBalance);
+        setBalanceError(false);
       } catch (balErr) {
         console.warn('Could not load net balance for statement:', balErr);
-        setLoadError('Could not load your net balance.');
+        // Not setLoadError: the list above loaded fine and stays on screen.
+        setRunningNetBalance(null);
+        setBalanceError(true);
       }
     } catch (err: any) {
       console.error("Statement error:", err);
@@ -357,6 +370,18 @@ export default function StatementScreen() {
 
   const filtered = getFilteredTransactions();
 
+  const netKnown = runningNetBalance !== null;
+  const net = runningNetBalance ?? 0;
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchStatement();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const getCategoryIcon = (category: string) => {
     const map: Record<string, any> = {
       food: 'restaurant',
@@ -389,23 +414,50 @@ export default function StatementScreen() {
 
       <OfflineBanner cachedAt={cachedAt} />
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {/* Net Balance Header */}
         <View className="items-center justify-center pt-8 pb-6 px-6">
           <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Net Balance</Text>
-          <Text className={`font-display-lg text-5xl font-bold ${
-            runningNetBalance > 0 ? 'text-primary' : runningNetBalance < 0 ? 'text-error' : 'text-on-surface'
-          }`}>
-            {runningNetBalance > 0 ? '+' : runningNetBalance < 0 ? '-' : ''}₹{Math.abs(runningNetBalance).toFixed(2)}
-          </Text>
-          {runningNetBalance !== 0 && (
-            <View className={`mt-3 px-4 py-1.5 rounded-full ${runningNetBalance > 0 ? 'bg-[#DCFCE7]' : 'bg-error-container'}`}>
-              <Text className={`font-label-md font-semibold text-sm ${runningNetBalance > 0 ? 'text-primary' : 'text-error'}`}>
-                {runningNetBalance > 0 ? 'You are owed overall' : 'You owe overall'}
+          {!netKnown && loading ? (
+            // Same height as the figure (text-5xl), so nothing shifts on load.
+            <View style={{ height: 48, justifyContent: 'center' }}>
+              <Skeleton width={160} height={32} />
+            </View>
+          ) : !netKnown ? (
+            // Unknown, not zero: "₹0.00" would claim the user is settled.
+            <Text className="font-display-lg text-5xl font-bold text-on-surface-variant">—</Text>
+          ) : (
+            <Text className={`font-display-lg text-5xl font-bold ${
+              net > 0 ? 'text-primary' : net < 0 ? 'text-error' : 'text-on-surface'
+            }`}>
+              {net > 0 ? '+' : net < 0 ? '-' : ''}₹{Math.abs(net).toFixed(2)}
+            </Text>
+          )}
+          {netKnown && net !== 0 && (
+            <View className={`mt-3 px-4 py-1.5 rounded-full ${net > 0 ? 'bg-[#DCFCE7]' : 'bg-error-container'}`}>
+              <Text className={`font-label-md font-semibold text-sm ${net > 0 ? 'text-primary' : 'text-error'}`}>
+                {net > 0 ? 'You are owed overall' : 'You owe overall'}
               </Text>
             </View>
           )}
         </View>
+
+        {/* Slim note for a failed balance call only — the list below is
+            unaffected. Hidden when the list error card (with its own Retry)
+            is already showing, so there are never two Retry buttons. */}
+        {balanceError && !loading && !loadError && (
+          <View className="mx-5 mb-4 px-4 py-3 rounded-xl bg-error-container flex-row items-center">
+            <MaterialIcons name="error-outline" size={18} color="#b91c1c" />
+            <Text className="text-sm text-on-surface flex-1 ml-2">Could not load your net balance.</Text>
+            <AnimatedPressable onPress={fetchStatement} className="px-3 py-1.5">
+              <Text className="text-primary font-semibold text-sm">Retry</Text>
+            </AnimatedPressable>
+          </View>
+        )}
 
         {/* Filter Tabs — horizontally scrollable rather than five equal
             flex-1 columns. At five options, equal columns squeeze "You Paid"
@@ -459,6 +511,9 @@ export default function StatementScreen() {
               </View>
               <Text className="font-semibold text-on-surface text-base mb-1">Could not load transactions</Text>
               <Text className="text-sm text-on-surface-variant/80 text-center">{loadError}</Text>
+              <AnimatedPressable onPress={fetchStatement} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+                <Text className="text-white font-semibold">Try Again</Text>
+              </AnimatedPressable>
             </View>
           ) : filtered.length === 0 ? (
             <View className="p-8 items-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl mt-4">

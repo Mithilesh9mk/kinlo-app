@@ -73,6 +73,9 @@ export default function FriendDetailScreen() {
   // "All settled up!" for a friend the user actually owes money to.
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by Retry. It is a dependency of the focus callback below, so
+  // changing it re-runs the exact same fetch rather than a second code path.
+  const [loadNonce, setLoadNonce] = useState(0);
   const [timeline, setTimeline] = useState<TimelineFilter>('1year');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
@@ -297,9 +300,23 @@ export default function FriendDetailScreen() {
     }
 
     fetchLiveTransactions();
-  }, [friendId, friendName]));
+  }, [friendId, friendName, loadNonce]));
 
   const { showToast: triggerToast } = useToast();
+
+  // True only once real data (live or cached) is in state. Before that the
+  // fallback friend object below is a guess (balance 0 / 'settled'), so the
+  // header must not present it as fact.
+  const hasData = !!friendsData[friendId];
+
+  const retryLoad = () => {
+    setLoadError(null);
+    // With no data yet, go back to the skeleton. With stale data on screen,
+    // keep it visible: 'ready' hides the banner, and a second failure sets
+    // 'error' again so the banner returns.
+    setLoadState(hasData ? 'ready' : 'loading');
+    setLoadNonce(n => n + 1);
+  };
 
   // Resolve current active friend data
   let friend = friendsData[friendId];
@@ -627,8 +644,26 @@ export default function FriendDetailScreen() {
               <View className="mb-4" />
             )}
 
-            {/* Net Balance Status Badge */}
-            {friend.status === 'owed' && (
+            {/* Net Balance Status Badge. Without loaded data, never claim a
+                status: skeleton while loading, a neutral dash on failure. */}
+            {!hasData && loadState !== 'error' && (
+              <View className="flex-col items-center">
+                <Skeleton width={96} height={26} radius={13} style={{ marginBottom: 8 }} />
+                <Skeleton width={150} height={40} radius={8} />
+              </View>
+            )}
+
+            {!hasData && loadState === 'error' && (
+              <View className="flex-col items-center">
+                <View className="flex-row items-center gap-2 bg-surface-container-highest px-4 py-1.5 rounded-full mb-2">
+                  <View className="w-2 h-2 rounded-full bg-outline" />
+                  <Text className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider">Balance unavailable</Text>
+                </View>
+                <Text className="text-4xl font-bold text-outline">—</Text>
+              </View>
+            )}
+
+            {hasData && friend.status === 'owed' && (
               <View className="flex-col items-center">
                 <View className="flex-row items-center gap-2 bg-[#DCFCE7] px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-primary" />
@@ -648,7 +683,7 @@ export default function FriendDetailScreen() {
               </View>
             )}
 
-            {friend.status === 'owes' && (
+            {hasData && friend.status === 'owes' && (
               <View className="flex-col items-center">
                 <View className="flex-row items-center gap-2 bg-error-container px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-error" />
@@ -658,7 +693,7 @@ export default function FriendDetailScreen() {
               </View>
             )}
 
-            {friend.status === 'settled' && (
+            {hasData && friend.status === 'settled' && (
               <View className="flex-col items-center">
                 <View className="flex-row items-center gap-2 bg-surface-container-highest px-4 py-1.5 rounded-full mb-2">
                   <View className="w-2 h-2 rounded-full bg-outline" />
@@ -711,6 +746,18 @@ export default function FriendDetailScreen() {
             
             {/* Stateful Transaction Card Feeds */}
             <View className="gap-4">
+              {/* A refresh failed but earlier data is still showing: keep it,
+                  and say it may be out of date instead of replacing it. */}
+              {loadState === 'error' && hasData && (
+                <View className="flex-row items-center justify-between px-4 py-3 rounded-2xl bg-error-container">
+                  <Text className="flex-1 text-error text-xs font-medium pr-3">
+                    Couldn't refresh. What you see may be out of date.
+                  </Text>
+                  <AnimatedPressable onPress={retryLoad} className="px-3 py-1.5 rounded-full bg-error">
+                    <Text className="text-white font-semibold text-xs">Retry</Text>
+                  </AnimatedPressable>
+                </View>
+              )}
               {loadState === 'loading' ? (
                 // Distinct from the empty state below on purpose. "No
                 // transactions" and "not loaded yet" mean opposite things, and
@@ -729,6 +776,19 @@ export default function FriendDetailScreen() {
                     <SkeletonListRow avatarSize={44} />
                   </View>
                 ))
+              ) : loadState === 'error' && !hasData ? (
+                // Never fall through to "No transactions" on a failed load —
+                // that says there is no history when we simply could not get it.
+                <View className="py-10 px-6 items-center justify-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl">
+                  <MaterialIcons name="error-outline" size={36} color="#b91c1c" />
+                  <Text className="text-on-surface font-bold text-base mb-1 mt-3">Could not load history</Text>
+                  <Text className="text-on-surface-variant text-center text-sm">
+                    {`Couldn't load your history${friend.name ? ` with ${friend.name}` : ''}. Their balance isn't shown because it may be out of date.`}
+                  </Text>
+                  <AnimatedPressable onPress={retryLoad} className="mt-4 bg-primary px-6 py-3 rounded-xl">
+                    <Text className="text-white font-semibold">Try Again</Text>
+                  </AnimatedPressable>
+                </View>
               ) : filteredTxs.length === 0 ? (
                 <View className="py-12 items-center justify-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl">
                   <MaterialIcons name="event-busy" size={32} color="#707a6f" className="mb-2" />

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -140,6 +140,9 @@ export default function FinanceHomeScreen() {
   const [rows, setRows] = useState<PersonalTransaction[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [cachedAt, setCachedAt] = useState<string | null>(null);
+  // True once any load has succeeded; a later failure then keeps the rows.
+  const hasLoadedRef = useRef(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [drafts, setDrafts] = useState<ReceiptDraft[]>([]);
@@ -159,10 +162,20 @@ export default function FinanceHomeScreen() {
       );
       setRows(data);
       setCachedAt(resultCachedAt);
+      hasLoadedRef.current = true;
+      setRefreshFailed(false);
       setLoadState('ready');
     } catch (e) {
       console.error('Failed to load personal transactions:', e);
-      setLoadState('error');
+      // Why: once rows exist, a failed refresh must not wipe them or turn the
+      // headline into a false ₹0.00 — keep them and flag a retry banner.
+      // Only a first load with nothing to show is a full 'error'.
+      if (hasLoadedRef.current) {
+        setRefreshFailed(true);
+        setLoadState('ready');
+      } else {
+        setLoadState('error');
+      }
     } finally {
       setRefreshing(false);
     }
@@ -368,6 +381,15 @@ export default function FinanceHomeScreen() {
 
       <OfflineBanner cachedAt={cachedAt} />
 
+      {loadState === 'ready' && refreshFailed && (
+        <View className="flex-row items-center justify-between mx-5 mb-2 px-3 py-2 rounded-xl bg-surface-container border border-outline-variant/30">
+          <Text className="flex-1 text-xs text-on-surface-variant mr-2">Couldn't refresh — showing what we had</Text>
+          <AnimatedPressable onPress={() => load(true)} className="px-3 py-1.5 rounded-lg bg-primary">
+            <Text className="text-white font-bold text-xs">Retry</Text>
+          </AnimatedPressable>
+        </View>
+      )}
+
       <ScrollView
         className="flex-1 px-5"
         contentContainerStyle={{ paddingBottom: 40 }}
@@ -404,9 +426,13 @@ export default function FinanceHomeScreen() {
                 </AnimatedPressable>
               )}
             </View>
-            <Text className="font-headline-md text-3xl font-bold text-primary mt-1">{money(displayTotal)}</Text>
+            <Text className="font-headline-md text-3xl font-bold text-primary mt-1">{loadState === 'error' ? '—' : money(displayTotal)}</Text>
             <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
-              {displayCount === 0 ? 'No expenses' : `${displayCount} expense${displayCount === 1 ? '' : 's'}`}
+              {loadState === 'error'
+                ? 'Could not load'
+                : loadState === 'loading'
+                  ? 'Loading…'
+                  : displayCount === 0 ? 'No expenses' : `${displayCount} expense${displayCount === 1 ? '' : 's'}`}
             </Text>
           </View>
 
@@ -650,7 +676,16 @@ export default function FinanceHomeScreen() {
         )}
 
         {loadState === 'error' && (
-          <Text className="text-sm text-error text-center py-8">Could not load your spending. Pull to retry.</Text>
+          <View className="items-center py-8 px-6">
+            <MaterialIcons name="error-outline" size={40} color="#b91c1c" />
+            <Text className="text-on-surface font-bold text-lg mb-1 mt-3">Could not load your spending</Text>
+            <Text className="text-on-surface-variant text-center max-w-xs text-sm">
+              Check your connection and try again.
+            </Text>
+            <AnimatedPressable onPress={() => load()} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+              <Text className="text-white font-semibold">Try Again</Text>
+            </AnimatedPressable>
+          </View>
         )}
 
         {loadState === 'ready' && rows.length === 0 && (

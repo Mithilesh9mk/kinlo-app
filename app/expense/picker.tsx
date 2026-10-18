@@ -9,6 +9,8 @@ import { useExpense, Participant } from '../../context/ExpenseContext';
 import { getRelatedUsers } from '../../lib/friendFetcher';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { Skeleton, SkeletonListRow } from '../../components/Skeleton';
+import AddFriendModal from '../../components/AddFriendModal';
 
 interface Friend {
   id: string;
@@ -24,6 +26,9 @@ interface Group {
   icon: string;
   memberCount: number;
   members: any[];
+  // True when this circle's member query failed. Without it a failed query
+  // looked like an empty circle and could be confirmed as just "You".
+  membersError?: boolean;
 }
 
 // Removed static mock data
@@ -43,6 +48,13 @@ export default function FriendGroupPickerScreen() {
   const [loading, setLoading] = useState(true);
   const [userAvatar, setUserAvatar] = useState<string | undefined>(undefined);
   const [myId, setMyId] = useState<string>('');
+  // Bumping this re-runs the load effect (Retry button).
+  const [reloadKey, setReloadKey] = useState(0);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [retryingMembers, setRetryingMembers] = useState(false);
+  // Circles failing to load must not block picking friends, so this is kept
+  // apart from loadError (which replaces the whole list).
+  const [groupsLoadFailed, setGroupsLoadFailed] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -74,10 +86,14 @@ export default function FriendGroupPickerScreen() {
         }
 
         // Fetch groups
-        const { data: myGroups } = await supabase
+        const { data: myGroups, error: groupsErr } = await supabase
           .from('group_members')
           .select('group_id, groups(*)')
           .eq('user_id', myId);
+        // A failed query must not read as "no circles" — but it also must not
+        // take the friends list down with it, so it only flags the Circles tab.
+        if (groupsErr) console.warn('Could not load circles:', groupsErr);
+        setGroupsLoadFailed(!!groupsErr);
 
         if (myGroups) {
           // Fetch actual member count for each group using RPC
@@ -87,7 +103,7 @@ export default function FriendGroupPickerScreen() {
             const g = Array.isArray(grp) ? grp[0] : grp;
             if (!g?.id) continue;
 
-            const { data: memberData } = await supabase
+            const { data: memberData, error: memberErr } = await supabase
               .from('group_members')
               .select('user_id, users(full_name, avatar_url)')
               .eq('group_id', g.id);
@@ -104,7 +120,8 @@ export default function FriendGroupPickerScreen() {
               title: g.title || 'Circle',
               icon: g.category === 'trip' ? 'flight' : (g.category === 'home' ? 'home' : 'group'),
               memberCount: groupMembers.length,
-              members: groupMembers
+              members: groupMembers,
+              membersError: !!memberErr,
             });
           }
           setGroupsList(groupsFormatted);
@@ -124,7 +141,39 @@ export default function FriendGroupPickerScreen() {
     AsyncStorage.getItem('onboarding_avatar').then(av => {
       if (av) setUserAvatar(av);
     });
-  }, []);
+  }, [reloadKey]);
+
+  const handleRetryLoad = () => {
+    setLoadError(null);
+    setLoading(true);
+    setReloadKey(k => k + 1);
+  };
+
+  // Re-fetch one circle's members after a failed load, so it can be confirmed.
+  const handleRetryMembers = async (group: Group) => {
+    setRetryingMembers(true);
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data: memberData, error: memberErr } = await supabase
+        .from('group_members')
+        .select('user_id, users(full_name, avatar_url)')
+        .eq('group_id', group.id);
+      if (memberErr || !memberData) return; // stays flagged; user can retry again
+      const members = memberData.map((m: any) => ({
+        id: m.user_id,
+        name: m.users?.full_name?.split(' ')[0] || 'Unknown',
+        image: m.users?.avatar_url,
+        initials: m.users?.full_name ? m.users.full_name.charAt(0) : '?'
+      }));
+      const fixed: Group = { ...group, members, memberCount: members.length, membersError: false };
+      setGroupsList(prev => prev.map(g => (g.id === group.id ? fixed : g)));
+      setSelectedGroup(prev => (prev?.id === group.id ? fixed : prev));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRetryingMembers(false);
+    }
+  };
 
   // Initialize selections from context
   useEffect(() => {
@@ -171,6 +220,10 @@ export default function FriendGroupPickerScreen() {
 
   const handleConfirm = () => {
     const you: Participant = { id: 'you', name: 'You', isYou: true, included: true, image: userAvatar };
+
+    // Never confirm a circle whose members did not load: it would post the
+    // expense with only "You".
+    if (selectedGroup?.membersError) return;
 
     if (selectedGroup) {
       setGroupId(selectedGroup.id);
@@ -224,7 +277,7 @@ export default function FriendGroupPickerScreen() {
     g.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const isConfirmDisabled = selectedFriends.length === 0 && !selectedGroup;
+  const isConfirmDisabled = (selectedFriends.length === 0 && !selectedGroup) || !!selectedGroup?.membersError;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -318,14 +371,72 @@ export default function FriendGroupPickerScreen() {
         </View>
       )}
 
+      {selectedGroup?.membersError && (
+        // Block confirm until this circle's members load (see isConfirmDisabled).
+        <View className="px-5 mb-3">
+          <View className="flex-row items-center bg-white border border-outline-variant/20 rounded-2xl p-3">
+            <MaterialIcons name="error-outline" size={22} color="#b91c1c" />
+            <Text className="flex-1 text-on-surface text-sm font-semibold mx-2">
+              Couldn't load this circle's members
+            </Text>
+            <AnimatedPressable
+              disabled={retryingMembers}
+              onPress={() => handleRetryMembers(selectedGroup)}
+              className="bg-primary px-4 py-2 rounded-xl"
+            >
+              <Text className="text-white font-semibold text-sm">{retryingMembers ? 'Retrying...' : 'Retry'}</Text>
+            </AnimatedPressable>
+          </View>
+        </View>
+      )}
+
       {/* Scrollable list content */}
       <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingBottom: 120 }}>
-        {activeTab === 'friends' ? (
+        {loading ? (
+          // Row-shaped placeholders matching the friend rows below.
+          <View className="pt-2">
+            <Skeleton width="42%" height={11} style={{ marginBottom: 16 }} />
+            {[0, 1, 2, 3].map(i => (
+              <View
+                key={i}
+                className="p-3 rounded-2xl mb-2"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.72)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.05)',
+                }}
+              >
+                <SkeletonListRow avatarSize={40} showAmount={false} />
+              </View>
+            ))}
+          </View>
+        ) : loadError ? (
+          // A failed load must never look like "you have no friends".
+          <View className="items-center justify-center px-6 pt-10">
+            <MaterialIcons name="error-outline" size={40} color="#b91c1c" />
+            <Text className="text-on-surface font-bold text-lg mb-1 mt-3">Could not load friends and circles</Text>
+            <Text className="text-on-surface-variant text-center max-w-xs text-sm">{loadError}</Text>
+            <AnimatedPressable onPress={handleRetryLoad} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+              <Text className="text-white font-semibold">Retry</Text>
+            </AnimatedPressable>
+          </View>
+        ) : activeTab === 'friends' ? (
           <View className="space-y-6">
-            {/* Frequently split section */}
+            {friendsList.length === 0 && (
+              <View className="items-center justify-center px-6 py-8">
+                <Text className="text-on-surface font-bold text-lg mb-1">No friends yet</Text>
+                <Text className="text-on-surface-variant text-center max-w-xs text-sm">
+                  Add a friend to start splitting expenses.
+                </Text>
+                <AnimatedPressable onPress={() => setIsAddModalOpen(true)} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+                  <Text className="text-white font-semibold">Add a friend</Text>
+                </AnimatedPressable>
+              </View>
+            )}
+            {/* First two matches (list order, not a usage frequency) */}
             <View>
               <Text className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-                Frequently Split With
+                Friends
               </Text>
               <View className="gap-2">
                 {filteredFriends.slice(0, 2).map((friend, index) => {
@@ -411,6 +522,22 @@ export default function FriendGroupPickerScreen() {
         ) : (
           // Groups list content
           <View className="gap-3 pt-2">
+            {groupsList.length === 0 && groupsLoadFailed && (
+              <View className="items-center justify-center px-6 py-8">
+                <Text className="text-on-surface font-bold text-lg mb-1">Couldn't load your circles</Text>
+                <AnimatedPressable onPress={handleRetryLoad} className="mt-4 bg-primary px-6 py-3 rounded-xl">
+                  <Text className="text-white font-semibold">Retry</Text>
+                </AnimatedPressable>
+              </View>
+            )}
+            {groupsList.length === 0 && !groupsLoadFailed && (
+              <View className="items-center justify-center px-6 py-8">
+                <Text className="text-on-surface font-bold text-lg mb-1">No circles yet</Text>
+                <Text className="text-on-surface-variant text-center max-w-xs text-sm">
+                  Circles you create or join will show up here.
+                </Text>
+              </View>
+            )}
             {filteredGroups.map((group, index) => {
               const isChecked = selectedGroup?.id === group.id;
               return (
@@ -486,6 +613,12 @@ export default function FriendGroupPickerScreen() {
           </Text>
         </AnimatedPressable>
       </View>
+
+      <AddFriendModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={handleRetryLoad}
+      />
     </SafeAreaView>
   );
 }
