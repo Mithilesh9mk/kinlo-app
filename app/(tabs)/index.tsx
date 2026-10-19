@@ -816,7 +816,10 @@ export default function HomeScreen() {
             tiles now share this row. */}
         <View className="px-6 flex-row gap-3 mb-6">
           <AnimatedPressable
-            onPress={() => router.push('/(tabs)/analytics')}
+            onPress={() => router.push({
+              pathname: '/(tabs)/analytics',
+              params: { scope: 'split', window: '6m', month: 'current', t: String(Date.now()) },
+            })}
             className="flex-1 liquid-glass rounded-2xl p-4"
           >
             <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">
@@ -827,7 +830,10 @@ export default function HomeScreen() {
           </AnimatedPressable>
 
           <AnimatedPressable
-            onPress={() => router.push('/(tabs)/analytics')}
+            onPress={() => router.push({
+              pathname: '/(tabs)/analytics',
+              params: { scope: 'split', window: '1w', t: String(Date.now()) },
+            })}
             className="flex-1 liquid-glass rounded-2xl p-4"
           >
             <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">

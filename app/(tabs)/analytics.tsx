@@ -5,7 +5,7 @@ import { Skeleton, SkeletonCard } from '../../components/Skeleton';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { fetchAnalytics, AnalyticsData, SpendScope, WindowPreset } from '../../lib/analytics';
 import { categoryMeta } from '../../lib/categories';
 import { formatINR, tabularNums } from '../../lib/format';
@@ -60,6 +60,30 @@ export default function AnalyticsScreen() {
     setSelectedCategory(null);
     setSelectedMonthKey(null);
   };
+
+  // Optional deep link from Home's spend tiles so the figure tapped there is
+  // the one shown here. Absent params (the tab bar, any other caller) leave
+  // every default above untouched. `t` is a nonce so tapping the same tile
+  // again re-applies the view after the user has changed the toggles.
+  const params = useLocalSearchParams<{ scope?: string; window?: string; month?: string; t?: string }>();
+  useEffect(() => {
+    if (!params.t) return;
+    const nextScope: SpendScope | null =
+      params.scope === 'split' || params.scope === 'personal' || params.scope === 'overall' ? params.scope : null;
+    const nextWindow: WindowPreset | null =
+      params.window === '1w' || params.window === '1m' || params.window === '6m' || params.window === '12m'
+        ? params.window
+        : null;
+    if (nextScope) setScope(nextScope);
+    if (nextWindow) setWindowPreset(nextWindow);
+    setSelectedCategory(null);
+    if (params.month === 'current') {
+      const now = new Date();
+      setSelectedMonthKey(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    } else {
+      setSelectedMonthKey(null);
+    }
+  }, [params.t, params.scope, params.window, params.month]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
