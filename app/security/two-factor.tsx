@@ -39,7 +39,16 @@ export default function TwoFactorScreen() {
   const [showOff, setShowOff] = useState(false);
 
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Mirrors `pending` so the unmount cleanup can see an unverified factor.
+  const pendingRef = useRef<string | null>(null);
+  useEffect(() => () => {
+    mounted.current = false;
+    // Header Back / hardware back leave mid-setup without Cancel: drop the
+    // unverified factor (best-effort, allowed at aal1).
+    const id = pendingRef.current;
+    pendingRef.current = null;
+    if (id) unenrollFactor(id).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setMode('loading');
@@ -76,6 +85,7 @@ export default function TwoFactorScreen() {
       setInlineError(res.message);
       return;
     }
+    pendingRef.current = res.factorId;
     setPending({ factorId: res.factorId, secret: res.secret });
     setCode('');
     setMode('setup');
@@ -83,6 +93,7 @@ export default function TwoFactorScreen() {
 
   const cancelSetup = async () => {
     const p = pending;
+    pendingRef.current = null;
     setPending(null);
     setCode('');
     setInlineError('');
@@ -96,6 +107,8 @@ export default function TwoFactorScreen() {
     setBusy(true);
     setInlineError('');
     const res = await verifyEnrollment(pending.factorId, code);
+    // Verified even if the screen was left meanwhile: keep the factor.
+    if (res.ok) pendingRef.current = null;
     if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) {

@@ -36,6 +36,12 @@ console.log("Hello from parse-receipt!")
 // comment gives for restricting its own service-role use to an already-
 // vetted set of recipients.
 
+// A provider call that hangs would run until the platform kills the function,
+// and a killed function never reaches the refund paths below. Bounding each
+// call turns a hang into a normal per-provider error, so the chain moves on
+// (or the scan is refunded) instead of silently burning a reserved scan.
+const PROVIDER_TIMEOUT_MS = 25_000
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST',
@@ -189,6 +195,7 @@ async function callClaudeVision(
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     headers: {
       'x-api-key': anthropicKey.trim(),
       'anthropic-version': '2023-06-01',
@@ -320,6 +327,7 @@ async function callGeminiVision(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
     {
       method: 'POST',
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt() }] },

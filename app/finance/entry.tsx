@@ -52,6 +52,7 @@ export default function FinanceEntryScreen() {
   const [uncertainFields, setUncertainFields] = useState<Set<FieldName>>(new Set());
   const [editedFields, setEditedFields] = useState<Set<FieldName>>(new Set());
   const [directionWarning, setDirectionWarning] = useState(false);
+  const [touched, setTouched] = useState(false);
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [parsing, setParsing] = useState(isReview);
@@ -278,9 +279,13 @@ export default function FinanceEntryScreen() {
     if (extraction.category) setCategory(extraction.category);
     if (extraction.occurredAt) {
       const d = new Date(extraction.occurredAt);
-      if (!isNaN(d.getTime())) {
+      // parseDate() rejects pre-2000 years, so applying one would block Save
+      // on a date the user never typed. Keep today's date and flag the field.
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 2000) {
         setOccurredAt(d);
         setDateText(formatDate(d));
+      } else {
+        uncertain.add('occurredAt');
       }
     }
     if (extraction.direction === 'credit') setDirectionWarning(true);
@@ -306,7 +311,9 @@ export default function FinanceEntryScreen() {
   const parsedAmount = parseFloat(amount || '0');
   const dateError = parseDate(dateText.trim()) === null;
   const canSave = parsedAmount > 0 && !saving && !parsing && !dateError;
-  const hasUnsavedEdits = editedFields.size > 0 || description.trim().length > 0 || dateError;
+  // `touched` = the user typed in notes/date. A loaded note or a scanned value
+  // is not an edit, so opening an existing row and closing it never prompts.
+  const hasUnsavedEdits = editedFields.size > 0 || touched;
 
   const handleClose = () => {
     if (!hasUnsavedEdits || saving) {
@@ -572,7 +579,7 @@ export default function FinanceEntryScreen() {
 
             <TextInput
               value={description}
-              onChangeText={setDescription}
+              onChangeText={(t) => { setDescription(t); setTouched(true); }}
               placeholder="Notes (optional)"
               placeholderTextColor="rgba(64,73,64,0.4)"
               className="w-full text-sm text-on-surface px-4 py-3 rounded-2xl mb-3"
@@ -583,6 +590,7 @@ export default function FinanceEntryScreen() {
               value={dateText}
               onChangeText={(t) => {
                 setDateText(t);
+                setTouched(true);
                 const d = parseDate(t.trim());
                 if (d) { setOccurredAt(d); markEdited('occurredAt'); }
               }}

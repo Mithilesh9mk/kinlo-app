@@ -135,6 +135,12 @@ export default function ExpenseDetailsScreen() {
       }
   };
 
+  // A failed load leaves participants empty, so a non-empty list means the user
+  // picked friends elsewhere instead; the stale error must not block Next.
+  useEffect(() => {
+    if (membersError && participants.length > 0) setMembersError(false);
+  }, [participants, membersError]);
+
   // Next must not proceed while the circle's members are missing or loading.
   const membersBlocked = membersError || membersLoading;
 
