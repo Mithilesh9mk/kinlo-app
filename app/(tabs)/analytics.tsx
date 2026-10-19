@@ -498,7 +498,7 @@ export default function AnalyticsScreen() {
               <View>
                 <Text className="font-label-sm text-xs text-on-surface-variant uppercase tracking-wide">Expenses</Text>
                 <Text className="font-headline-md text-2xl font-bold text-primary mt-0.5">{displayCount}</Text>
-                <Text className="text-[9px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1">{windowLabel}</Text>
+                <Text className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1">{windowLabel}</Text>
               </View>
             </View>
 
@@ -516,7 +516,7 @@ export default function AnalyticsScreen() {
                 </View>
                 {displayTopCategory && (
                   <View className="bg-primary/10 px-2 py-0.5 rounded-full">
-                    <Text className="text-primary font-bold text-[9px]">{displayTopCategory.percentage}%</Text>
+                    <Text className="text-primary font-bold text-[10px]">{displayTopCategory.percentage}%</Text>
                   </View>
                 )}
               </View>
@@ -525,7 +525,7 @@ export default function AnalyticsScreen() {
                 <Text className="font-headline-md text-xl font-bold text-primary mt-0.5" numberOfLines={1}>
                   {displayTopCategory?.name || '—'}
                 </Text>
-                <Text className="text-[9px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1">
+                <Text className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1">
                   {displayTopCategory ? money(displayTopCategory.amount) : 'No expenses yet'}
                 </Text>
               </View>

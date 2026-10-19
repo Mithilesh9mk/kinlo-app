@@ -511,7 +511,7 @@ export default function FinanceHomeScreen() {
                       }}
                     />
                     <Text
-                      className="text-[9px] font-medium mt-1"
+                      className="text-[10px] font-medium mt-1"
                       style={{ color: isSelected ? '#d97706' : '#707a6f', fontWeight: isSelected ? '700' : '500' }}
                     >
                       {point.label}
@@ -542,7 +542,7 @@ export default function FinanceHomeScreen() {
                       }}
                     />
                     <Text
-                      className="text-[9px] font-medium mt-1"
+                      className="text-[10px] font-medium mt-1"
                       style={{ color: isSelected ? '#d97706' : '#707a6f', fontWeight: isSelected ? '700' : '500' }}
                     >
                       {point.label}

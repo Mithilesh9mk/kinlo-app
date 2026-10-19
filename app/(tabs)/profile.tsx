@@ -975,7 +975,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                  <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                  <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
 
@@ -990,7 +990,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                  <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                  <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
 
@@ -1238,7 +1238,7 @@ export default function ProfileScreen() {
                         >
                           <View className="w-3.5 h-3.5 bg-white rounded-full shadow-sm" />
                         </AnimatedPressable>
-                        <Text className="text-[8px] text-outline font-bold uppercase tracking-wider mt-1">Auto-Settle</Text>
+                        <Text className="text-[10px] text-outline font-bold uppercase tracking-wider mt-1">Auto-Settle</Text>
                       </View>
                     </View>
                   ))}
@@ -1265,7 +1265,7 @@ export default function ProfileScreen() {
                       </View>
                       {c.isExpired && (
                         <View className="bg-error/10 px-2 py-0.5 rounded-full">
-                          <Text className="text-error font-bold text-[8px] uppercase tracking-wider">Expired</Text>
+                          <Text className="text-error font-bold text-[10px] uppercase tracking-wider">Expired</Text>
                         </View>
                       )}
                     </View>
@@ -1365,7 +1365,7 @@ export default function ProfileScreen() {
                     <Text className="text-[11px] text-on-surface-variant">Verify via SMS if Authenticator unavailable</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                    <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
                 </View>
               </View>
@@ -1384,7 +1384,7 @@ export default function ProfileScreen() {
                     </View>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                    <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
                 </View>
 
@@ -1394,7 +1394,7 @@ export default function ProfileScreen() {
                     <Text className="text-[11px] text-on-surface-variant">Let users find your contact splits easily</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                    <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
                 </View>
 
@@ -1404,7 +1404,7 @@ export default function ProfileScreen() {
                     <Text className="text-[11px] text-on-surface-variant">Make profile visible inside circle searches</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                    <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                    <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
                 </View>
               </View>
@@ -1437,7 +1437,7 @@ export default function ProfileScreen() {
                       {!sess.isActiveNow ? (
                         <AnimatedPressable onPress={() => handleRevokeSession(sess.id, sess.device)} className="w-8 h-8 rounded-full bg-error/5 border border-error/20 items-center justify-center active:scale-90"><MaterialIcons name="delete-outline" size={16} color="#b91c1c" /></AnimatedPressable>
                       ) : (
-                        <View className="bg-primary/10 px-2 py-0.5 rounded-full"><Text className="text-primary font-bold text-[9px] uppercase tracking-wider">This device</Text></View>
+                        <View className="bg-primary/10 px-2 py-0.5 rounded-full"><Text className="text-primary font-bold text-[10px] uppercase tracking-wider">This device</Text></View>
                       )}
                     </View>
                   ))}
@@ -1476,7 +1476,7 @@ export default function ProfileScreen() {
                   <View className="flex-row items-center justify-between">
                     <Text className="font-headline text-base font-bold text-on-surface">Statement Exporter</Text>
                     <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                      <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                      <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                     </View>
                   </View>
                   <Text className="text-xs text-on-surface-variant mt-0.5">Download split ledgers in secure audit formats</Text>
@@ -1583,7 +1583,7 @@ export default function ProfileScreen() {
                   <View className="flex-row items-center justify-between">
                     <Text className="font-headline text-base font-bold text-on-surface">Report a Bug & Diagnostic Logs</Text>
                     <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
-                      <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
+                      <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                     </View>
                   </View>
                   <Text className="text-xs text-on-surface-variant mt-0.5">Device details will be attached once bug reporting launches</Text>
@@ -1594,7 +1594,7 @@ export default function ProfileScreen() {
                 </View>
 
                 <View className="bg-surface-container-high/40 p-4 border border-outline-variant/20 rounded-2xl gap-2">
-                  <Text className="text-[9px] text-outline font-bold uppercase tracking-wider">Device details (shown for reference, not collected):</Text>
+                  <Text className="text-[10px] text-outline font-bold uppercase tracking-wider">Device details (shown for reference, not collected):</Text>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Layout dimensions:</Text><Text className="text-[10px] text-primary font-bold">{SCREEN_WIDTH}px x {SCREEN_HEIGHT}px</Text></View>
                   <View className="flex-row justify-between"><Text className="text-[10px] text-on-surface-variant font-medium">Operating System:</Text><Text className="text-[10px] text-primary font-bold">{Platform.OS === 'web' ? 'Web Browser' : Platform.OS}</Text></View>
                 </View>

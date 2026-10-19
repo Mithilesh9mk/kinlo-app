@@ -5,6 +5,13 @@ module.exports = {
   presets: [require("nativewind/preset")],
   theme: {
     extend: {
+      // Type scale, small end: 10 (micro: pills, badges, uppercase labels) and
+      // 12 (caption: metadata). Everything above is Tailwind's own xs..3xl.
+      // Additive: nothing reads these until screens are migrated.
+      fontSize: {
+        micro: '10px',
+        caption: '12px',
+      },
       colors: {
         "surface": "#fcf9f4",
         "secondary-container": "#caead6",
