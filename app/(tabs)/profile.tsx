@@ -116,7 +116,6 @@ export default function ProfileScreen() {
   const [balanceError, setBalanceError] = useState(false);
   
   // Settings main switches states
-  const [pushEnabled, setPushEnabled] = useState(true);
   const [syncEnabled, setSyncEnabled] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -437,12 +436,6 @@ export default function ProfileScreen() {
       // Leave the sheet open so what the user typed isn't lost.
       triggerToast("Couldn't save your profile. Check your connection and try again.");
     }
-  };
-
-  const handleTogglePush = () => {
-    const next = !pushEnabled;
-    setPushEnabled(next);
-    triggerToast(next ? 'Push alerts enabled!' : 'Push alerts disabled!');
   };
 
   const handleToggleSync = async () => {
@@ -968,12 +961,11 @@ export default function ProfileScreen() {
             </Text>
 
             <View className="gap-4">
-              <AnimatedPressable 
-                onPress={handleTogglePush}
-                activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
-              >
-                <View className="flex-row items-center gap-4">
+              {/* No server or device setting backs this yet: nothing reads a
+                  saved choice before sending, so a working-looking switch
+                  would be false. Shown as Coming soon like Appearance below. */}
+              <View className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4">
+                <View className="flex-row items-center gap-4" style={{ opacity: 0.6 }}>
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
                     <MaterialIcons name="notifications-active" size={20} color="#004c22" />
                   </View>
@@ -982,12 +974,10 @@ export default function ProfileScreen() {
                     <Text className="text-xs text-on-surface-variant">Send transaction updates</Text>
                   </View>
                 </View>
-                <View className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${
-                  pushEnabled ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
-                }`}>
-                  <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
+                  <Text className={`text-[9px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
-              </AnimatedPressable>
+              </View>
 
               <View className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4">
                 <View className="flex-row items-center gap-4" style={{ opacity: 0.6 }}>
