@@ -157,8 +157,10 @@ export default function FriendsScreen() {
   };
 
   const getBalanceLabel = (friend: Friend) => {
-    if (friend.status === 'owed') return formatINR(friend.balance, { decimals: 0, signed: true });
-    if (friend.status === 'owes') return formatINR(-friend.balance, { decimals: 0 });
+    // Whole rupees, except under ₹1 where rounding would show a coloured ₹0.
+    const decimals = Math.abs(friend.balance) < 1 ? 2 : 0;
+    if (friend.status === 'owed') return formatINR(friend.balance, { decimals, signed: true });
+    if (friend.status === 'owes') return formatINR(-friend.balance, { decimals });
     return 'Settled';
   };
 

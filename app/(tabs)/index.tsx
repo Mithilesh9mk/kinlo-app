@@ -550,8 +550,10 @@ export default function HomeScreen() {
   };
 
   const getBalanceLabel = (friend: Friend) => {
-    if (friend.status === 'owed') return formatINR(friend.balance, { decimals: 0, signed: true });
-    if (friend.status === 'owes') return formatINR(-friend.balance, { decimals: 0 });
+    // Whole rupees, except under ₹1 where rounding would show a coloured ₹0.
+    const decimals = Math.abs(friend.balance) < 1 ? 2 : 0;
+    if (friend.status === 'owed') return formatINR(friend.balance, { decimals, signed: true });
+    if (friend.status === 'owes') return formatINR(-friend.balance, { decimals });
     return 'Settled';
   };
 
@@ -877,29 +879,11 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Smart Suggestion */}
-        <View className="px-6 mb-8">
-          {/* The chevron on the right specifically signals navigation, and
-              this went nowhere. Both states of the copy point at reviewing
-              recent activity, which is what Statement shows. */}
-          <AnimatedPressable
-            onPress={() => router.push('/statement')}
-            className="bg-[#8bd79b]/20 border border-[#004c22]/20 rounded-2xl p-4 flex-row gap-4 items-center"
-          >
-            <View className="w-12 h-12 rounded-full bg-white items-center justify-center shadow-sm">
-              <MaterialIcons name="auto-awesome" size={24} color="#004c22" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-xs font-bold text-primary uppercase tracking-wider mb-0.5">Smart Split</Text>
-              <Text className="font-semibold text-on-surface" numberOfLines={1}>{recentActivity.length > 0 ? 'Review your recent splits and settle up!' : 'Start splitting expenses with friends!'}</Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={24} color="#004c22" />
-          </AnimatedPressable>
-        </View>
+        {/* The static "Smart Split" suggestion card was removed in the Home
+            declutter: its only action was /statement, already reached by the
+            balance card's Statement button and Recent Activity's See all. */}
 
-        {/* Personal Spending card — amber, not the Smart Suggestion card's
-            green, so the two read as distinct at a glance despite sharing
-            the same shape. */}
+        {/* Personal Spending card — amber. */}
         {personalSummary !== null && (
           <View className="px-6 mb-8">
             <AnimatedPressable

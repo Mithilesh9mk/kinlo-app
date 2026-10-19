@@ -85,13 +85,19 @@ export default function AnalyticsScreen() {
     }
   }, [params.t, params.scope, params.window, params.month]);
 
+  const loadSeq = useRef(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoadState('loading');
+    // Several loads can overlap (focus, window toggle, Home deep link); only
+    // the newest may write, so an older window's data never lands under a
+    // newer window's label.
+    const reqId = ++loadSeq.current;
     try {
       const result = await fetchAnalytics(windowPreset);
+      if (reqId !== loadSeq.current) return;
       setData(result);
       setLoadState('ready');
       setErrorMessage(null);
@@ -100,6 +106,7 @@ export default function AnalyticsScreen() {
         Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
       ]).start();
     } catch (e: any) {
+      if (reqId !== loadSeq.current) return;
       console.warn('Analytics load failed:', e);
       setLoadState('error');
       setErrorMessage(e?.message || 'Could not load your spending data.');

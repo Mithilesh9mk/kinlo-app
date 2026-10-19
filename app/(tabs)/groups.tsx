@@ -77,7 +77,10 @@ export default function GroupsScreen() {
         categoryIcon: cat.icon,
         memberCount: members?.length || 0,
         members: [],
-        balanceText: Math.abs(balance) > 0.005 ? formatINR(balance, { decimals: 0, signed: true }) : 'Settled',
+        // Whole rupees, except under ₹1 where rounding would show a coloured ₹0.
+        balanceText: Math.abs(balance) > 0.005
+          ? formatINR(balance, { decimals: Math.abs(balance) < 1 ? 2 : 0, signed: true })
+          : 'Settled',
         isDebt: balance < -0.005,
       });
     }
