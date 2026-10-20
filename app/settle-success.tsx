@@ -116,7 +116,7 @@ export default function SettleSuccessScreen() {
               borderColor: 'rgba(255,255,255,0.45)',
             }}
           >
-            <Text className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant font-bold text-center">
+            <Text className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold text-center">
               {isCleared ? 'You are all square' : `Still outstanding with ${firstName}`}
             </Text>
 

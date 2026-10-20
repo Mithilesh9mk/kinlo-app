@@ -162,7 +162,7 @@ export default function PayerSelectionScreen() {
             }}
           >
             <View>
-              <Text className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant">
+              <Text className="text-xs uppercase tracking-wider font-bold text-on-surface-variant">
                 {balanced ? 'Adds up' : remaining > 0 ? 'Still to assign' : 'Over the bill'}
               </Text>
               <Text

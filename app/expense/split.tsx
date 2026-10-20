@@ -720,7 +720,7 @@ Nothing was saved, so their version is intact.`
           {isValidSplit && settlementPreview.debts.length > 0 && (
             <View className="mt-5 rounded-3xl border border-primary/15 bg-white/60 overflow-hidden">
               <View className="px-5 pt-4 pb-3 border-b border-outline-variant/25">
-                <Text className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant font-bold">
+                <Text className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold">
                   After posting
                 </Text>
                 <Text className="font-headline-md text-base font-bold text-on-surface mt-1">

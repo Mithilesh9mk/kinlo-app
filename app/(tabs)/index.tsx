@@ -883,8 +883,11 @@ export default function HomeScreen() {
             declutter: its only action was /statement, already reached by the
             balance card's Statement button and Recent Activity's See all. */}
 
-        {/* Personal Spending card — amber. */}
-        {personalSummary !== null && (
+        {/* Personal Spending card — amber. While the first-run "Track your own
+            spending" hint is showing and there is nothing to report, the card
+            would say the same thing, so it waits until the hint is dismissed
+            or the first expense exists. */}
+        {personalSummary !== null && !(showPersonal && personalSummary.count === 0) && (
           <View className="px-6 mb-8">
             <AnimatedPressable
               onPress={() => router.push('/finance')}

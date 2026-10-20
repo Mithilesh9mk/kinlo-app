@@ -342,7 +342,7 @@ export default function TransactionDetailScreen() {
               <View className="flex-row items-center mb-2">
                 <MaterialIcons name="history" size={14} color="#9a5511" />
                 <Text
-                  className="font-label-sm text-[11px] uppercase tracking-wider font-bold"
+                  className="font-label-sm text-xs uppercase tracking-wider font-bold"
                   style={{ color: '#9a5511', marginLeft: 6 }}
                 >
                   This expense has changed
@@ -358,7 +358,7 @@ export default function TransactionDetailScreen() {
                         {d.title}
                         {d.detail ? <Text className="font-semibold">{`  ${d.detail}`}</Text> : null}
                       </Text>
-                      <Text className="text-[11px] text-on-surface-variant" style={{ marginLeft: 8 }}>
+                      <Text className="text-xs text-on-surface-variant" style={{ marginLeft: 8 }}>
                         {relativeTime(h.createdAt)}
                       </Text>
                     </View>
@@ -492,7 +492,7 @@ export default function TransactionDetailScreen() {
               className="rounded-2xl px-5 py-4 mt-4"
               style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
             >
-              <Text className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant font-bold mb-1">
+              <Text className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold mb-1">
                 Your position
               </Text>
               <Text className="text-sm text-on-surface leading-relaxed">
@@ -536,7 +536,7 @@ export default function TransactionDetailScreen() {
                   <View style={{ marginLeft: 13, flex: 1 }}>
                     <Text className="font-semibold text-on-surface text-base" numberOfLines={1}>{l.name}</Text>
                     {l.isPayer ? (
-                      <Text className="text-[11px] font-bold text-primary uppercase tracking-wider mt-0.5">Paid the bill</Text>
+                      <Text className="text-xs font-bold text-primary uppercase tracking-wider mt-0.5">Paid the bill</Text>
                     ) : (
                       <Text className="text-xs text-on-surface-variant mt-0.5">
                         Share of the bill
@@ -549,13 +549,13 @@ export default function TransactionDetailScreen() {
                     {clearedWithThisPerson ? (
                       <View className="flex-row items-center mt-0.5">
                         <MaterialIcons name="check-circle" size={12} color="#1f6c3a" />
-                        <Text className="text-[11px] font-bold" style={{ color: '#1f6c3a', marginLeft: 3 }}>
+                        <Text className="text-xs font-bold" style={{ color: '#1f6c3a', marginLeft: 3 }}>
                           settled
                         </Text>
                       </View>
                     ) : Math.abs(l.remaining) > 0.005 ? (
                       <Text
-                        className="text-[11px] font-bold mt-0.5"
+                        className="text-xs font-bold mt-0.5"
                         style={{ color: l.remaining > 0 ? '#1f6c3a' : '#ba1a1a' }}
                       >
                         {l.remaining > 0 ? 'owes you' : 'you owe'}

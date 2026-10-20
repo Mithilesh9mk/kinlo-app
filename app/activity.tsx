@@ -228,7 +228,7 @@ export default function ActivityScreen() {
                       {d.detail}
                     </Text>
                   )}
-                  <Text className="text-[11px] text-on-surface-variant mt-1">
+                  <Text className="text-xs text-on-surface-variant mt-1">
                     {relativeTime(event.createdAt)}
                   </Text>
                 </View>

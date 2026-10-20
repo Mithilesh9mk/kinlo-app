@@ -244,7 +244,7 @@ export default function ConnectRequestScreen() {
                         <Text className="text-sm font-semibold text-on-surface" numberOfLines={1}>
                           {line.description || 'Expense'}
                         </Text>
-                        <Text className="text-[11px] text-on-surface-variant mt-0.5">
+                        <Text className="text-xs text-on-surface-variant mt-0.5">
                           {new Date(line.occurredAt).toLocaleDateString('en-IN', {
                             day: 'numeric', month: 'short', year: 'numeric',
                           })}
@@ -271,7 +271,7 @@ export default function ConnectRequestScreen() {
                   >
                     ₹{Math.abs(net).toFixed(2)}
                   </Text>
-                  <Text className="text-[11px] text-on-surface-variant mt-1.5 leading-relaxed">
+                  <Text className="text-xs text-on-surface-variant mt-1.5 leading-relaxed">
                     You can dispute or remove any individual expense after connecting, the
                     same as any other expense.
                   </Text>

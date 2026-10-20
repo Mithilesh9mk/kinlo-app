@@ -421,7 +421,7 @@ export default function FinanceEntryScreen() {
               />
               <View className="flex-row items-center justify-center gap-1 mt-2">
                 <MaterialIcons name="zoom-out-map" size={14} color="#404940" />
-                <Text className="text-[11px] text-on-surface-variant">Tap to view full screenshot</Text>
+                <Text className="text-xs text-on-surface-variant">Tap to view full screenshot</Text>
               </View>
             </View>
           </AnimatedPressable>
@@ -470,7 +470,7 @@ export default function FinanceEntryScreen() {
         )}
 
         {!parsing && !params.editId && isReview && plan && plan.plan === 'free' && plan.scansLimit !== null && !quotaHit && (
-          <Text className="text-[11px] text-on-surface-variant text-center mb-4">
+          <Text className="text-xs text-on-surface-variant text-center mb-4">
             {Math.min(plan.scansUsed, plan.scansLimit)} of {plan.scansLimit || FREE_SCANS_PER_MONTH} free scans used this month
           </Text>
         )}
@@ -506,11 +506,11 @@ export default function FinanceEntryScreen() {
               <View className="flex-row items-center justify-between mt-2.5">
                 <View className="flex-row items-center gap-1">
                   <MaterialIcons name="schedule" size={13} color="#404940" />
-                  <Text className="text-[11px] text-on-surface-variant font-medium">
+                  <Text className="text-xs text-on-surface-variant font-medium">
                     {parseEstimatedTime}
                   </Text>
                 </View>
-                <Text className="text-[11px] text-on-surface-variant opacity-70">
+                <Text className="text-xs text-on-surface-variant opacity-70">
                   AI Receipt OCR
                 </Text>
               </View>

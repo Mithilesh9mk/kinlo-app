@@ -81,7 +81,7 @@ function NotBuiltYet({ label }: { label: string }) {
     <View className="p-4 bg-white/40 border border-dashed border-outline-variant/40 rounded-2xl items-center">
       <MaterialIcons name="construction" size={18} color="#6b7280" />
       <Text className="text-xs font-bold text-on-surface-variant mt-2">Not available yet</Text>
-      <Text className="text-[11px] text-on-surface-variant/80 mt-0.5 text-center">{label}</Text>
+      <Text className="text-xs text-on-surface-variant/80 mt-0.5 text-center">{label}</Text>
     </View>
   );
 }
@@ -1301,7 +1301,7 @@ export default function ProfileScreen() {
                   <View className="flex-row items-center justify-between border-t border-outline-variant/20 pt-4">
                     <View style={{ marginRight: 8 }}>
                       <Text className="font-semibold text-sm text-on-surface">Auto-Convert Splits</Text>
-                      <Text className="text-[11px] text-on-surface-variant">Apply mid-market exchange indexes to foreign splits</Text>
+                      <Text className="text-xs text-on-surface-variant">Apply mid-market exchange indexes to foreign splits</Text>
                     </View>
                     <View className={`w-10 h-5 rounded-full p-0.5 flex-row items-center transition-colors ${
                       autoConvert ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
@@ -1362,7 +1362,7 @@ export default function ProfileScreen() {
                 <View className="flex-row items-center justify-between border-t border-outline-variant/20 pt-4">
                   <View style={{ marginRight: 8, opacity: 0.6 }}>
                     <Text className="font-semibold text-sm text-on-surface">SMS Backup Codes</Text>
-                    <Text className="text-[11px] text-on-surface-variant">Verify via SMS if Authenticator unavailable</Text>
+                    <Text className="text-xs text-on-surface-variant">Verify via SMS if Authenticator unavailable</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
                     <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
@@ -1391,7 +1391,7 @@ export default function ProfileScreen() {
                 <View className="flex-row items-center justify-between py-2 border-b border-outline-variant/20 pb-4">
                   <View style={{ marginRight: 8, opacity: 0.6 }}>
                     <Text className="font-semibold text-sm text-on-surface">Allow Search by Phone</Text>
-                    <Text className="text-[11px] text-on-surface-variant">Let users find your contact splits easily</Text>
+                    <Text className="text-xs text-on-surface-variant">Let users find your contact splits easily</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
                     <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
@@ -1401,7 +1401,7 @@ export default function ProfileScreen() {
                 <View className="flex-row items-center justify-between py-2">
                   <View style={{ marginRight: 8, opacity: 0.6 }}>
                     <Text className="font-semibold text-sm text-on-surface">Circle Directory Visibility</Text>
-                    <Text className="text-[11px] text-on-surface-variant">Make profile visible inside circle searches</Text>
+                    <Text className="text-xs text-on-surface-variant">Make profile visible inside circle searches</Text>
                   </View>
                   <View className={`px-2.5 py-0.5 ${SOON_PILL}`}>
                     <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>

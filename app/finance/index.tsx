@@ -431,7 +431,7 @@ export default function FinanceHomeScreen() {
               )}
             </View>
             <Text className="font-headline-md text-3xl font-bold text-primary mt-1" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{loadState === 'error' ? '—' : money(displayTotal)}</Text>
-            <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+            <Text className="text-xs text-on-surface-variant font-medium mt-0.5">
               {loadState === 'error'
                 ? 'Could not load'
                 : loadState === 'loading'
@@ -592,7 +592,7 @@ export default function FinanceHomeScreen() {
             <Text className="font-headline-md text-base font-bold text-on-surface mb-1">
               Where it goes
             </Text>
-            <Text className="text-[11px] text-on-surface-variant mb-4">
+            <Text className="text-xs text-on-surface-variant mb-4">
               Categories ordered by size, with the running share across them.
             </Text>
 

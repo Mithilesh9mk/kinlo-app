@@ -454,9 +454,9 @@ export default function LoginScreen() {
 
                 {/* Why the submit button is still grey */}
                 {emailText.length > 0 && !emailText.includes('@') ? (
-                  <Text className="text-[11px] text-on-surface-variant/70 font-medium pl-1">Enter a valid email</Text>
+                  <Text className="text-xs text-on-surface-variant/70 font-medium pl-1">Enter a valid email</Text>
                 ) : passwordText.length > 0 && passwordText.length < 6 ? (
-                  <Text className="text-[11px] text-on-surface-variant/70 font-medium pl-1">Password must be at least 6 characters</Text>
+                  <Text className="text-xs text-on-surface-variant/70 font-medium pl-1">Password must be at least 6 characters</Text>
                 ) : null}
 
                 {/* Forgot Password Link */}

@@ -379,7 +379,7 @@ export default function AnalyticsScreen() {
                   )}
                 </View>
                 <Text className="font-display-lg text-4xl font-bold text-primary" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(displaySpend)}</Text>
-                <Text className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                <Text className="text-xs text-on-surface-variant font-medium mt-0.5">
                   {displayCount === 0
                     ? `No expenses ${periodPhrase}`
                     : scope === 'split'
@@ -456,7 +456,7 @@ export default function AnalyticsScreen() {
               </Text>
             )}
             {view.previousWindowSpend === 0 && (
-              <Text className="text-[11px] text-on-surface-variant text-center mt-2">
+              <Text className="text-xs text-on-surface-variant text-center mt-2">
                 No spending recorded in the previous period, so there is nothing to compare against yet.
               </Text>
             )}
@@ -468,8 +468,8 @@ export default function AnalyticsScreen() {
             {scope === 'overall' && mixTotal > 0 && (
               <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
                 <View className="flex-row justify-between mb-1.5">
-                  <Text className="text-[11px] font-semibold text-on-surface-variant">{splitPct}% Split</Text>
-                  <Text className="text-[11px] font-semibold text-on-surface-variant">{personalPct}% Personal</Text>
+                  <Text className="text-xs font-semibold text-on-surface-variant">{splitPct}% Split</Text>
+                  <Text className="text-xs font-semibold text-on-surface-variant">{personalPct}% Personal</Text>
                 </View>
                 <View className="w-full h-2 rounded-full overflow-hidden flex-row" style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}>
                   <View style={{ width: `${splitPct}%`, backgroundColor: COLORS.primary }} />
