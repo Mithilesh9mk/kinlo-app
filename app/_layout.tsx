@@ -263,6 +263,7 @@ export default function RootLayout() {
                 <Stack.Screen name="friend" options={{ headerShown: false }} />
                 <Stack.Screen name="transaction" options={{ headerShown: false }} />
                 <Stack.Screen name="finance" options={{ headerShown: false }} />
+                <Stack.Screen name="reminders" options={{ headerShown: false }} />
                 <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false, animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="mfa-challenge" options={{ headerShown: false, gestureEnabled: false }} />

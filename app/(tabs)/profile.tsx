@@ -935,7 +935,7 @@ export default function ProfileScreen() {
               <AnimatedPressable
                 onPress={() => router.push('/finance')}
                 activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3.5"
+                className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
                 <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
@@ -944,6 +944,24 @@ export default function ProfileScreen() {
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Personal Spending</Text>
                     <Text className="text-xs text-on-surface-variant">Scan a payment screenshot, track your own spends</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+              </AnimatedPressable>
+
+              {/* Menu Row 7: Reminders — its own route, like Personal Spending. */}
+              <AnimatedPressable
+                onPress={() => router.push('/reminders' as any)}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3.5"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="notifications-active" size={20} color="#004c22" />
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Reminders</Text>
+                    <Text className="text-xs text-on-surface-variant">Bills and payments you don't want to forget</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />

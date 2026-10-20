@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-18T18:35:08.219Z",
-  "totalFiles": 159,
+  "timestamp": "2026-10-20T20:15:19.895Z",
+  "totalFiles": 162,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -44,6 +44,8 @@
       "app/onboarding/sync.tsx",
       "app/onboarding/value.tsx",
       "app/onboarding/_layout.tsx",
+      "app/reminders/index.tsx",
+      "app/reminders/_layout.tsx",
       "app/search.tsx",
       "app/security/two-factor.tsx",
       "app/security/_layout.tsx",
@@ -89,6 +91,7 @@
       "lib/offlineCache.ts",
       "lib/onboardingState.ts",
       "lib/pendingReceiptImage.ts",
+      "lib/personalReminders.ts",
       "lib/personalTransactions.ts",
       "lib/plan.ts",
       "lib/pushDispatcher.ts",
