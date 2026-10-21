@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-21T05:53:19.328Z",
-  "totalFiles": 169,
+  "timestamp": "2026-10-21T05:56:05.690Z",
+  "totalFiles": 170,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -174,7 +174,8 @@
       "supabase/migrations/0061_plans_coupons_scan_quota.sql",
       "supabase/migrations/0062_tighten_user_plans_grants.sql",
       "supabase/migrations/0063_store_billing_events.sql",
-      "supabase/migrations/0064_abuse_controls.sql"
+      "supabase/migrations/0064_abuse_controls.sql",
+      "supabase/migrations/0065_fix_phone_lookup_return_types.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",
