@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleProp, ViewStyle, ImageStyle, DimensionValue } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { parsePreset } from '../lib/avatarPresets';
 
 /**
  * A friend/user avatar that falls back to initials instead of a blank circle.
@@ -48,6 +50,22 @@ export function Avatar({
   const dimensions: { width: DimensionValue; height: DimensionValue; borderRadius: number } = size
     ? { width: size, height: size, borderRadius: size / 2 }
     : { width: '100%', height: '100%', borderRadius: 999 };
+
+  // Built-in preset (see lib/avatarPresets.ts): drawn locally, never fetched.
+  const preset = parsePreset(uri);
+  if (preset) {
+    return (
+      <View
+        style={[
+          dimensions,
+          { overflow: 'hidden', backgroundColor: preset.bg, alignItems: 'center', justifyContent: 'center' } as ViewStyle,
+          style as StyleProp<ViewStyle>,
+        ]}
+      >
+        <MaterialIcons name={preset.icon} size={Math.max(12, (size ?? 40) * 0.5)} color={preset.fg} />
+      </View>
+    );
+  }
 
   if (!uri || failed) {
     return (

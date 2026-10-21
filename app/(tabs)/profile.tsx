@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, Image, Modal, TextInput, Animated, A
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
+import { AVATAR_PRESETS, presetValue, parsePreset } from '../../lib/avatarPresets';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Skeleton } from '../../components/Skeleton';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
@@ -347,13 +348,6 @@ export default function ProfileScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // Profile avatar templates
-  const AVATARS = [
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuAEWIgSE-QquhsBf4hrGjLBd3pWoMzpRRn_vICM8H7sUYTIJY4GWGsEeXG_dae_MyiW4IWf6SE5CYlWDfoqE9ClUM6sqMJ8HbMXVFZ7ArNX-_VBya9PWHSjMUcC-A3gW_1ChTvJAY6CvgXER-lgWyrfvpObwosaF2uqCB-liLMIQSfKcVZlilYpDOWUegEhpSgvYtTLHSpmOSpA7Lb2VSK06ryBgR0dauCEOSMu9w0Cx4-jiDkddobszvGXC4sFWc0aIkL_XOHtUro',
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuBWpKstfCvKh8Ok0dt4bCcBUCfI0ghEW_ystNj_uD03Ghj09SdII9HhFWjNUtjENIwzhIycaYwNLqUH95kT4cC4V9jkkcwQAhy1DqQDRB_jHs2QJ4E-NEI8TzXj222SRJVbeNi3FDVKcjEAHFFV-m43PaOweoPpsuEfPS1q9rgLoS4pV3JcMeiLAkyS2Y984uAKf8p0o7LldyZgRrjJTFck7Ii38LrOM2gtxd53b4L10_xbXyTmbqO4EtDWDEqXO08HwbWAJBng1Ro',
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuD-wA_X6nheJY217P1eftJNx1UmH_SnNLYCpT5WmEfPPtsptIx5IlBL0mxRtt2aa-8EJ14lkNF3U7R2uQ8kd9bXwF17ng8SG3GT7fX1GZKnmAr_PslOP-Dy72kQL60EfEzFUx8gfwvprdbb29GwP5_sdmKpq0-6BCxsuXL7-ByBaQTjxV3wz6no4ZbDNWndM4bNCnxdIWzmqWA7BUv97JSakNqOZfS920quJivmYg2UZfatMBp81uI8N109kVrF3bcKb-mVXBPT348',
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuDbxYhiBAgoGlROSz-UhQPvRFO-OPhH9JEWgK24aFVQI3NhcnT2fbsnFeDQlHKJxLfd2jFhylk74RB4QrqtAsEX9--uDwo4DSuCL8mDOhYWoh41SImE3drZjKoJInUW_m4smkmM3lrV9k1qGQQlldAd6ebuwtzchgt8su7pcnC8fsuhi_rjE1GNozaXQ_FbSWJQQAWsHimEbAtN1rxSDu3eN_Q3ht_nFNT8slaiXeYm-7ZQkP78KMA40Pz6U7DhDhyq2HrGPa5BoZk',
-  ];
 
   useEffect(() => {
     // Screen entrance animations
@@ -387,7 +381,10 @@ export default function ProfileScreen() {
         const { error: updateError } = await supabase.from('users').update({
           phone_number: tempPhone.trim() || null,
           full_name: tempName.trim(),
-          upi_address: tempUpi.trim() || null
+          upi_address: tempUpi.trim() || null,
+          // Only a built-in preset is written; any other stored value (a
+          // legacy photo URL, or none) is left exactly as it is on the server.
+          ...(parsePreset(userAvatar) ? { avatar_url: userAvatar } : {}),
         }).eq('id', authData.user.id);
         if (updateError) throw updateError;
       }
@@ -1165,10 +1162,11 @@ export default function ProfileScreen() {
 
             <Text className="text-[10px] text-outline font-bold uppercase tracking-wider mb-3">Choose Avatar</Text>
             <View className="flex-row justify-around mb-8">
-              {AVATARS.map((av, idx) => {
+              {AVATAR_PRESETS.map((preset, idx) => {
+                const av = presetValue(preset.id);
                 const isActive = userAvatar === av;
                 return (
-                  <AnimatedListItem key={idx} index={idx}>
+                  <AnimatedListItem key={preset.id} index={idx}>
                   <AnimatedPressable
                     onPress={async () => {
                       setUserAvatar(av);
@@ -1178,9 +1176,12 @@ export default function ProfileScreen() {
                         console.error('Failed to save avatar choice:', e);
                       }
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${preset.label} avatar`}
+                    accessibilityState={{ selected: isActive }}
                     className="relative"
                   >
-                    <Image source={{ uri: av }} className="w-14 h-14 rounded-full" />
+                    <Avatar uri={av} size={56} />
                     {isActive && (
                       <View className="absolute bottom-0 right-0 bg-primary w-5 h-5 rounded-full items-center justify-center border border-white">
                         <MaterialIcons name="check" size={12} color="white" />

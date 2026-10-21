@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,7 +11,6 @@ interface Category {
   id: string;
   icon: string;
   label: string;
-  imageUrl: string;
   quote: string;
 }
 
@@ -20,35 +19,30 @@ const CATEGORIES: Category[] = [
     id: 'travel', 
     icon: 'flight', 
     label: 'Travel', 
-    imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCgkyzIDtgvgZCAuFUj8rMWjdKxVlzhMXyH8Q59cwljilvYUAxqBnn7kPAmEkR2x3WQcaRqfydCokewhWX96PzzASGvDTjUSR4Q92HTO0EBt6BBe_R33rKIT8ccvDh15bN79qtWHMBauovkh-PY-yHlyKcw1DHbA-AQ6EFNFdzNqG7FO3Jg7xzGCSu5cwLiYnb77VPmyJvAAUda4NvquS4sue32s9Bi5nLIx8W24ksNLPPE5isptc5XmyrZJOw8-dCmWmWXfjgj13M',
     quote: '"Circle travel expenses, beautifully simplified."'
   },
   { 
     id: 'food', 
     icon: 'restaurant', 
     label: 'Food', 
-    imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD-wA_X6nheJY217P1eftJNx1UmH_SnNLYCpT5WmEfPPtsptIx5IlBL0mxRtt2aa-8EJ14lkNF3U7R2uQ8kd9bXwF17ng8SG3GT7fX1GZKnmAr_PslOP-Dy72kQL60EfEzFUx8gfwvprdbb29GwP5_sdmKpq0-6BCxsuXL7-ByBaQTjxV3wz6no4ZbDNWndM4bNCnxdIWzmqWA7BUv97JSakNqOZfS920quJivmYg2UZfatMBp81uI8N109kVrF3bcKb-mVXBPT348',
     quote: '"Every meal split fairly, with complete clarity."'
   },
   { 
     id: 'home', 
     icon: 'home', 
     label: 'Home', 
-    imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCP2lYulIDN3HKMzay5TmoxHl0D3_v_hFndrolveJtS5szl6Wb3TnSzc2NHAEYbAejSvqSr0CvawXdAs74w9zR-i8XejLSe5FMH42OaPqRZZhwohxeFdTQG_ntGzGHMmTA4HD1GtQqCPrSLf27KtcVlz12XCMrqBlQpQxvMH7T9xlN0KodrIkNsb8rUg-FnLNsH7Ho3Mu-FVCiPNzsAaC6uAGqFnDBWumxRu3MByst2WQH6sDmlbynwe6QX-wQwWKkYKoYLZaWDOcw',
     quote: '"Rent, groceries, utilities — coordinated easily."'
   },
   { 
     id: 'utilities', 
     icon: 'bolt', 
     label: 'Utilities', 
-    imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDbxYhiBAgoGlROSz-UhQPvRFO-OPhH9JEWgK24aFVQI3NhcnT2fbsnFeDQlHKJxLfd2jFhylk74RB4QrqtAsEX9--uDwo4DSuCL8mDOhYWoh41SImE3drZjKoJInUW_m4smkmM3lrV9k1qGQQlldAd6ebuwtzchgt8su7pcnC8fsuhi_rjE1GNozaXQ_FbSWJQQAWsHimEbAtN1rxSDu3eN_Q3ht_nFNT8slaiXeYm-7ZQkP78KMA40Pz6U7DhDhyq2HrGPa5BoZk',
     quote: '"Share subscriptions and electric bills without stress."'
   },
   { 
     id: 'other', 
     icon: 'more-horiz', 
     label: 'Other', 
-    imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD-wA_X6nheJY217P1eftJNx1UmH_SnNLYCpT5WmEfPPtsptIx5IlBL0mxRtt2aa-8EJ14lkNF3U7R2uQ8kd9bXwF17ng8SG3GT7fX1GZKnmAr_PslOP-Dy72kQL60EfEzFUx8gfwvprdbb29GwP5_sdmKpq0-6BCxsuXL7-ByBaQTjxV3wz6no4ZbDNWndM4bNCnxdIWzmqWA7BUv97JSakNqOZfS920quJivmYg2UZfatMBp81uI8N109kVrF3bcKb-mVXBPT348',
     quote: '"Mindfully manage shared accounts and circle activities."'
   }
 ];
@@ -200,11 +194,12 @@ export default function CreateCircleIdentityScreen() {
               elevation: 2
             }}
           >
-            <Image 
-              source={{ uri: activeCategory.imageUrl }} 
-              className="w-full h-full object-cover" 
-            />
-            <View className="absolute inset-0 bg-black/40 flex-col justify-end p-4">
+            {/* Local backdrop (was a remote photo that could expire). */}
+            <View className="absolute inset-0 bg-primary" />
+            <View className="absolute -top-4 -right-4" style={{ opacity: 0.18 }}>
+              <MaterialIcons name={activeCategory.icon as any} size={150} color="#ffffff" />
+            </View>
+            <View className="absolute inset-0 flex-col justify-end p-4">
               <Text className="text-white font-label-md italic text-sm opacity-90 leading-relaxed">
                 {activeCategory.quote}
               </Text>

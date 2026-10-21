@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Image, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, ScrollView, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,16 +8,12 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
 import { useAlert } from '../../components/AppAlert';
+import { AVATAR_PRESETS, presetValue } from '../../lib/avatarPresets';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// 4 Preset high-quality organic avatars
-const PRESET_AVATARS = [
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAEWIgSE-QquhsBf4hrGjLBd3pWoMzpRRn_vICM8H7sUYTIJY4GWGsEeXG_dae_MyiW4IWf6SE5CYlWDfoqE9ClUM6sqMJ8HbMXVFZ7ArNX-_VBya9PWHSjMUcC-A3gW_1ChTvJAY6CvgXER-lgWyrfvpObwosaF2uqCB-liLMIQSfKcVZlilYpDOWUegEhpSgvYtTLHSpmOSpA7Lb2VSK06ryBgR0dauCEOSMu9w0Cx4-jiDkddobszvGXC4sFWc0aIkL_XOHtUro',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBWpKstfCvKh8Ok0dt4bCcBUCfI0ghEW_ystNj_uD03Ghj09SdII9HhFWjNUtjENIwzhIycaYwNLqUH95kT4cC4V9jkkcwQAhy1DqQDRB_jHs2QJ4E-NEI8TzXj222SRJVbeNi3FDVKcjEAHFFV-m43PaOweoPpsuEfPS1q9rgLoS4pV3JcMeiLAkyS2Y984uAKf8p0o7LldyZgRrjJTFck7Ii38LrOM2gtxd53b4L10_xbXyTmbqO4EtDWDEqXO08HwbWAJBng1Ro',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuD-wA_X6nheJY217P1eftJNx1UmH_SnNLYCpT5WmEfPPtsptIx5IlBL0mxRtt2aa-8EJ14lkNF3U7R2uQ8kd9bXwF17ng8SG3GT7fX1GZKnmAr_PslOP-Dy72kQL60EfEzFUx8gfwvprdbb29GwP5_sdmKpq0-6BCxsuXL7-ByBaQTjxV3wz6no4ZbDNWndM4bNCnxdIWzmqWA7BUv97JSakNqOZfS920quJivmYg2UZfatMBp81uI8N109kVrF3bcKb-mVXBPT348',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDbxYhiBAgoGlROSz-UhQPvRFO-OPhH9JEWgK24aFVQI3NhcnT2fbsnFeDQlHKJxLfd2jFhylk74RB4QrqtAsEX9--uDwo4DSuCL8mDOhYWoh41SImE3drZjKoJInUW_m4smkmM3lrV9k1qGQQlldAd6ebuwtzchgt8su7pcnC8fsuhi_rjE1GNozaXQ_FbSWJQQAWsHimEbAtN1rxSDu3eN_Q3ht_nFNT8slaiXeYm-7ZQkP78KMA40Pz6U7DhDhyq2HrGPa5BoZk',
-];
+// Built-in presets (drawn locally by <Avatar>, nothing to fetch or expire).
+const PRESET_AVATARS = AVATAR_PRESETS;
 
 // Aura colors mapping
 const AURAS = [
@@ -31,12 +27,9 @@ export default function AvatarSelectionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { showAlert } = useAlert();
-  const [failedPresets, setFailedPresets] = useState<Record<number, boolean>>({});
 
-  // Defaults to null (initials) rather than forcing a preset pick — the
-  // preset URLs are ephemeral AI-generated links that eventually 404, and
-  // making "skip" the default path is what actually removes that failure
-  // mode instead of just patching the fallback render.
+  // Defaults to null (initials) rather than forcing a preset pick, so "skip"
+  // stays the zero-effort path.
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [selectedAura, setSelectedAura] = useState(AURAS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -178,7 +171,7 @@ export default function AvatarSelectionScreen() {
               ]}
               className="w-28 h-28 rounded-full border-4 shadow-lg overflow-hidden bg-white/50"
             >
-              <Avatar uri={selectedAvatar} initials={nameInitials} />
+              <Avatar uri={selectedAvatar} initials={nameInitials} size={104} />
             </Animated.View>
 
             <Text className="font-headline text-xs font-bold text-primary tracking-wide uppercase mt-4">
@@ -194,31 +187,22 @@ export default function AvatarSelectionScreen() {
                 Preset Avatars
               </Text>
               <View className="flex-row justify-between" style={{ gap: 12 }}>
-                {PRESET_AVATARS.map((av, index) => {
-                  const isActive = selectedAvatar === av;
+                {PRESET_AVATARS.map((preset, index) => {
+                  const value = presetValue(preset.id);
+                  const isActive = selectedAvatar === value;
                   return (
-                    <AnimatedListItem key={index} index={index}>
+                    <AnimatedListItem key={preset.id} index={index}>
                       <AnimatedPressable
-                        onPress={() => triggerAvatarChangeAnimation(av)}
+                        onPress={() => triggerAvatarChangeAnimation(value)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Preset avatar ${index + 1}`}
+                        accessibilityLabel={`${preset.label} avatar`}
                         accessibilityState={{ selected: isActive }}
                         className="relative rounded-full border-2 p-0.5"
                         style={{
                           borderColor: isActive ? '#004c22' : 'transparent',
                         }}
                       >
-                        {failedPresets[index] ? (
-                          <View className="w-14 h-14 rounded-full bg-[#caead6] items-center justify-center">
-                            <Text className="text-primary font-bold text-base">{nameInitials}</Text>
-                          </View>
-                        ) : (
-                          <Image
-                            source={{ uri: av }}
-                            className="w-14 h-14 rounded-full"
-                            onError={() => setFailedPresets((prev) => ({ ...prev, [index]: true }))}
-                          />
-                        )}
+                        <Avatar uri={value} size={56} />
                         {isActive && (
                           <View className="absolute bottom-0 right-0 bg-primary w-5 h-5 rounded-full items-center justify-center border border-white">
                             <MaterialIcons name="check" size={12} color="white" />
@@ -228,15 +212,6 @@ export default function AvatarSelectionScreen() {
                     </AnimatedListItem>
                   );
                 })}
-                {/* Upload Custom mock */}
-                <AnimatedPressable
-                  onPress={() => triggerAvatarChangeAnimation('https://lh3.googleusercontent.com/aida-public/AB6AXuCjndLpSFDH7YFAj7EjmK4oN7dyC5Kg4aE5mQaVMymirtxPlgzSO0bsqkvYsnwB-0TMheOIGag7S7cEEQtweBceoDoGYQ7qgVTsxrwKdEjMDy2NOe8SBTIakNYQVU6BWwR-aoCBWixkVqYEWYB2gcyeIx4WtPOiZUVo3uaiCDPMBbCbrF25Vcs5vkBxco4r6aq4a85O0_aDrUSlhWAGZKUcfRs8uATzONDORXOdUNOEK9tzTxSmNFkGkJnoM0eP1iWIhfoc7V2k894')}
-                  accessibilityRole="button"
-                  accessibilityLabel="Upload custom photo"
-                  className="w-14 h-14 rounded-full border border-dashed border-outline-variant items-center justify-center"
-                >
-                  <MaterialIcons name="add-a-photo" size={18} color="#707a6f" />
-                </AnimatedPressable>
               </View>
             </View>
 
