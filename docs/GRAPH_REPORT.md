@@ -1,12 +1,12 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 21/10/2026, 6:29:42 pm
+> **Last Generated:** 21/10/2026, 6:34:06 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 174
+- **Total Tracked System Nodes:** 175
 - **UI Screens (`app/`):** 52
 - **Components (`components/`):** 13
 - **Business Logic (`lib/` & `context/`):** 39
-- **SQL Migrations (`supabase/migrations/`):** 65
+- **SQL Migrations (`supabase/migrations/`):** 66
 - **Edge Functions (`supabase/functions/`):** 5
 
 ---
@@ -174,3 +174,4 @@
 - `supabase/migrations/0064_abuse_controls.sql`
 - `supabase/migrations/0065_fix_phone_lookup_return_types.sql`
 - `supabase/migrations/0066_recurring_expenses.sql`
+- `supabase/migrations/0067_tighten_recurring_expenses_grants.sql`
