@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useRef } from 'react';
 import { useIncomingShare } from 'expo-sharing';
 import * as SplashScreen from 'expo-splash-screen';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, AppState } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +23,7 @@ import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { getAssurance } from '../lib/mfa';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { resyncReminderNotifications } from '../lib/personalReminders';
 import '../global.css'; // NativeWind v4 requires importing the CSS
 
 // Keeps the native splash (app.json's expo-splash-screen config) on screen
@@ -216,6 +217,28 @@ export default function RootLayout() {
       .finally(() => setMfaChecked(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, isOnboarded, mfaUserId]);
+
+  // Keep reminder notifications topped up. Only SLOTS upcoming occurrences are
+  // scheduled per reminder, so a repeating one would go quiet if the app stayed
+  // closed for long; re-deriving the schedule on launch and on every return to
+  // the foreground (throttled) keeps it firing. Best-effort and never throws;
+  // it does not prompt for permission.
+  const reminderUserId = isOnboarded ? session?.user?.id : undefined;
+  useEffect(() => {
+    if (!reminderUserId) return;
+    let lastRun = 0;
+    const run = () => {
+      const now = Date.now();
+      if (now - lastRun < 10 * 60 * 1000) return;
+      lastRun = now;
+      resyncReminderNotifications().catch(() => {});
+    };
+    run();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') run();
+    });
+    return () => sub.remove();
+  }, [reminderUserId]);
 
   // Hand off from native splash to this view the moment it's ready to paint
   // — same background colour as the splash (#fcf9f4), so the swap is
