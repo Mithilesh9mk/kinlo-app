@@ -1,12 +1,12 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 21/10/2026, 11:26:05 am
+> **Last Generated:** 21/10/2026, 6:29:42 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 170
-- **UI Screens (`app/`):** 51
+- **Total Tracked System Nodes:** 174
+- **UI Screens (`app/`):** 52
 - **Components (`components/`):** 13
-- **Business Logic (`lib/` & `context/`):** 37
-- **SQL Migrations (`supabase/migrations/`):** 64
+- **Business Logic (`lib/` & `context/`):** 39
+- **SQL Migrations (`supabase/migrations/`):** 65
 - **Edge Functions (`supabase/functions/`):** 5
 
 ---
@@ -53,6 +53,7 @@
 - `app/onboarding/sync.tsx`
 - `app/onboarding/value.tsx`
 - `app/onboarding/_layout.tsx`
+- `app/recurring.tsx`
 - `app/reminders/index.tsx`
 - `app/reminders/_layout.tsx`
 - `app/search.tsx`
@@ -80,6 +81,7 @@
 - `lib/debtNudges.ts`
 - `lib/deviceId.ts`
 - `lib/drafts.ts`
+- `lib/featureFlags.ts`
 - `lib/format.ts`
 - `lib/friendFetcher.ts`
 - `lib/groups.ts`
@@ -97,6 +99,7 @@
 - `lib/recalculateSettlements.ts`
 - `lib/receiptDrafts.ts`
 - `lib/recurrence.ts`
+- `lib/recurringExpenses.ts`
 - `lib/reminders.ts`
 - `lib/splitCalculator.ts`
 - `lib/statementCsv.ts`
@@ -170,3 +173,4 @@
 - `supabase/migrations/0063_store_billing_events.sql`
 - `supabase/migrations/0064_abuse_controls.sql`
 - `supabase/migrations/0065_fix_phone_lookup_return_types.sql`
+- `supabase/migrations/0066_recurring_expenses.sql`

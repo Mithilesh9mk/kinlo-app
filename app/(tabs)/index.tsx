@@ -955,11 +955,53 @@ export default function HomeScreen() {
                 </AnimatedPressable>
               </View>
             ) : recentActivity.length === 0 ? (
-              <View className="liquid-glass rounded-2xl p-6 items-center justify-center">
-                <Text className="font-semibold text-on-surface-variant">No recent activity</Text>
-                <AnimatedPressable onPress={() => router.push('/expense/amount')} className="mt-3" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text className="text-primary font-semibold text-sm">Add your first expense</Text>
-                </AnimatedPressable>
+              // First-run guide: a new account has no activity, so say what to do
+              // next instead of just "nothing here". Three real entry points; the
+              // friend step ticks itself once there is a friend.
+              <View className="liquid-glass rounded-2xl p-5">
+                <Text className="font-bold text-base text-on-surface">Get started</Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5 mb-3">Three quick steps and Kinlo is working for you.</Text>
+                {[
+                  {
+                    key: 'friend',
+                    icon: 'person-add',
+                    title: 'Add a friend',
+                    sub: 'Someone you split bills with',
+                    done: friendsList.length > 0,
+                    go: () => router.push('/friends' as any),
+                  },
+                  {
+                    key: 'circle',
+                    icon: 'groups',
+                    title: 'Create a circle',
+                    sub: 'A trip, flat or group of friends',
+                    done: false,
+                    go: () => router.push('/group/create' as any),
+                  },
+                  {
+                    key: 'expense',
+                    icon: 'receipt-long',
+                    title: 'Add your first expense',
+                    sub: 'Split it any way you like',
+                    done: false,
+                    go: () => router.push('/expense/amount'),
+                  },
+                ].map((step, i, arr) => (
+                  <AnimatedPressable
+                    key={step.key}
+                    onPress={step.go}
+                    className={`flex-row items-center py-3 ${i < arr.length - 1 ? 'border-b border-outline-variant/25' : ''}`}
+                  >
+                    <View className={`w-10 h-10 rounded-full items-center justify-center ${step.done ? 'bg-primary' : 'bg-secondary-container'}`}>
+                      <MaterialIcons name={(step.done ? 'check' : step.icon) as any} size={20} color={step.done ? '#ffffff' : '#004c22'} />
+                    </View>
+                    <View className="flex-1 ml-3">
+                      <Text className="font-semibold text-sm text-on-surface">{step.title}</Text>
+                      <Text className="text-xs text-on-surface-variant">{step.sub}</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+                  </AnimatedPressable>
+                ))}
               </View>
             ) : (
               recentActivity.map((item, itemIndex) => {

@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-21T05:56:05.690Z",
-  "totalFiles": 170,
+  "timestamp": "2026-10-21T12:59:42.149Z",
+  "totalFiles": 174,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -44,6 +44,7 @@
       "app/onboarding/sync.tsx",
       "app/onboarding/value.tsx",
       "app/onboarding/_layout.tsx",
+      "app/recurring.tsx",
       "app/reminders/index.tsx",
       "app/reminders/_layout.tsx",
       "app/search.tsx",
@@ -84,6 +85,7 @@
       "lib/debtNudges.ts",
       "lib/deviceId.ts",
       "lib/drafts.ts",
+      "lib/featureFlags.ts",
       "lib/format.ts",
       "lib/friendFetcher.ts",
       "lib/groups.ts",
@@ -101,6 +103,7 @@
       "lib/recalculateSettlements.ts",
       "lib/receiptDrafts.ts",
       "lib/recurrence.ts",
+      "lib/recurringExpenses.ts",
       "lib/reminders.ts",
       "lib/splitCalculator.ts",
       "lib/statementCsv.ts",
@@ -175,7 +178,8 @@
       "supabase/migrations/0062_tighten_user_plans_grants.sql",
       "supabase/migrations/0063_store_billing_events.sql",
       "supabase/migrations/0064_abuse_controls.sql",
-      "supabase/migrations/0065_fix_phone_lookup_return_types.sql"
+      "supabase/migrations/0065_fix_phone_lookup_return_types.sql",
+      "supabase/migrations/0066_recurring_expenses.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",

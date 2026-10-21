@@ -12,6 +12,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import Constants from 'expo-constants';
 import { fetchMyPlan, FREE_SCANS_PER_MONTH, PlanInfo } from '../../lib/plan';
 import { fetchBalances } from '../../lib/balances';
+import { SHOW_UNBUILT_SETTINGS } from '../../lib/featureFlags';
 import { useToast } from '../../components/Toast';
 import {
   getContactsSyncEnabled,
@@ -950,7 +951,7 @@ export default function ProfileScreen() {
               <AnimatedPressable
                 onPress={() => router.push('/reminders' as any)}
                 activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3.5"
+                className="flex-row items-center justify-between py-3.5 border-b border-outline-variant/30"
               >
                 <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
@@ -959,6 +960,24 @@ export default function ProfileScreen() {
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Reminders</Text>
                     <Text className="text-xs text-on-surface-variant">Bills and payments you don't want to forget</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+              </AnimatedPressable>
+
+              {/* Menu Row 8: Repeating expenses — rent, Wi-Fi, subscriptions. */}
+              <AnimatedPressable
+                onPress={() => router.push('/recurring' as any)}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3.5"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="autorenew" size={20} color="#004c22" />
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Repeating expenses</Text>
+                    <Text className="text-xs text-on-surface-variant">Rent, Wi-Fi and bills you split every time</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
@@ -1377,7 +1396,9 @@ export default function ProfileScreen() {
                   <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
                 </AnimatedPressable>
 
-                {/* Inert: local state + toast only, no backend, nothing reads it. */}
+                {/* Inert: local state + toast only, no backend, nothing reads it.
+                    Parked behind SHOW_UNBUILT_SETTINGS (lib/featureFlags.ts). */}
+                {SHOW_UNBUILT_SETTINGS && (
                 <View className="flex-row items-center justify-between border-t border-outline-variant/20 pt-4">
                   <View style={{ marginRight: 8, opacity: 0.6 }}>
                     <Text className="font-semibold text-sm text-on-surface">SMS Backup Codes</Text>
@@ -1387,8 +1408,10 @@ export default function ProfileScreen() {
                     <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                   </View>
                 </View>
+                )}
               </View>
 
+              {SHOW_UNBUILT_SETTINGS && (
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Biometrics & Directory Privacy</Text>
                 
@@ -1427,6 +1450,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               </View>
+              )}
 
               <View className="p-6 rounded-3xl relative" style={styles.liquidGlass}>
                 <View className="flex-row justify-between items-center mb-4 pb-2 border-b border-outline-variant/30">

@@ -24,6 +24,7 @@ import type { Session } from '@supabase/supabase-js';
 import { getAssurance } from '../lib/mfa';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { resyncReminderNotifications } from '../lib/personalReminders';
+import { runDueRecurring } from '../lib/recurringExpenses';
 import '../global.css'; // NativeWind v4 requires importing the CSS
 
 // Keeps the native splash (app.json's expo-splash-screen config) on screen
@@ -232,6 +233,9 @@ export default function RootLayout() {
       if (now - lastRun < 10 * 60 * 1000) return;
       lastRun = now;
       resyncReminderNotifications().catch(() => {});
+      // Repeating expenses that have come due are created here, on the owner's
+      // device, through the normal record_expense() path (no server scheduler).
+      runDueRecurring().catch(() => {});
     };
     run();
     const sub = AppState.addEventListener('change', (state) => {

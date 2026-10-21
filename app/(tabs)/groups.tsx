@@ -36,6 +36,8 @@ export default function GroupsScreen() {
   // This screen previously rendered an empty list while loading, so a slow
   // connection was indistinguishable from having no groups.
   const [groupsLoading, setGroupsLoading] = useState(true);
+  // True when the last load threw, so an empty list is not mistaken for "no circles".
+  const [groupsFailed, setGroupsFailed] = useState(false);
 
   const fetchGroupsLive = useCallback(async (supabase: any, userId: string): Promise<Group[]> => {
     const [{ data: memberships, error }, rows] = await Promise.all([
@@ -105,8 +107,10 @@ export default function GroupsScreen() {
       );
       setGroups(data);
       setCachedAt(fetchedCachedAt);
+      setGroupsFailed(false);
     } catch (err) {
       console.error('Error fetching groups:', err);
+      setGroupsFailed(true);
     } finally {
       setGroupsLoading(false);
     }
@@ -262,6 +266,39 @@ export default function GroupsScreen() {
                 </View>
               </View>
             ))}
+
+            {!groupsLoading && groups.length === 0 && groupsFailed && (
+              <View className="items-center py-10">
+                <MaterialIcons name="cloud-off" size={36} color="#707a6f" />
+                <Text className="text-on-surface font-semibold mt-3">Couldn’t load your circles</Text>
+                <AnimatedPressable
+                  onPress={() => { setGroupsLoading(true); fetchGroups(); }}
+                  className="mt-4 px-5 py-2.5 rounded-full bg-primary"
+                >
+                  <Text className="text-white font-semibold text-sm">Try again</Text>
+                </AnimatedPressable>
+              </View>
+            )}
+
+            {!groupsLoading && groups.length === 0 && !groupsFailed && (
+              <View className="items-center py-10 px-4">
+                <View className="w-20 h-20 rounded-full bg-primary/10 items-center justify-center">
+                  <MaterialIcons name="groups" size={40} color="#004c22" />
+                </View>
+                <Text className="text-on-surface font-bold text-lg mt-5 text-center">No circles yet</Text>
+                <Text className="text-on-surface-variant text-sm text-center mt-1.5 leading-relaxed">
+                  A circle is a shared pot for a trip, your flat or a group of friends. Everyone adds
+                  expenses, and Kinlo works out who owes whom.
+                </Text>
+                <AnimatedPressable
+                  onPress={handleCreateGroupPress}
+                  className="mt-5 flex-row items-center bg-primary px-6 py-3 rounded-2xl gap-2"
+                >
+                  <MaterialIcons name="group-add" size={20} color="white" />
+                  <Text className="text-white font-semibold text-base">Create your first circle</Text>
+                </AnimatedPressable>
+              </View>
+            )}
 
             {groups
               .filter(group => group.title.toLowerCase().includes(searchQuery.toLowerCase()))

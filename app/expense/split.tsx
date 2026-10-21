@@ -11,6 +11,7 @@ import { useGlobalBalances } from '../../context/GlobalBalancesContext';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
 import { recordExpense } from '../../lib/recalculateSettlements';
 import { newTransactionId } from '../../lib/idempotency';
+import { createRecurringRule, REPEAT_SHORT, type RepeatFrequency } from '../../lib/recurringExpenses';
 import { useAlert } from '../../components/AppAlert';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
@@ -33,6 +34,9 @@ export default function SplitExpenseScreen() {
   const totalAmount = parseFloat(amountStr || '0');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
+  // "Repeat this expense": null = just once. Not offered when editing or when
+  // several people paid (the template stores a single payer).
+  const [repeat, setRepeat] = useState<RepeatFrequency | null>(null);
 
   // Idempotency key for this expense attempt, so a double-tap retries the same
   // row instead of minting a second transaction. Mirrors settle-up.tsx.
@@ -349,6 +353,26 @@ Nothing was saved, so their version is intact.`
             : expenseError.message,
         );
         return;
+      }
+
+      // "Repeat this expense": the first one is already saved above; this stores
+      // the template so the next ones are created when the due date comes
+      // around (lib/recurringExpenses.ts). A failure here must not undo or hide
+      // the saved expense, so it is reported and the flow carries on.
+      if (repeat && !editTransactionId && payers.length <= 1) {
+        const repeatError = await createRecurringRule({
+          description,
+          amount: totalAmount,
+          category,
+          splitType: splitMode,
+          paidBy: effectivePayerId,
+          splits: splitRows,
+          groupId: parsedGroupId ?? null,
+          frequency: repeat,
+        });
+        if (repeatError) {
+          showAlert('Expense saved, but not repeating', `The expense was posted, but the repeat could not be saved: ${repeatError}`);
+        }
       }
 
       // Send push notification to 1-on-1 counterparty. Fires on an edit too
@@ -765,6 +789,37 @@ Nothing was saved, so their version is intact.`
                         ? `${settlementPreview.payerName} gets back ₹${settlementPreview.totalOwedToPayer.toFixed(2)} in total.`
                         : `${settlementPreview.payerName} gets back the full ₹${settlementPreview.totalOwedToPayer.toFixed(2)} — no share of this one.`)}
                 </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Repeat — only for a new, single-payer expense. */}
+          {!editTransactionId && payers.length <= 1 && (
+            <View className="rounded-2xl border border-outline-variant/25 bg-white/60 p-4">
+              <View className="flex-row items-center gap-2 mb-1">
+                <MaterialIcons name="autorenew" size={18} color="#004c22" />
+                <Text className="font-bold text-sm text-on-surface">Repeat this expense</Text>
+              </View>
+              <Text className="text-xs text-on-surface-variant mb-3 leading-relaxed">
+                {repeat
+                  ? 'The same split is added again each time, when you open Kinlo on or after the due date. Manage it in Profile → Repeating expenses.'
+                  : 'For rent, Wi-Fi or a subscription you split every time.'}
+              </Text>
+              <View className="flex-row gap-2">
+                {([null, 'weekly', 'monthly', 'yearly'] as (RepeatFrequency | null)[]).map(opt => {
+                  const active = repeat === opt;
+                  return (
+                    <AnimatedPressable
+                      key={opt ?? 'never'}
+                      onPress={() => setRepeat(opt)}
+                      className={`px-3 py-2 rounded-full border ${active ? 'bg-primary border-primary' : 'bg-white border-outline-variant/40'}`}
+                    >
+                      <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-on-surface-variant'}`}>
+                        {opt ? REPEAT_SHORT[opt] : 'Never'}
+                      </Text>
+                    </AnimatedPressable>
+                  );
+                })}
               </View>
             </View>
           )}

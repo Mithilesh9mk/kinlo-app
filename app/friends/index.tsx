@@ -283,6 +283,20 @@ export default function FriendsScreen() {
             <Text className="text-lg font-semibold text-on-surface-variant mt-4 text-center">
               {searchQuery ? "No friends found matching your search." : "You haven't added any friends yet."}
             </Text>
+            {!searchQuery && (
+              <>
+                <Text className="text-sm text-on-surface-variant text-center mt-1.5 leading-relaxed">
+                  Add someone you split bills with. They don't need Kinlo yet — you can start tracking right away.
+                </Text>
+                <AnimatedPressable
+                  onPress={() => setIsAddModalOpen(true)}
+                  className="mt-5 flex-row items-center bg-primary px-6 py-3 rounded-2xl gap-2"
+                >
+                  <MaterialIcons name="person-add" size={20} color="white" />
+                  <Text className="text-white font-semibold text-base">Add a friend</Text>
+                </AnimatedPressable>
+              </>
+            )}
           </View>
         )}
         renderItem={({ item, index }) => (
