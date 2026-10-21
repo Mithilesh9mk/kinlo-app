@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -134,6 +134,7 @@ function buildSeries(rows: PersonalTransaction[], period: Period): SeriesPoint[]
 
 export default function FinanceHomeScreen() {
   const router = useRouter();
+  const { action } = useLocalSearchParams<{ action?: string }>();
   const { showToast } = useToast();
   const { showAlert } = useAlert();
 
@@ -348,6 +349,17 @@ export default function FinanceHomeScreen() {
   const handleEnterManually = () => {
     router.push({ pathname: '/finance/entry', params: { id: newTransactionId() } });
   };
+
+  // The home-screen widget opens kinlo://finance?action=scan|manual so one tap
+  // lands straight in the picker or the entry form. The param is cleared once
+  // handled so tapping the widget again (app still open) fires again.
+  useEffect(() => {
+    if (action !== 'scan' && action !== 'manual') return;
+    router.setParams({ action: undefined });
+    if (action === 'scan') handleAddFromScreenshot();
+    else handleEnterManually();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action]);
 
   // Group rows by month, newest first — rows already arrive sorted by
   // occurred_at desc from listPersonalTransactions.
