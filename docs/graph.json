@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-21T05:40:16.319Z",
-  "totalFiles": 166,
+  "timestamp": "2026-10-21T05:53:19.328Z",
+  "totalFiles": 169,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -74,6 +74,7 @@
       "lib/accountDeletion.ts",
       "lib/activity.ts",
       "lib/analytics.ts",
+      "lib/authThrottle.ts",
       "lib/avatarPresets.ts",
       "lib/balances.ts",
       "lib/categories.ts",
@@ -81,6 +82,7 @@
       "lib/contactsSync.ts",
       "lib/crashLog.ts",
       "lib/debtNudges.ts",
+      "lib/deviceId.ts",
       "lib/drafts.ts",
       "lib/format.ts",
       "lib/friendFetcher.ts",
@@ -171,7 +173,8 @@
       "supabase/migrations/0060_personal_log_streak.sql",
       "supabase/migrations/0061_plans_coupons_scan_quota.sql",
       "supabase/migrations/0062_tighten_user_plans_grants.sql",
-      "supabase/migrations/0063_store_billing_events.sql"
+      "supabase/migrations/0063_store_billing_events.sql",
+      "supabase/migrations/0064_abuse_controls.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",

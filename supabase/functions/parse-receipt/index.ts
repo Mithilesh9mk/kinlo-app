@@ -18,7 +18,8 @@ console.log("Hello from parse-receipt!")
 // Plain fetch, no SDK — avoids pinning an npm package version in Deno for a
 // single REST call.
 //
-// MONTHLY QUOTA (0061): Free = 3 scans per calendar month, Gold = unlimited,
+// MONTHLY QUOTA (0061/0064): Free = 3 scans per calendar month (and 6 per app
+// install across accounts), Gold = 125,
 // enforced by the reserve_receipt_scan() RPC right after the 20/day limiter.
 // An explicit allowed === false is the ONLY thing that blocks (402
 // quota_exceeded). The check FAILS OPEN — if the RPC is missing (migration not
@@ -45,7 +46,7 @@ const PROVIDER_TIMEOUT_MS = 25_000
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-kinlo-device',
 }
 
 function json(payload: unknown, status = 200) {
@@ -401,6 +402,9 @@ serve(async (req) => {
     if (!authHeader) {
       return json({ ok: false, code: 'unauthorized', error: 'Missing Authorization header' }, 401)
     }
+    // Random per-install id (see migration 0064). Optional; the database
+    // validates its shape and ignores anything that is not a UUID.
+    const deviceHeader = req.headers.get('x-kinlo-device')
 
     // Scoped to the caller's own JWT — the download below only succeeds for
     // objects Storage RLS already lets this user read.
@@ -434,18 +438,32 @@ serve(async (req) => {
     // allowed === false blocks; any error or odd shape proceeds unmetered.
     quotaClient = callerClient
     try {
-      const { data: reserveData, error: reserveError } = await callerClient.rpc('reserve_receipt_scan')
+      let { data: reserveData, error: reserveError } = await callerClient.rpc(
+        'reserve_receipt_scan',
+        deviceHeader ? { p_device_id: deviceHeader } : {},
+      )
+      if (reserveError && deviceHeader) {
+        // Database not yet on migration 0064 (no p_device_id argument): retry
+        // the original zero-argument call so the quota is still enforced.
+        ;({ data: reserveData, error: reserveError } = await callerClient.rpc('reserve_receipt_scan'))
+      }
       if (reserveError) {
         console.warn('reserve_receipt_scan failed, proceeding:', reserveError)
       } else {
         const reserve = Array.isArray(reserveData) ? reserveData[0] : reserveData
         if (reserve && typeof reserve === 'object') {
           if (reserve.allowed === false) {
+            const isGold = reserve.plan === 'gold'
             return json({
               ok: false,
               code: 'quota_exceeded',
-              error: 'You have used your free receipt scans for this month. Upgrade to Gold for unlimited scans.',
-              plan: 'free',
+              error: isGold
+                ? `You have used all ${reserve.limit} receipt scans included this month. They reset on the 1st.`
+                : reserve.reason === 'device_limit'
+                  ? 'This device has reached its free receipt scans for this month. Upgrade to Gold for more.'
+                  : 'You have used your free receipt scans for this month. Upgrade to Gold for more scans.',
+              plan: isGold ? 'gold' : 'free',
+              reason: reserve.reason,
               used: reserve.used,
               limit: reserve.limit,
             }, 402)

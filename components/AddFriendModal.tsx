@@ -95,6 +95,13 @@ export default function AddFriendModal({ isOpen, onClose, onSuccess }: AddFriend
           const { data: existingUser, error: lookupErr } = await supabase
             .rpc('resolve_user_by_phone', { phone_suffix: suffix })
             .maybeSingle();
+          if (lookupErr && /rate_limited/.test(lookupErr.message)) {
+            // Don't fall through and create a placeholder for someone who may
+            // already have an account - we simply could not check.
+            showAlert('Too many searches', 'You have looked up a lot of numbers in a short time. Please try again in a little while.');
+            setIsAddingFriend(false);
+            return;
+          }
           if (lookupErr) {
             console.warn('Phone lookup failed:', lookupErr.message);
           } else if (existingUser) {

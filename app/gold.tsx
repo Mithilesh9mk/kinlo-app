@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Skeleton } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
-import { fetchMyPlan, redeemCoupon, redeemFailureMessage, FREE_SCANS_PER_MONTH, FREE_ACTIVE_REMINDERS, PlanInfo } from '../lib/plan';
+import { fetchMyPlan, redeemCoupon, redeemFailureMessage, FREE_SCANS_PER_MONTH, GOLD_SCANS_PER_MONTH, FREE_ACTIVE_REMINDERS, PlanInfo } from '../lib/plan';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '';
@@ -139,7 +139,12 @@ export default function GoldScreen() {
                       Active until {formatDate(plan.goldUntil)}
                     </Text>
                   )}
-                  <Text className="text-sm text-on-surface-variant mt-1">Unlimited receipt scans</Text>
+                  <Text className="text-sm text-on-surface-variant mt-1 mb-3">
+                    Receipt scans this month: {used} of {plan.scansLimit ?? GOLD_SCANS_PER_MONTH}
+                  </Text>
+                  <View className="h-2 rounded-full bg-surface-container overflow-hidden">
+                    <View className="h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                  </View>
                 </>
               ) : (
                 <>
@@ -159,7 +164,7 @@ export default function GoldScreen() {
           {[
             {
               icon: 'document-scanner',
-              title: 'Unlimited receipt scans',
+              title: `${GOLD_SCANS_PER_MONTH} receipt scans a month`,
               body: `AI reads your payment screenshots and receipts. Free includes ${FREE_SCANS_PER_MONTH} scans a month.`,
             },
             {

@@ -75,6 +75,7 @@ export const DATA_PRACTICES = [
   'Payment screenshots you choose to scan, which are sent to AI services (Anthropic Claude or Google Gemini) to read the amount and merchant',
   'Personal expenses and reminders you log privately, which are never shared with anyone',
   'A device token used to deliver push notifications, if you allow them',
+  'A random identifier for your app install (not your hardware ID), used only to prevent abuse of free limits',
   'Your plan (Free or Gold) and any coupon you redeem',
 ] as const;
 
@@ -100,7 +101,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       heading: 'Why we use it (and our legal basis)',
       body: [
         'To run the app: calculate balances, show shared expenses to the people in them, sign you in, keep your plan, and send notifications you have allowed. This is necessary to provide the service you asked for.',
-        'To keep it safe: prevent abuse, enforce usage limits (such as the monthly receipt-scan allowance), investigate errors.',
+        'To keep it safe: prevent abuse, enforce usage limits (such as the monthly receipt-scan allowance, which is also tracked per app install so extra accounts do not reset it), rate-limit sign-in, coupon and phone-lookup attempts, and investigate errors. We keep short-lived records of these attempts for that purpose.',
         'Optional features run only on your choice and consent: contact sync, push notifications, receipt scanning, and two-factor authentication. You can withdraw consent at any time by turning the feature off.',
         'To meet legal duties, for example responding to a lawful request or a deletion request.',
       ],
@@ -250,7 +251,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     {
       heading: 'Free plan and Kinlo Gold',
       body: [
-        'Kinlo is free to use with a monthly allowance of receipt scans. Kinlo Gold is a paid plan that removes that limit and adds other benefits described on the Gold screen. Benefits may change over time; we will not remove a benefit you have already paid for during the period you paid for.',
+        'Kinlo is free to use with a monthly allowance of receipt scans (currently 3). Kinlo Gold is a paid plan that raises it to 125 receipt scans a month and adds other benefits described on the Gold screen. Allowances reset on the 1st of each month (India time) and may be adjusted with notice. Benefits may change over time; we will not remove a benefit you have already paid for during the period you paid for.',
         'Prices are shown in the app before you buy. Gold is billed through the app store or payment provider shown at checkout, so renewal, cancellation and refunds follow that provider’s rules. A subscription renews automatically until you cancel it in your store account, and cancelling takes effect at the end of the paid period.',
         'Refunds: you can request a refund from the store you bought through. Nothing in these terms limits any refund or cancellation right you have by law, including consumer rights in your country (for example statutory cooling-off rights in the EU/UK, and the consumer guarantees under the Australian Consumer Law).',
       ],
@@ -264,7 +265,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     {
       heading: 'Acceptable use',
       body: [
-        'Do not use Kinlo for anything unlawful, to harass anyone, or to attempt to access data belonging to other people. Do not try to bypass usage limits, reverse engineer the service, or overload it. We may suspend an account that breaks these rules.',
+        'Do not use Kinlo for anything unlawful, to harass anyone, or to attempt to access data belonging to other people. Do not try to bypass usage limits (for example by creating multiple accounts to get extra free scans or reuse a coupon), reverse engineer the service, or overload it. We may suspend an account that breaks these rules.',
       ],
     },
     {

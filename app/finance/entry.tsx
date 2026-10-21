@@ -20,7 +20,7 @@ import {
 } from '../../lib/personalTransactions';
 import { takePendingReceiptImage, getReceiptUploadOutcome, registerReceiptUpload } from '../../lib/pendingReceiptImage';
 import { getReceiptDraft, deleteReceiptDraft } from '../../lib/receiptDrafts';
-import { fetchMyPlan, FREE_SCANS_PER_MONTH, PlanInfo } from '../../lib/plan';
+import { fetchMyPlan, FREE_SCANS_PER_MONTH, GOLD_SCANS_PER_MONTH, PlanInfo } from '../../lib/plan';
 
 type FieldName = 'amount' | 'merchant' | 'description' | 'category' | 'occurredAt';
 
@@ -449,16 +449,22 @@ export default function FinanceEntryScreen() {
 
         {!parsing && quotaHit && !quotaDismissed && (
           <View className="bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-5">
-            <Text className="text-sm font-semibold text-on-surface mb-1">You've used your free scans this month</Text>
-            <Text className="text-xs text-on-surface-variant mb-3">
-              Free accounts include 3 receipt scans a month. You can still enter this expense by hand, or get Gold for unlimited scans.
+            <Text className="text-sm font-semibold text-on-surface mb-1">
+              {plan?.plan === 'gold' ? "You've used this month's Gold scans" : "You've used your free scans this month"}
             </Text>
-            <AnimatedPressable
-              onPress={() => router.push('/gold' as any)}
-              className="w-full py-3 rounded-xl items-center justify-center bg-primary mb-2"
-            >
-              <Text className="font-semibold text-sm text-white">See Gold</Text>
-            </AnimatedPressable>
+            <Text className="text-xs text-on-surface-variant mb-3">
+              {plan?.plan === 'gold'
+                ? `Gold includes ${GOLD_SCANS_PER_MONTH} receipt scans a month, and they reset on the 1st. You can still enter this expense by hand.`
+                : `Free accounts include ${FREE_SCANS_PER_MONTH} receipt scans a month. You can still enter this expense by hand, or get Gold for ${GOLD_SCANS_PER_MONTH} scans a month.`}
+            </Text>
+            {plan?.plan !== 'gold' && (
+              <AnimatedPressable
+                onPress={() => router.push('/gold' as any)}
+                className="w-full py-3 rounded-xl items-center justify-center bg-primary mb-2"
+              >
+                <Text className="font-semibold text-sm text-white">See Gold</Text>
+              </AnimatedPressable>
+            )}
             <AnimatedPressable
               onPress={() => setQuotaDismissed(true)}
               className="w-full py-3 rounded-xl items-center justify-center"

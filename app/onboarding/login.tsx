@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { checkUsersRowOnboarded } from '../../lib/onboardingState';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { takeAuthAttempt, takeResetEmail, clearAuthAttempts, throttleMessage } from '../../lib/authThrottle';
 
 const GOOGLE_REDIRECT_URL = 'kinlo://onboarding/name-setup';
 
@@ -222,6 +223,12 @@ export default function LoginScreen() {
       setAuthNotice('');
       return;
     }
+    const gate = await takeAuthAttempt();
+    if (!gate.allowed) {
+      setAuthError(throttleMessage(gate.retryInSeconds));
+      setAuthNotice('');
+      return;
+    }
     setAuthError('');
     setAuthNotice('');
     setIsSendingMagicLink(true);
@@ -259,6 +266,7 @@ export default function LoginScreen() {
         if (error) {
           setAuthError(friendlyAuthError(error.message, 'Authentication failed'));
         } else if (data.session) {
+          await clearAuthAttempts();
           await completeLogin();
         }
       }
@@ -272,6 +280,12 @@ export default function LoginScreen() {
   const handleForgotPassword = async () => {
     if (!emailText.trim() || !emailText.includes('@')) {
       setAuthError('Please enter a valid email to reset your password.');
+      setAuthNotice('');
+      return;
+    }
+    const gate = await takeResetEmail();
+    if (!gate.allowed) {
+      setAuthError(throttleMessage(gate.retryInSeconds));
       setAuthNotice('');
       return;
     }

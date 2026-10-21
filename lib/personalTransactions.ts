@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { newTransactionId } from './idempotency';
+import { getDeviceId } from './deviceId';
 
 /**
  * Data access for personal (non-split) expenses — see
@@ -216,7 +217,11 @@ export async function parseReceiptBytes(base64: string, mimeType: string): Promi
 }
 
 async function invokeParseReceipt(body: { imagePath: string } | { imageBase64: string; mimeType: string }): Promise<{ ok: true; extraction: ExtractionResult } | { ok: false; error: ExtractionError }> {
-  const { data, error } = await supabase.functions.invoke('parse-receipt', { body });
+  const deviceId = await getDeviceId();
+  const { data, error } = await supabase.functions.invoke('parse-receipt', {
+    body,
+    ...(deviceId ? { headers: { 'x-kinlo-device': deviceId } } : {}),
+  });
 
   if (error) {
     // supabase-js turns any non-2xx into a FunctionsHttpError and leaves
