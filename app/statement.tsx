@@ -14,6 +14,10 @@ import { listPersonalTransactions } from '../lib/personalTransactions';
 import { readCache, writeCache, isLikelyNetworkError } from '../lib/offlineCache';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { formatINR, tabularNums } from '../lib/format';
+import { fetchMyPlan } from '../lib/plan';
+import { shareStatementCsv } from '../lib/statementCsv';
+import { useToast } from '../components/Toast';
+import { useAlert } from '../components/AppAlert';
 
 // 'Personal' and 'Split' partition the feed by which ledger a row came from;
 // 'You Paid' / 'You Owe' partition it by debt direction. Those two ideas are
@@ -56,7 +60,10 @@ interface StatementTx {
 export default function StatementScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
+  const { showToast } = useToast();
+  const { showAlert } = useAlert();
+  const [exporting, setExporting] = useState(false);
+
   const [transactions, setTransactions] = useState<StatementTx[]>([]);
   const [loading, setLoading] = useState(true);
   // A failed fetch used to render as "No transactions", which is
@@ -394,6 +401,35 @@ export default function StatementScreen() {
     return map[category] || 'receipt-long';
   };
 
+  // Gold feature. Checks the plan only when tapped (no extra call on load) and
+  // fails closed with a message if the plan can't be read.
+  const handleExport = async () => {
+    if (exporting || transactions.length === 0) return;
+    setExporting(true);
+    try {
+      const plan = await fetchMyPlan();
+      if (!plan) {
+        showToast("Couldn't check your plan. Check your connection and try again.");
+        return;
+      }
+      if (plan.plan !== 'gold') {
+        showAlert(
+          'Export is a Gold feature',
+          'Kinlo Gold lets you export your statement as a CSV spreadsheet.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'See Gold', onPress: () => router.push('/gold' as any) },
+          ],
+        );
+        return;
+      }
+      const res = await shareStatementCsv(transactions);
+      if (!res.ok) showToast(res.error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <View className="flex-1 bg-background">
       {/* Top App Bar */}
@@ -412,6 +448,17 @@ export default function StatementScreen() {
           <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
         </AnimatedPressable>
         <Text className="font-headline-md font-bold text-primary text-xl ml-2 flex-1">Statement</Text>
+        <AnimatedPressable
+          onPress={handleExport}
+          disabled={exporting || loading || transactions.length === 0}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Export statement as CSV"
+          className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
+          style={{ opacity: exporting || loading || transactions.length === 0 ? 0.4 : 1 }}
+        >
+          <MaterialIcons name="ios-share" size={22} color="#004c22" />
+        </AnimatedPressable>
       </View>
 
       <OfflineBanner cachedAt={cachedAt} />

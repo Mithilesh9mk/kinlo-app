@@ -417,3 +417,8 @@ entrypoint = "./functions/simplify_debts/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/simplify_debts/*.html" ]
+
+# RevenueCat is not a Supabase user; the function checks its own shared secret.
+[functions.revenuecat-webhook]
+enabled = true
+verify_jwt = false

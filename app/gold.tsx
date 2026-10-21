@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Skeleton } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
-import { fetchMyPlan, redeemCoupon, redeemFailureMessage, FREE_SCANS_PER_MONTH, PlanInfo } from '../lib/plan';
+import { fetchMyPlan, redeemCoupon, redeemFailureMessage, FREE_SCANS_PER_MONTH, FREE_ACTIVE_REMINDERS, PlanInfo } from '../lib/plan';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '';
@@ -17,7 +17,9 @@ function formatDate(iso: string | null): string {
 
 /**
  * Kinlo Gold: shows the current plan, what Gold includes, and a coupon field.
- * There is no payment flow — Gold is granted by coupon or by the owner.
+ * Subscriptions are not purchasable yet (BILLING_LIVE in lib/plan.ts is false):
+ * Gold comes from a coupon or from the owner. The purchase UI is added with
+ * the RevenueCat build; the coupon box stays either way.
  */
 export default function GoldScreen() {
   const router = useRouter();
@@ -154,17 +156,36 @@ export default function GoldScreen() {
 
           {/* What Gold includes */}
           <Text className="font-headline-md text-base font-bold text-on-surface mb-3">What Gold includes</Text>
-          <View className="flex-row items-start mb-2">
-            <MaterialIcons name="check-circle" size={20} color="#004c22" style={{ marginTop: 1 }} />
-            <View className="flex-1" style={{ marginLeft: 10 }}>
-              <Text className="text-sm font-semibold text-on-surface">Unlimited receipt scans</Text>
-              <Text className="text-sm text-on-surface-variant mt-0.5">
-                AI reads your payment screenshots and receipts.
-              </Text>
+          {[
+            {
+              icon: 'document-scanner',
+              title: 'Unlimited receipt scans',
+              body: `AI reads your payment screenshots and receipts. Free includes ${FREE_SCANS_PER_MONTH} scans a month.`,
+            },
+            {
+              icon: 'ios-share',
+              title: 'Export your statement',
+              body: 'Download your Statement as a CSV spreadsheet for your records or accountant.',
+            },
+            {
+              icon: 'notifications-active',
+              title: 'Unlimited reminders',
+              body: `Add as many bill and payment reminders as you need. Free includes ${FREE_ACTIVE_REMINDERS} active reminders.`,
+            },
+          ].map((b) => (
+            <View key={b.title} className="flex-row items-start mb-4">
+              <View className="w-9 h-9 rounded-xl bg-secondary-container items-center justify-center">
+                <MaterialIcons name={b.icon as any} size={20} color="#004c22" />
+              </View>
+              <View className="flex-1" style={{ marginLeft: 12 }}>
+                <Text className="text-sm font-semibold text-on-surface">{b.title}</Text>
+                <Text className="text-sm text-on-surface-variant mt-0.5">{b.body}</Text>
+              </View>
             </View>
-          </View>
-          <Text className="text-xs text-on-surface-variant mt-2 mb-6">
-            Receipt scanning uses a paid AI service, so the free plan includes {FREE_SCANS_PER_MONTH} scans a month.
+          ))}
+          <Text className="text-xs text-on-surface-variant mb-6">
+            Receipt scanning uses a paid AI service, which is why the free plan has a monthly allowance. Everything
+            else in Kinlo — splitting, groups, balances, settling up — stays free.
           </Text>
 
           {/* Coupon */}
@@ -205,7 +226,7 @@ export default function GoldScreen() {
 
           {!isGold && (
             <Text className="text-xs text-on-surface-variant mt-5">
-              Gold is currently available by invitation or coupon.
+              Gold subscriptions are coming soon. Until then, Gold is available with a coupon code.
             </Text>
           )}
         </ScrollView>

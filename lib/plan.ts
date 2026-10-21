@@ -1,7 +1,8 @@
 // Kinlo plans (Free / Gold) and coupon redemption.
 //
-// Billing is not built: Gold is granted by redeeming a coupon code (or by the
-// owner granting it directly in the database). The server is the only source
+// Gold is granted by redeeming a coupon code, by the owner in the database, or
+// (once BILLING_LIVE) by a store subscription — the RevenueCat webhook writes
+// the same user_plans.gold_until the coupon path does (migration 0063). The server is the only source
 // of truth — these RPCs (migration 0061) read/write tables the client cannot
 // touch, and parse-receipt enforces the free-tier scan quota there too. The
 // numbers shown in the UI are for display; they never gate anything alone.
@@ -12,6 +13,16 @@ import { supabase } from './supabase';
 
 // Mirrors the constant inside reserve_receipt_scan() in migration 0061.
 export const FREE_SCANS_PER_MONTH = 3;
+
+// Free plan keeps this many active reminders; Gold is unlimited. Display-level
+// (reminders are the user's own data), unlike the scan quota which the server
+// enforces.
+export const FREE_ACTIVE_REMINDERS = 3;
+
+// Flip to true only when store billing (RevenueCat) is wired AND the products
+// exist in Play Console / App Store Connect. While false, the Gold screen shows
+// benefits and the coupon box but no price and no purchase button.
+export const BILLING_LIVE = false;
 
 export type PlanInfo = {
   plan: 'free' | 'gold';

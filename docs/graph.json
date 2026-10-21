@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-21T04:59:15.464Z",
-  "totalFiles": 163,
+  "timestamp": "2026-10-21T05:40:16.319Z",
+  "totalFiles": 166,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -101,6 +101,7 @@
       "lib/recurrence.ts",
       "lib/reminders.ts",
       "lib/splitCalculator.ts",
+      "lib/statementCsv.ts",
       "lib/supabase.ts",
       "lib/useFirstRunHints.ts"
     ],
@@ -169,13 +170,15 @@
       "supabase/migrations/0059_resplit_activity_event.sql",
       "supabase/migrations/0060_personal_log_streak.sql",
       "supabase/migrations/0061_plans_coupons_scan_quota.sql",
-      "supabase/migrations/0062_tighten_user_plans_grants.sql"
+      "supabase/migrations/0062_tighten_user_plans_grants.sql",
+      "supabase/migrations/0063_store_billing_events.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",
       "supabase/functions/deno.json",
       "supabase/functions/parse-receipt/index.ts",
-      "supabase/functions/push-notify/index.ts"
+      "supabase/functions/push-notify/index.ts",
+      "supabase/functions/revenuecat-webhook/index.ts"
     ]
   }
 }

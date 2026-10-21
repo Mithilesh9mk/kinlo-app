@@ -8,6 +8,7 @@ import { SkeletonListRow } from '../../components/Skeleton';
 import { useToast } from '../../components/Toast';
 import { useAlert } from '../../components/AppAlert';
 import { formatINR, tabularNums } from '../../lib/format';
+import { fetchMyPlan, FREE_ACTIVE_REMINDERS } from '../../lib/plan';
 import {
   PersonalReminder,
   ReminderRecurrence,
@@ -122,6 +123,27 @@ export default function RemindersScreen() {
     setEditing(r);
   }
 
+  // Free plan keeps FREE_ACTIVE_REMINDERS active reminders; Gold is unlimited.
+  // Display-level gate (reminders are the user's own data and cost us almost
+  // nothing), and it fails OPEN: if the plan can't be read, adding still works.
+  async function startNew() {
+    if (rows.length >= FREE_ACTIVE_REMINDERS) {
+      const plan = await fetchMyPlan();
+      if (plan && plan.plan !== 'gold') {
+        showAlert(
+          'Reminder limit reached',
+          `The free plan includes ${FREE_ACTIVE_REMINDERS} active reminders. Kinlo Gold removes the limit.`,
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'See Gold', onPress: () => router.push('/gold' as any) },
+          ],
+        );
+        return;
+      }
+    }
+    openForm('new');
+  }
+
   const parsedDue = parseDateTime(dateText, timeText);
   const parsedAmount = amount === '' ? null : Number(amount);
   const amountInvalid = amount !== '' && (parsedAmount === null || !Number.isFinite(parsedAmount) || parsedAmount <= 0);
@@ -198,7 +220,7 @@ export default function RemindersScreen() {
         </Text>
         {editing === null ? (
           <AnimatedPressable
-            onPress={() => openForm('new')}
+            onPress={startNew}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             className="w-10 h-10 items-center justify-center rounded-full bg-secondary-container"
             accessibilityLabel="Add reminder"
@@ -334,7 +356,7 @@ export default function RemindersScreen() {
                 <Text className="text-sm text-on-surface-variant text-center">
                   Add rent, bills or EMIs and Kinlo will remind you when they are due.
                 </Text>
-                <AnimatedPressable onPress={() => openForm('new')} className="mt-2 bg-primary px-6 py-3 rounded-xl">
+                <AnimatedPressable onPress={startNew} className="mt-2 bg-primary px-6 py-3 rounded-xl">
                   <Text className="text-white font-semibold text-sm">Add reminder</Text>
                 </AnimatedPressable>
               </View>
