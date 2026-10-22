@@ -53,3 +53,19 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Internal working docs: kept on the owner's machine, not published
+/CLAUDE.md
+/edge_cases_analysis.md
+/docs/*.docx
+/docs/GOLD_PLAN.md
+/docs/Kinlo-Security-Fixes-*.md
+/docs/ONBOARDING_AUDIT.md
+/docs/PRODUCTION-READINESS.md
+/docs/PROJECT_STATUS.md
+/docs/PROJECT_STATUS_ARCHIVE.md
+/docs/SESSION_HANDOVER_*.md
+/docs/TASKS.md
+/docs/kinlo-3d-knowledge-graph.html
+/docs/sql/
+/supabase/PROVISION.md

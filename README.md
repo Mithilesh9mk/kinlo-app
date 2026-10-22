@@ -36,6 +36,8 @@ Kinlo is an Android app (Expo / React Native) backed by Supabase. It handles sha
 2. Open the file. If Android asks, allow installs from your browser or file manager.
 3. Sign up with an email address and you're in.
 
+> Sign in with Google and Sign in with Apple aren't available yet. Use email for now.
+
 This is a preview build (EAS `preview` profile) and gets over-the-air updates. It isn't on the Play Store yet.
 
 ## Tech stack

@@ -1647,6 +1647,11 @@ export default function GroupDetailScreen() {
               >
                 <Text className="text-error font-semibold text-sm">Leave Circle</Text>
               </AnimatedPressable>
+              {/* Members can be added without asking them first, so say plainly
+                  that staying is their choice. */}
+              <Text className="text-xs text-on-surface-variant text-center leading-relaxed mb-2">
+                Anyone added to a circle can leave it at any time, once they have settled up with everyone.
+              </Text>
             </ScrollView>
           </View>
         </AnimatedPressable>
