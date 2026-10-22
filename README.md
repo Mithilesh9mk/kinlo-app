@@ -7,14 +7,13 @@ Kinlo is an Android app (Expo / React Native) backed by Supabase. It handles sha
 [**⬇ Download the preview APK**](../../releases/latest) · Android · about 100 MB
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="230" alt="Home" />
-  <img src="docs/screenshots/group.png" width="230" alt="Group balances" />
-  <img src="docs/screenshots/add-expense.png" width="230" alt="Add an expense" />
+  <img src="docs/screenshots/home.png" width="230" alt="Home: balances with friends, amount owed, recent activity" />
+  <img src="docs/screenshots/circles.png" width="230" alt="Circles: shared-expense groups and their balances" />
+  <img src="docs/screenshots/add-expense.png" width="230" alt="Add expense: amount keypad and category picker" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/scan.png" width="230" alt="Receipt scan" />
-  <img src="docs/screenshots/finance.png" width="230" alt="Personal finance" />
-  <img src="docs/screenshots/insights.png" width="230" alt="Insights" />
+  <img src="docs/screenshots/finance.png" width="230" alt="Personal spending: monthly chart and category breakdown" />
+  <img src="docs/screenshots/insights.png" width="230" alt="Insights: spending over time, split vs personal" />
 </p>
 
 ## Features
