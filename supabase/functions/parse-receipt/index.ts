@@ -325,11 +325,13 @@ async function callGeminiVision(
 ): Promise<Record<string, unknown>> {
   console.log(`Calling Gemini Vision with model: ${model}`)
   const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+    // Key goes in a header, not the query string: fetch errors and logs
+    // include the request URL, and those must never carry the key.
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: 'POST',
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt() }] },
         contents: [
@@ -560,7 +562,9 @@ serve(async (req) => {
     }
 
     let raw: Record<string, unknown> | null = null
-    let lastError = 'Could not read this image right now'
+    // Provider error text stays in the function logs; the client only ever
+    // gets this generic message, so no upstream detail can leak through it.
+    const genericError = 'Could not read this image right now'
     for (const [name, run] of attempts) {
       try {
         const result = await run()
@@ -572,12 +576,11 @@ serve(async (req) => {
         if (!raw || (typeof raw.amount !== 'number' && typeof result.amount === 'number')) raw = result
       } catch (callError) {
         console.error(name, 'extraction error:', callError)
-        lastError = (callError as Error)?.message || lastError
       }
     }
     if (!raw) {
       await releaseScan(quotaClient, scanId)
-      return json({ ok: false, code: 'upstream_error', error: lastError }, 200)
+      return json({ ok: false, code: 'upstream_error', error: genericError }, 200)
     }
 
     if (raw.is_payment_screenshot === false) {
@@ -590,7 +593,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('parse-receipt error:', error)
     await releaseScan(quotaClient, scanId)
-    return json({ ok: false, code: 'upstream_error', error: (error as Error).message }, 200)
+    return json({ ok: false, code: 'upstream_error', error: 'Could not read this image right now' }, 200)
   }
 })
 

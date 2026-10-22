@@ -16,8 +16,13 @@ const supabaseUrl = env['EXPO_PUBLIC_SUPABASE_URL'];
 const supabaseKey = env['SUPABASE_SERVICE_ROLE_KEY'];
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const [userId] = process.argv.slice(2);
+if (!userId) {
+  console.error('Usage: node check_query.mjs <user-id>');
+  process.exit(1);
+}
+
 async function testQuery() {
-  const userId = '<user-id>'; // a user ID from check-balances
   console.log('Testing explicit OR query for user:', userId);
 
   const { data: txs, error } = await supabase
