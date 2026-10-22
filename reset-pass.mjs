@@ -16,19 +16,27 @@ const supabaseUrl = env['EXPO_PUBLIC_SUPABASE_URL'];
 const supabaseKey = env['SUPABASE_SERVICE_ROLE_KEY'];
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Usage: node reset-pass.mjs <email> <new-password>
+// Never hardcode either value here; this file is committed.
+const [targetEmail, newPassword] = process.argv.slice(2);
+if (!targetEmail || !newPassword) {
+  console.error('Usage: node reset-pass.mjs <email> <new-password>');
+  process.exit(1);
+}
+
 async function resetPassword() {
   const { data: { users }, error } = await supabase.auth.admin.listUsers();
   if (error) {
     console.error('Error:', error);
     return;
   }
-  
-  const user = users.find(u => u.email === '<email>');
+
+  const user = users.find(u => u.email === targetEmail);
   if (user) {
     console.log('Resetting password for:', user.email);
     const { data, error: updateError } = await supabase.auth.admin.updateUserById(
       user.id,
-      { password: '<new-password>' }
+      { password: newPassword }
     );
     if (updateError) {
       console.error('Failed to update password:', updateError);
