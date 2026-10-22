@@ -4,7 +4,7 @@
 
 Kinlo is an Android app (Expo / React Native) backed by Supabase. It handles shared expenses (who owes whom, settling up, debt simplification) and personal spending, including AI receipt scanning.
 
-[**⬇ Download the preview APK**](../../releases/latest) · Android · about 100 MB
+[**⬇ Download the preview APK**](https://github.com/Mithilesh9mk/kinlo-app/releases/latest/download/Kinlo-preview-1.0.0.apk) · Android · about 100 MB
 
 <p align="center">
   <img src="docs/screenshots/home.png" width="230" alt="Home: balances with friends, amount owed, recent activity" />
@@ -32,7 +32,7 @@ Kinlo is an Android app (Expo / React Native) backed by Supabase. It handles sha
 
 ## Try it
 
-1. Open the [latest release](../../releases/latest) on your Android phone and download `Kinlo-preview.apk`.
+1. Open the [latest release](../../releases/latest) on your Android phone and download `Kinlo-preview-1.0.0.apk`.
 2. Open the file. If Android asks, allow installs from your browser or file manager.
 3. Sign up with an email address and you're in.
 
