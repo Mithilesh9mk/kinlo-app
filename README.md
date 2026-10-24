@@ -6,7 +6,7 @@ Kinlo is an Android app (Expo / React Native) backed by Supabase. It handles sha
 
 [**⬇ Download the preview APK**](https://github.com/Mithilesh9mk/kinlo-app/releases/latest/download/Kinlo-preview-1.0.0.apk) · Android · about 100 MB
 
-The source is public to read (source-available, not open source; see [LICENSE](LICENSE)).
+Open source under the [MIT licence](LICENSE). Reuse the code with credit; the Kinlo name and branding aren't included (see [BRANDING.md](BRANDING.md)).
 
 <p align="center">
   <a href="https://github.com/Mithilesh9mk/kinlo-app/releases/download/v1.0.0-preview/Kinlo-launch.mp4">
@@ -97,4 +97,4 @@ plugins/            Expo config plugins (Android widget)
 
 Built by Mithilesh with [Claude Code](https://claude.com/claude-code).
 
-© 2026 Mithilesh. All rights reserved. The source is public for viewing only; see [LICENSE](LICENSE).
+© 2026 Mithilesh. Code released under the [MIT licence](LICENSE). If you build on it, keep the copyright notice and credit the original, for example "Based on Kinlo by Mithilesh, github.com/Mithilesh9mk/kinlo-app". The Kinlo name, logo, icon, video and screenshots are not licensed; see [BRANDING.md](BRANDING.md).
