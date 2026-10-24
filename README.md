@@ -6,6 +6,14 @@ Kinlo is an Android app (Expo / React Native) backed by Supabase. It handles sha
 
 [**⬇ Download the preview APK**](https://github.com/Mithilesh9mk/kinlo-app/releases/latest/download/Kinlo-preview-1.0.0.apk) · Android · about 100 MB
 
+The source is public to read (source-available, not open source; see [LICENSE](LICENSE)).
+
+<p align="center">
+  <a href="https://github.com/Mithilesh9mk/kinlo-app/releases/download/v1.0.0-preview/Kinlo-launch.mp4">
+    <img src="docs/screenshots/kinlo-launch-poster.jpg" width="640" alt="Watch the 25-second Kinlo launch video" />
+  </a>
+</p>
+
 <p align="center">
   <img src="docs/screenshots/home.png" width="230" alt="Home: balances with friends, amount owed, recent activity" />
   <img src="docs/screenshots/circles.png" width="230" alt="Circles: shared-expense groups and their balances" />
