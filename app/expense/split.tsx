@@ -156,7 +156,7 @@ export default function SplitExpenseScreen() {
    * propagated through calculateEqualSplit into every share while the screen
    * reported itself valid.
    */
-  const validation = useMemo((): { valid: boolean; problem: string | null } => {
+  const baseValidation = useMemo((): { valid: boolean; problem: string | null } => {
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       return { valid: false, problem: 'Enter an amount before splitting it.' };
     }
@@ -220,6 +220,37 @@ export default function SplitExpenseScreen() {
 
     return { valid: false, problem: null };
   }, [participants, splitMode, totalAmount, includedCount]);
+
+  /**
+   * Outside a group, you can only record an expense you are actually on:
+   * you paid something, or you owe a share. A share of 0 is dropped when the
+   * expense is saved, so "A paid for B" entered by a third person left that
+   * person on none of the saved rows — they could not even see it afterwards
+   * — and record_expense() now refuses it (migration 0069). Saying so here,
+   * before posting, beats a server error. Groups keep their own rule.
+   *
+   * Checked only once the split itself adds up, so a half-filled split still
+   * shows its own problem first. This also covers "Repeat this expense": the
+   * rule is only created after a successful post, which this blocks.
+   */
+  const validation = useMemo((): { valid: boolean; problem: string | null } => {
+    if (!baseValidation.valid || groupId) return baseValidation;
+
+    const youPaid = payers.length > 1
+      ? payers.some(p => p.isYou && (p.amount || 0) > 0)
+      : !!payer.isYou;
+    const you = includedParticipants.find(p => p.isYou);
+    const yourShare = you ? (shares[you.id] || 0) : 0;
+
+    if (!youPaid && yourShare <= 0) {
+      const payerFirstName = (payer.name || '').split(' ')[0] || 'the person who paid';
+      return {
+        valid: false,
+        problem: `You're not part of this expense. Add it only if you paid or owe a share — or ask ${payerFirstName} to add it.`,
+      };
+    }
+    return baseValidation;
+  }, [baseValidation, groupId, payers, payer, includedParticipants, shares]);
 
   const isValidSplit = validation.valid;
 

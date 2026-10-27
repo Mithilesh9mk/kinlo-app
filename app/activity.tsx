@@ -124,7 +124,11 @@ export default function ActivityScreen() {
               Connection requests
             </Text>
             {requests.map((req, index) => {
-              const needsYou = req.myResponse === 'pending';
+              // A claimant can't accept until the owner has (0070), so a
+              // claimant waiting on the owner isn't highlighted as needing them.
+              const needsYou =
+                req.myResponse === 'pending' &&
+                !(req.role === 'claimant' && req.theirResponse !== 'accepted');
               return (
                 <AnimatedListItem key={req.id} index={index}>
                   <AnimatedPressable
@@ -149,7 +153,9 @@ export default function ActivityScreen() {
                       </Text>
                       <Text className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
                         {req.role === 'claimant'
-                          ? 'Added you before you joined — review what carries over'
+                          ? req.theirResponse === 'accepted'
+                            ? 'Added you before you joined — review what carries over'
+                            : 'Added you before you joined — waiting for them to confirm'
                           : `Says they're ${req.placeholderName || 'a contact you added'}`}
                       </Text>
                     </View>
