@@ -63,8 +63,13 @@ export default function ConnectRequestScreen() {
       // itemised preview. A failed preview is fatal here on purpose: an
       // accept button next to a silently-empty list would be asking someone
       // to agree to a number they were never shown.
-      if (found.role === 'claimant') {
+      // The server returns nothing to a claimant until the owner has
+      // accepted (0070), so don't ask before then — an empty result would
+      // read as "nothing recorded", which may be false.
+      if (found.role === 'claimant' && found.theirResponse === 'accepted') {
         setPreview(await fetchClaimPreview(found.id));
+      } else {
+        setPreview(null);
       }
       setError(null);
     } catch (e: any) {
@@ -139,7 +144,18 @@ export default function ConnectRequestScreen() {
       );
     } catch (e: any) {
       console.warn('Connection response failed:', e);
-      showAlert('Something went wrong', e?.message || 'Please try again.', [{ text: 'OK' }]);
+      if (/confirm first/i.test(e?.message ?? '')) {
+        // 0070: the server refuses a claimant's accept until the owner has
+        // accepted. Reached only from a stale screen (the button is hidden
+        // in that state), so refresh to show where things actually stand.
+        showAlert(
+          `Waiting for ${request.otherName}`,
+          `${request.otherName} needs to confirm it's you first. Once they do, you'll see what you'd share and can accept.`,
+          [{ text: 'OK', onPress: () => load() }]
+        );
+      } else {
+        showAlert('Something went wrong', e?.message || 'Please try again.', [{ text: 'OK' }]);
+      }
     } finally {
       setSubmitting(null);
     }
@@ -194,6 +210,9 @@ export default function ConnectRequestScreen() {
   }
 
   const isClaimant = request.role === 'claimant';
+  // For a claimant, theirResponse is the owner's answer. Until it is
+  // 'accepted' the claimant can't see the history and can't accept (0070).
+  const waitingOnOwner = isClaimant && request.theirResponse !== 'accepted';
   const net = preview?.net ?? 0;
   const alreadyAnswered = request.myResponse !== 'pending';
 
@@ -225,11 +244,24 @@ export default function ConnectRequestScreen() {
         {isClaimant ? (
           <>
             <Text className="text-sm text-on-surface-variant leading-relaxed mb-4">
-              {request.otherName} added you to Kinlo before you joined, and recorded these
-              expenses against your number. Connecting brings them onto your account.
+              {waitingOnOwner
+                ? `${request.otherName} saved your number before you joined Kinlo. Connecting would bring anything they recorded against it onto your account.`
+                : `${request.otherName} added you to Kinlo before you joined and has confirmed it's you. Connecting brings anything they recorded against your number onto your account.`}
             </Text>
 
-            {preview && preview.lines.length > 0 ? (
+            {waitingOnOwner ? (
+              <View
+                className="rounded-2xl px-4 py-4 mb-5"
+                style={{ backgroundColor: '#fefdfc', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}
+              >
+                <View className="flex-row items-start">
+                  <MaterialIcons name="schedule" size={18} color="#404940" />
+                  <Text className="text-sm text-on-surface flex-1 leading-relaxed" style={{ marginLeft: 8 }}>
+                    Waiting for {request.otherName} to confirm before you can see what you'd share.
+                  </Text>
+                </View>
+              </View>
+            ) : preview && preview.lines.length > 0 ? (
               <>
                 <Text className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2">
                   What comes over
@@ -340,19 +372,23 @@ export default function ConnectRequestScreen() {
               )}
             </AnimatedPressable>
 
-            <AnimatedPressable
-              onPress={() => respond('accepted')}
-              disabled={!!submitting}
-              className="flex-1 py-4 rounded-2xl items-center justify-center bg-primary"
-            >
-              {submitting === 'accepted' ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text className="font-semibold text-sm text-white">
-                  {isClaimant ? 'Accept' : "Yes, that's them"}
-                </Text>
-              )}
-            </AnimatedPressable>
+            {/* A claimant can't accept until the owner has (0070) — they
+                haven't been shown what they'd take on yet. "Not me" stays. */}
+            {!waitingOnOwner && (
+              <AnimatedPressable
+                onPress={() => respond('accepted')}
+                disabled={!!submitting}
+                className="flex-1 py-4 rounded-2xl items-center justify-center bg-primary"
+              >
+                {submitting === 'accepted' ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="font-semibold text-sm text-white">
+                    {isClaimant ? 'Accept' : "Yes, that's them"}
+                  </Text>
+                )}
+              </AnimatedPressable>
+            )}
           </View>
         )}
       </ScrollView>
