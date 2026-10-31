@@ -68,38 +68,39 @@
           <tr><td>Expenses and balances</td><td data-label="What">Amounts, descriptions, categories, dates, who paid, each person&rsquo;s share, circles, settlements, repeating expenses and an activity log.</td><td data-label="Why">To work out who owes whom and show it to the people involved.</td></tr>
           <tr><td>People you add</td><td data-label="What">The name, and phone number if you enter it, of someone who has not joined Kinlo.</td><td data-label="Why">So you can record expenses with them before they install.</td></tr>
           <tr><td>Personal spending and reminders</td><td data-label="What">Entries and reminders you keep for yourself.</td><td data-label="Why">For your own tracking. Only you can see them.</td></tr>
-          <tr><td>Payment screenshots</td><td data-label="What">The image you scan, the text read from it, and the amount, merchant, date and category found.</td><td data-label="Why">See &ldquo;Scanning a payment screenshot&rdquo; below.</td></tr>
+          <tr><td>Payment screenshots</td><td data-label="What">The image you scan, and the amount, merchant, date and category found.</td><td data-label="Why">See &ldquo;Scanning a payment screenshot&rdquo; below.</td></tr>
           <tr><td>Notification token</td><td data-label="What">A push token from Expo, if you allow notifications.</td><td data-label="Why">To deliver notifications to your phone.</td></tr>
           <tr><td>Install ID</td><td data-label="What">A random ID the app creates for your install. It is not a hardware ID.</td><td data-label="Why">To stop free scan and coupon limits being bypassed with extra accounts.</td></tr>
-          <tr><td>Plan and usage</td><td data-label="What">Free or Gold, any coupon you redeemed, and short-lived counts of scans, lookups and reminders.</td><td data-label="Why">To apply limits and keep the service from being abused.</td></tr>
+          <tr><td>Plan and usage</td><td data-label="What">Free or Gold, any coupon you redeemed, and counts and records of scans, lookups and reminders. Rate-limit counters are short-lived. Scan and reminder records are kept until you delete your account.</td><td data-label="Why">To apply limits and keep the service from being abused.</td></tr>
         </tbody>
       </table>
       <p>If the app hits a fatal error, a note about it is saved on your phone only. It is not sent to us.</p>
+      <p>Unsaved scan drafts and cached data are kept on your phone. A draft is removed when you save or discard it, and cached data is cleared when you sign out.</p>
 
       <h2 id="scan">Scanning a payment screenshot</h2>
       <p>Scanning is optional. When you scan, the image is uploaded to a private storage area that only your account can read, and the image is sent to an AI service to read it.</p>
       <ul>
         <li>The AI service gets the image and a fixed instruction that includes today&rsquo;s date. It does not get your name, email or account ID.</li>
         <li>Kinlo asks Anthropic&rsquo;s Claude first. If that fails or looks unsure, it may ask Google&rsquo;s Gemini, then a larger Claude model.</li>
-        <li>What comes back (amount, merchant, date, category and the text on the image) is saved on your personal entry. Check it before you save.</li>
+        <li>What comes back (amount, merchant, date and category) is saved on your personal entry. The text on the image is read to find these and is not kept. Check it before you save.</li>
         <li>We do not keep the AI conversation. Our server logs note which AI service was called, the status it returned, the type of any error and how long the call took. They do not include the provider&rsquo;s reply, your image or the details read from it.</li>
         <li>Each AI company handles the images it receives under its own terms, and we do not control how long it keeps them. Do not scan screenshots that show card numbers or anything you do not want processed.</li>
-        <li>In this preview, removing an entry does not remove its image. Deleting your account does.</li>
+        <li>In this preview, removing an entry does not remove its image, and the image from a scan you did not save also stays. Deleting your account removes them.</li>
         <li>The free plan allows 3 scans a month per account, and 6 a month in total across all accounts used on one app install. Gold allows 125.</li>
       </ul>
 
       <h2 id="contacts">Your contacts</h2>
       <ul>
-        <li>When you add a friend, Android&rsquo;s own contact picker opens. You choose one person, and only that person&rsquo;s name and number are used.</li>
+        <li>When you add a friend, your phone&rsquo;s own contact picker opens. You choose one person, and only that person&rsquo;s name and number are used.</li>
         <li>Contact sync is off until you turn it on. If you do, phone numbers from your contacts (the last ten digits) are sent to our server and checked against Kinlo accounts. Names stay on your phone. The numbers are used to look for matches and are not stored. Kinlo does remember which accounts matched, so that you can add them as friends.</li>
         <li>You can turn contact sync off in Profile.</li>
-        <li>If someone has your number in their contacts and uses contact sync, or types your number to add you, they can see that you use Kinlo, with your name, avatar and phone number.</li>
+        <li>If someone has your number in their contacts and uses contact sync, or types your number to add you, they can see that you use Kinlo, with your name and phone number, and your avatar if they find you through contact sync.</li>
       </ul>
 
       <h2 id="see">Who can see your data</h2>
       <ul>
-        <li>People in a shared expense or circle see that expense, its amount, the balance between you, and your name and avatar. That is the point of the app.</li>
-        <li>If you send a friend a payment reminder, they get a notification with your name and the amount they owe you.</li>
+        <li>People in a shared expense or circle see that expense, its amount, the balance between you, and your name and avatar. They can also see the phone number and UPI ID on your profile, if you added them. That is the point of the app.</li>
+        <li>Kinlo sends notifications to other people about things you do: a payment reminder, a new, changed or deleted shared expense, a recorded payment, a request to delete an expense, a connection request, or a number you added that joins. They can include your name, the expense description and the amount. Kinlo cannot confirm that a notification arrived.</li>
         <li>Your personal spending entries and reminders are visible only to you.</li>
         <li>As the person who runs Kinlo, we can technically reach the database to fix problems. We do not browse it for any other reason.</li>
       </ul>
@@ -116,7 +117,7 @@
           <tr><td>GitHub</td><td data-label="For">Hosts the preview APK download.</td><td data-label="Receives">Its usual visitor logs, under GitHub&rsquo;s own policy.</td></tr>
         </tbody>
       </table>
-      <p>These providers may process data on servers outside India. We may also share data if the law or a valid legal order requires it.</p>
+      <p>These providers may process data on servers outside India, and Supabase, Expo and GitHub keep their own server logs, which can include IP addresses, under their own policies. We may also share data if the law or a valid legal order requires it.</p>
 
       <h2 id="never">What Kinlo does not do</h2>
       <ul>
