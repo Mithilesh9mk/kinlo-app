@@ -1,5 +1,5 @@
 /* Hallmark · shape: Workbench hero, ledger sections, one dark band · genre: modern-minimal · theme: custom · job: try · idea: "a bill that comes apart into exact shares, shown on a ledger" · vibe: "warm, calm, exact, a little bookish"
- * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the product (the working calculator over two ruled sheets, a scroll-stepped example ledger, a split-types demo, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and shows the addition to the paisa
+ * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the app's own leaf mark drawing itself, a soft green ink that follows the mouse over the hero and the download band, the product (the working calculator over two ruled sheets, a scroll-stepped example ledger, a split-types demo, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and shows the addition to the paisa
  * axes: light/roman-serif/chromatic-green · posture: Committed · contrast: pass · fold: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: S, the split-and-ledger idea is shared by every bill splitter; moved the proof into exact paise arithmetic and honest limits (a staged demo is labelled, a missing notification is stated) */
 /* Hallmark · waive 84 · the two staged demos, the scroll-stepped ledger and the split-types demo show a server-side AI step, a push notification and app behaviour that a static page cannot call · a mock is the only honest way to show them, and each is labelled a demo or an example with numbers set by us */
@@ -29,7 +29,7 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
 /* nav */
 .nav { position: relative; z-index: var(--z-sticky-nav); }
 .nav__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); min-height: 4rem; }
-.wordmark { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-display); text-decoration: none; color: var(--color-accent); }
+.wordmark { display: inline-flex; align-items: center; gap: var(--space-xs); font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-display); text-decoration: none; color: var(--color-accent); }
 .nav__link { display: inline-flex; align-items: center; min-height: 2.75rem; font-size: var(--text-md); font-weight: 500; color: var(--color-ink); text-decoration-color: var(--color-rule); white-space: nowrap; }
 .nav__link:hover { text-decoration-color: var(--color-accent); color: var(--color-accent); }
 
@@ -186,6 +186,22 @@ html:not(.js) .demo__ctl { display: none; }
 @keyframes press { 0% { transform: none; } 40% { transform: translateY(1px) scale(0.97); } 100% { transform: none; } }
 @keyframes drop { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
 
+/* the leaf mark: draws itself once, then fills. Without script, or with reduced motion, it is simply the finished leaf. */
+.mark { flex: none; width: 1.5rem; height: 1.5rem; overflow: visible; }
+.mark path { fill: var(--color-accent); stroke: var(--color-accent); stroke-width: 14; stroke-linejoin: round; stroke-dasharray: 1; }
+.mark--big { width: 5rem; height: 5rem; margin-bottom: var(--space-xs); }
+.mark--big path { fill: var(--color-mint); stroke: var(--color-mint); }
+.js .mark:not(.is-drawn) path { stroke-dashoffset: 1; fill-opacity: 0; }
+.js .mark.is-drawn path { animation: leaf-draw 1.3s var(--ease-in-out) both; }
+@keyframes leaf-draw { 0% { stroke-dashoffset: 1; fill-opacity: 0; } 62% { stroke-dashoffset: 0; fill-opacity: 0; } 100% { stroke-dashoffset: 0; fill-opacity: 1; } }
+
+/* cursor ink: a soft wash that follows the mouse over the hero and the download band, then fades and stops */
+.hero, .band { position: relative; }
+.hero > .container, .band > .container { position: relative; z-index: 1; }
+.ink { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: blur(6px); }
+.ink--hero { opacity: 0.42; }
+.ink--band { opacity: 0.34; }
+
 /* hero sheets: two ruled sheets sit behind the calculator and shift a few pixels with a mouse; the calculator never moves */
 .calc-wrap { position: relative; isolation: isolate; }
 .calc-wrap > .calc { position: relative; z-index: 1; }
@@ -196,7 +212,7 @@ html:not(.js) .demo__ctl { display: none; }
 
 /* journey: one example ledger, five steps. Scroll moves the steps on wide, tall screens; the buttons do the same anywhere. */
 .journey { background: var(--color-paper-2); }
-.journey__grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: var(--space-2xl); align-items: center; padding-block: var(--section-gap-s); }
+.journey__grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: var(--space-2xl); align-items: center; padding-block: var(--section-gap-l); }
 .journey__text h2 { max-width: 14ch; }
 .jsteps { margin: var(--space-lg) 0 0; padding: 0; list-style: none; display: grid; gap: var(--space-2xs); }
 .jsteps button { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--space-sm); width: 100%; padding: var(--space-sm) var(--space-md); border: 0; border-left: 2px solid var(--color-rule); background: transparent; color: var(--color-ink-2); font: 500 var(--text-md)/1.4 var(--font-body); text-align: left; cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out); }
@@ -214,6 +230,7 @@ html:not(.js) .demo__ctl { display: none; }
 .journey.is-scroll .journey__track { height: 420vh; }
 .journey.is-scroll .journey__sticky { position: sticky; top: 0; height: 100vh; height: 100svh; display: flex; align-items: center; }
 .journey.is-scroll .journey__grid { padding-block: var(--space-xl); }
+.journey.is-scroll + .section { padding-top: 0; }
 
 .ledger { padding: var(--space-lg); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-card); outline: 1px solid var(--color-rule); outline-offset: -1px; font-variant-numeric: tabular-nums; }
 .ledger__top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2xs) var(--space-md); margin: 0 0 var(--space-md); font-size: var(--text-sm); color: var(--color-ink-2); }
@@ -337,9 +354,10 @@ html:not(.js) .demo__ctl { display: none; }
   .diff__row { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
   .doc__grid { gap: var(--space-md); padding-top: var(--space-lg); }
   .split--flip .demo { order: 2; }
-  .journey__grid { gap: var(--space-xl); padding-block: var(--section-gap-s) var(--space-2xl); }
+  .journey__grid { gap: var(--space-xl); padding-block: var(--section-gap-l); }
 }
 @media (max-width: 40rem) {
+  .section, .section--tall, .section--mid, .journey__grid { padding-block: 48px; }
   .hero__text .actions .btn, .band__text .actions .btn { width: 100%; }
   .calc { padding: var(--space-md); }
   .sheet--b { display: none; }
@@ -372,6 +390,9 @@ html:not(.js) .demo__ctl { display: none; }
   .data td:first-child::before { content: none; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .js .mark:not(.is-drawn) path { stroke-dashoffset: 0; fill-opacity: 1; }
+  .js .mark.is-drawn path { animation: none; }
+  .ink { display: none; }
   html { scroll-behavior: auto; }
   .w__bar i, .lg h3, .jsteps button, .st > span { transition: none; }
   .sheet { transform: translate3d(12px, 12px, 0); }

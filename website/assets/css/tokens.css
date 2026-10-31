@@ -46,7 +46,7 @@
   --font-outlier: var(--font-body);
 
   --container: 1360px; --gutter: 64px; --gap-columns: 40px;
-  --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 200px; --section-gap-xl: 224px;
+  --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 96px; --section-gap-xl: 96px;
   --radius-card: 10px; --radius-input: 8px; --radius-pill: 999px; --rule-hair: 1px;
   --shadow-card: 0 1px 2px oklch(22.5% 0.012 150 / 0.06);
   --tracking-display: -0.02em;

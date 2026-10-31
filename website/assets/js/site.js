@@ -446,29 +446,130 @@
     apply();
   }
 
-  /* ---------- hero: the paper sheets behind the calculator drift a few pixels with a mouse; touch and reduced motion get none ---------- */
-  var sheets = document.querySelector('[data-sheets]');
-  var heroEl = document.querySelector('.hero');
-  if (sheets && heroEl && !reduce && window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-    var tx = 0, ty = 0, cx = 0, cy = 0, raf = 0;
-    var glide = function () {
-      cx += (tx - cx) * 0.12;
-      cy += (ty - cy) * 0.12;
-      sheets.style.setProperty('--px', cx.toFixed(3));
-      sheets.style.setProperty('--py', cy.toFixed(3));
-      raf = Math.abs(tx - cx) > 0.002 || Math.abs(ty - cy) > 0.002 ? requestAnimationFrame(glide) : 0;
+  /* ---------- the leaf mark draws itself once on load, again when the wordmark is hovered, and once when the download band appears ---------- */
+  var drawMark = function (m) {
+    m.classList.remove('is-drawn');
+    void m.getBoundingClientRect();
+    m.classList.add('is-drawn');
+  };
+  var navMark = document.querySelector('.nav .mark');
+  if (navMark) {
+    drawMark(navMark);
+    var wm = navMark.parentNode;
+    if (!reduce) {
+      wm.addEventListener('pointerenter', function () { drawMark(navMark); });
+      wm.addEventListener('focus', function () { drawMark(navMark); });
+    }
+  }
+  var bigMark = document.querySelector('.mark--big');
+  if (bigMark) {
+    if (reduce || !('IntersectionObserver' in window)) {
+      bigMark.classList.add('is-drawn');
+    } else {
+      var mio = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) { drawMark(bigMark); mio.disconnect(); }
+        });
+      }, { threshold: 0.6 });
+      mio.observe(bigMark);
+    }
+  }
+
+  /* ---------- mouse only: the paper sheets behind the calculator drift a few pixels, and a soft green ink follows the pointer over the hero and the download band. One loop runs them, and it stops when everything is still. ---------- */
+  var fine = !reduce && window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (fine) {
+    var sheets = document.querySelector('[data-sheets]');
+    var heroEl = document.querySelector('.hero');
+    var tx = 0, ty = 0, cx = 0, cy = 0, raf = 0, prev = 0;
+    var fields = [];
+    var SCALE = 2; /* the ink canvas is drawn at half size and blurred, which is cheaper and softer */
+    var kick = function () { if (!raf) raf = requestAnimationFrame(frame); };
+
+    var stamp = function (f, x, y, r) {
+      var g = f.ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(' + f.rgb + ',0.22)');
+      g.addColorStop(1, 'rgba(' + f.rgb + ',0)');
+      f.ctx.fillStyle = g;
+      f.ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
     };
-    heroEl.addEventListener('pointermove', function (e) {
-      if (e.pointerType !== 'mouse') return;
-      var r = heroEl.getBoundingClientRect();
-      tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
-      ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
-      if (!raf) raf = requestAnimationFrame(glide);
-    });
-    heroEl.addEventListener('pointerleave', function () {
-      tx = 0; ty = 0;
-      if (!raf) raf = requestAnimationFrame(glide);
-    });
+
+    var addField = function (host, rgb, cls) {
+      if (!host) return;
+      var cv = document.createElement('canvas');
+      cv.className = 'ink ' + cls;
+      cv.setAttribute('aria-hidden', 'true');
+      host.insertBefore(cv, host.firstChild);
+      var buf = document.createElement('canvas');
+      var f = { host: host, cv: cv, ctx: cv.getContext('2d'), buf: buf, bctx: buf.getContext('2d'), rgb: rgb, last: null, lastMove: 0, alive: false };
+      var size = function () {
+        cv.width = buf.width = Math.max(1, Math.round(host.clientWidth / SCALE));
+        cv.height = buf.height = Math.max(1, Math.round(host.clientHeight / SCALE));
+        f.alive = false;
+      };
+      size();
+      if (window.ResizeObserver) new ResizeObserver(size).observe(host); else window.addEventListener('resize', size);
+      host.addEventListener('pointermove', function (e) {
+        if (e.pointerType !== 'mouse') return;
+        var r = host.getBoundingClientRect();
+        var x = (e.clientX - r.left) / SCALE, y = (e.clientY - r.top) / SCALE;
+        var now = performance.now();
+        var dx = f.last ? x - f.last.x : 0, dy = f.last ? y - f.last.y : 0;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        var n = f.last ? Math.max(1, Math.ceil(dist / 5)) : 1;
+        var rad = 26 + Math.min(dist, 40) * 0.7;
+        for (var i = 1; i <= n; i++) {
+          var px = f.last ? f.last.x + dx * i / n : x;
+          var py = f.last ? f.last.y + dy * i / n : y;
+          stamp(f, px + Math.sin(now / 180 + i) * 2, py + Math.cos(now / 210 + i) * 2, rad);
+        }
+        f.last = { x: x, y: y };
+        f.lastMove = now;
+        f.alive = true;
+        kick();
+      });
+      host.addEventListener('pointerleave', function () { f.last = null; });
+      fields.push(f);
+    };
+
+    var frame = function (now) {
+      raf = 0;
+      var dt = prev ? Math.min(0.05, (now - prev) / 1000) : 1 / 60;
+      prev = now;
+      var again = false;
+      if (sheets) {
+        cx += (tx - cx) * 0.12;
+        cy += (ty - cy) * 0.12;
+        sheets.style.setProperty('--px', cx.toFixed(3));
+        sheets.style.setProperty('--py', cy.toFixed(3));
+        if (Math.abs(tx - cx) > 0.002 || Math.abs(ty - cy) > 0.002) again = true;
+      }
+      fields.forEach(function (f) {
+        if (!f.alive) return;
+        var w = f.cv.width, h = f.cv.height;
+        if (now - f.lastMove > 2500) { f.ctx.clearRect(0, 0, w, h); f.alive = false; return; } /* a true clear, so no faint ghost is left */
+        f.bctx.clearRect(0, 0, w, h);
+        f.bctx.globalAlpha = Math.pow(0.955, dt * 60);
+        f.bctx.drawImage(f.cv, 0.25, -0.15); /* each pass the ink thins and drifts a little */
+        f.ctx.clearRect(0, 0, w, h);
+        f.ctx.drawImage(f.buf, 0, 0);
+        again = true;
+      });
+      if (again) raf = requestAnimationFrame(frame); else prev = 0;
+    };
+
+    addField(heroEl, '22,101,52', 'ink--hero');
+    addField(document.querySelector('.band'), '166,244,181', 'ink--band');
+
+    if (sheets && heroEl) {
+      heroEl.addEventListener('pointermove', function (e) {
+        if (e.pointerType !== 'mouse') return;
+        var r = heroEl.getBoundingClientRect();
+        tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
+        ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+        kick();
+      });
+      heroEl.addEventListener('pointerleave', function () { tx = 0; ty = 0; kick(); });
+    }
   }
 
   /* ---------- contents list: open on wide screens, closed on phones ---------- */
