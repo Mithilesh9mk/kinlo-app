@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kinlo, a bill splitter for friends and groups</title>
+<meta name="description" content="Kinlo splits bills between friends and groups, tracks who owes whom and reads payment screenshots. A free Android preview, open source under MIT.">
+<meta property="og:title" content="Kinlo, a bill splitter for friends and groups">
+<meta property="og:description" content="Split bills to the last paisa. Android preview, open source under MIT.">
+<meta property="og:type" content="website">
+<link rel="icon" href="assets/img/favicon.png" type="image/png">
+<link rel="stylesheet" href="assets/css/site.css">
+<script src="assets/js/boot.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="container nav__row">
+    <a class="wordmark" href="/" aria-label="Kinlo home">Kinlo</a>
+    <a class="nav__link" href="#download">Get the APK</a>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-h">
+  <div class="container hero__grid">
+    <div class="hero__text">
+      <h1 id="hero-h">Split the bill to the last paisa.</h1>
+      <p class="lead">Try a split here, then run your group&rsquo;s tab on Android.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Mithilesh9mk/kinlo-app/releases/tag/v1.0.0-preview" rel="noopener">Get the preview APK</a>
+        <button class="btn btn--quiet" type="button" disabled aria-disabled="true">Google Play: coming soon</button>
+      </div>
+    </div>
+
+    <form class="calc" id="calc-form" novalidate aria-labelledby="calc-h" autocomplete="off">
+      <h2 class="visually-hidden" id="calc-h">Split calculator</h2>
+      <div class="calc__grid">
+        <div>
+          <label class="fld-label" for="total">Total</label>
+          <div class="money">
+            <span class="money__sign" aria-hidden="true">&#8377;</span>
+            <input class="input input--money" id="total" name="total" type="text" inputmode="decimal" autocomplete="off" value="100" dir="auto" aria-describedby="total-help" disabled data-needs-js>
+          </div>
+          <p class="help" id="total-help" aria-live="polite"></p>
+        </div>
+
+        <fieldset>
+          <legend>People</legend>
+          <div class="people-row">
+            <div class="seg" role="group" aria-label="Number of people">
+              <input type="radio" name="people" id="p2" value="2" disabled data-needs-js><label for="p2">2</label>
+              <input type="radio" name="people" id="p3" value="3" checked disabled data-needs-js><label for="p3">3</label>
+              <input type="radio" name="people" id="pm" value="more" disabled data-needs-js><label for="pm">More</label>
+            </div>
+            <div class="stepper is-off" id="stepper" inert>
+              <button type="button" id="step-down" aria-label="One fewer person" disabled data-needs-js>&minus;</button>
+              <input class="input" id="count" type="number" inputmode="numeric" min="4" max="12" value="4" aria-label="Number of people, 4 to 12" disabled data-needs-js>
+              <button type="button" id="step-up" aria-label="One more person" disabled data-needs-js>+</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="calc__row2">
+          <div>
+            <label class="fld-label" for="payer">Who paid</label>
+            <select class="select" id="payer" name="payer" disabled data-needs-js>
+              <option value="0" selected>Asha</option>
+              <option value="1">Ravi</option>
+              <option value="2">Meera</option>
+              <option value="-1">Not set</option>
+            </select>
+          </div>
+          <fieldset>
+            <legend>Split</legend>
+            <div class="seg seg--grow" role="group" aria-label="Split type">
+              <input type="radio" name="mode" id="m-eq" value="equal" checked disabled data-needs-js><label for="m-eq">Equal</label>
+              <input type="radio" name="mode" id="m-cu" value="custom" disabled data-needs-js><label for="m-cu">Custom</label>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+
+      <ol class="rows" id="rows" tabindex="0" aria-label="Each person&rsquo;s share">
+        <li class="row"><input class="row__name" type="text" value="Asha" aria-label="Name of person 1" disabled data-needs-js><output class="row__amt num">&#8377;33.34</output><span class="row__note">paid &#8377;100.00, gets back &#8377;66.66</span></li>
+        <li class="row"><input class="row__name" type="text" value="Ravi" aria-label="Name of person 2" disabled data-needs-js><output class="row__amt num">&#8377;33.33</output><span class="row__note">pays <bdi>Asha</bdi> &#8377;33.33</span></li>
+        <li class="row"><input class="row__name" type="text" value="Meera" aria-label="Name of person 3" disabled data-needs-js><output class="row__amt num">&#8377;33.33</output><span class="row__note">pays <bdi>Asha</bdi> &#8377;33.33</span></li>
+      </ol>
+
+      <p class="calc__status" id="calc-status" role="status" aria-live="polite" data-state="ok"><strong>Shares add up to &#8377;100.00.</strong> Ravi pays Asha &#8377;33.33. Meera pays Asha &#8377;33.33.</p>
+      <p class="calc__nojs">This is a saved example. Turn on JavaScript to change it.</p>
+    </form>
+  </div>
+</section>
+
+<section class="section section--tall" aria-labelledby="tour-h">
+  <div class="container tour">
+    <div data-reveal>
+      <h2 id="tour-h">Circles, friends, and who paid.</h2>
+      <ul class="tour__list">
+        <li><b>Circles and friends.</b> Split with a group or one person.</li>
+        <li><b>Four ways to split.</b> Equal, exact amounts, percentages or shares.</li>
+        <li><b>Fewest payments.</b> A circle&rsquo;s debts shrink to the smallest number of transfers.</li>
+        <li><b>Settle in your UPI app.</b> Kinlo keeps the record and never holds your money.</li>
+        <li><b>Repeating expenses.</b> Rent comes back every week, month or year.</li>
+      </ul>
+    </div>
+    <figure class="shot" data-reveal>
+      <img src="assets/img/add-expense.png" width="600" height="1333" alt="The Add Expense screen in the Kinlo app: an amount of 0 rupees, a what-was-it-for field, category chips and a number pad." loading="lazy">
+      <figcaption>Adding an expense in the preview app.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="scan-h">
+  <div class="container split">
+    <div class="split__text" data-reveal>
+      <h2 id="scan-h">Screenshot in, expense out.</h2>
+      <p>An AI service reads your UPI or bank payment screenshot. You check the result.</p>
+      <p class="small">Free plan: 3 scans a month.</p>
+    </div>
+    <figure class="demo demo--receipt" data-state="ready" data-paused="false" aria-labelledby="scan-cap">
+      <div class="demo__stage">
+        <div class="pane" aria-hidden="true">
+          <p class="pane__title small">Payment screenshot</p>
+          <span class="hit hit--2 pane__line">Example Cafe</span>
+          <span class="hit hit--1 pane__amt">&#8377;480.00</span>
+          <span class="hit hit--3 pane__line">24 Oct</span>
+          <div class="scan"><div class="scan__bar"></div></div>
+        </div>
+        <div class="pane" aria-hidden="true">
+          <p class="pane__title small">Personal expense</p>
+          <dl class="fields">
+            <div class="fld"><dt>Amount</dt><dd>&#8377;480.00</dd></div>
+            <div class="fld"><dt>Merchant</dt><dd>Example Cafe</dd></div>
+            <div class="fld"><dt>Date</dt><dd>24 Oct</dd></div>
+          </dl>
+          <span class="badge" data-demo-last>Needs review</span>
+        </div>
+      </div>
+      <div class="demo__bar">
+        <figcaption id="scan-cap">Demo, not live: nothing is uploaded and the cafe is made up.</figcaption>
+        <div class="demo__ctl">
+          <button class="link-btn" type="button" data-demo-pause aria-pressed="false">Pause</button>
+          <button class="link-btn" type="button" data-demo-replay>Replay</button>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="section section--tall" aria-labelledby="nudge-h">
+  <div class="container split split--flip">
+    <figure class="demo demo--remind" data-state="ready" data-paused="false" aria-labelledby="nudge-cap">
+      <div class="demo__stage">
+        <div class="friend" aria-hidden="true">
+          <span class="friend__av">R</span>
+          <div class="friend__main">
+            <div class="friend__name">Ravi</div>
+            <div class="friend__owes">owes you &#8377;33.33</div>
+          </div>
+          <span class="btn btn--small is-static">Send reminder</span>
+        </div>
+        <div class="notif" aria-hidden="true" data-demo-last>
+          <p class="notif__who">What Ravi sees</p>
+          <p class="notif__text">Asha reminded you about &#8377;33.33 you owe them.</p>
+        </div>
+      </div>
+      <div class="demo__bar">
+        <figcaption id="nudge-cap">Demo, not live. Notifications arrive with the Play Store build, not the preview APK.</figcaption>
+        <div class="demo__ctl">
+          <button class="link-btn" type="button" data-demo-pause aria-pressed="false">Pause</button>
+          <button class="link-btn" type="button" data-demo-replay>Replay</button>
+        </div>
+      </div>
+    </figure>
+    <div class="split__text" data-reveal>
+      <h2 id="nudge-h">A nudge that does the chasing.</h2>
+      <p>Tap Send reminder on a friend who owes you. One a day, per person.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="diff-h">
+  <div class="container" data-reveal>
+    <h2 id="diff-h">What Kinlo does differently.</h2>
+    <dl class="diff">
+      <div class="diff__row"><dt>Reminders are built in</dt><dd>Nudge a friend who owes you, once a day.</dd></div>
+      <div class="diff__row"><dt>Screenshots become expenses</dt><dd>Scan a payment screenshot instead of typing it.</dd></div>
+      <div class="diff__row"><dt>Friends who have not joined</dt><dd>Add them first. If they join later, you both confirm the link.</dd></div>
+      <div class="diff__row"><dt>Open source</dt><dd>MIT-licensed code on <a href="https://github.com/Mithilesh9mk/kinlo-app" rel="noopener">GitHub</a>. The Kinlo name and logo stay reserved.</dd></div>
+      <div class="diff__row"><dt>Private by default</dt><dd>No ads, no tracking SDKs, no data sales. Read the <a href="/privacy">privacy policy</a>.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="band section section--tall" id="download" aria-labelledby="dl-h">
+  <div class="container band__grid">
+    <div class="band__text">
+      <h2 id="dl-h">Install the Android preview.</h2>
+      <p>Kinlo is a preview build for Android, about 100 MB, from GitHub. It is not on Google Play yet.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Mithilesh9mk/kinlo-app/releases/tag/v1.0.0-preview" rel="noopener">Get the preview APK</a>
+        <button class="btn btn--quiet" type="button" disabled aria-disabled="true">Google Play: coming soon</button>
+      </div>
+    </div>
+    <div class="band__side">
+      <p>Android may ask you to allow installs from your browser. Then sign up with your email.</p>
+      <p><a href="https://github.com/Mithilesh9mk/kinlo-app">Source code and MIT licence</a></p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="container">
+    <div class="foot__top">
+      <a class="wordmark" href="/" aria-label="Kinlo home">Kinlo</a>
+      <ul class="foot__nav">
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms</a></li>
+        <li><a href="/delete-account">Delete account</a></li>
+      </ul>
+    </div>
+    <div class="foot__legal">
+      <p>Built by Mithilesh Kale. Android only for now.</p>
+      <!-- TODO: replace when domain arrives -->
+      <p>Contact: <a href="mailto:hello@example.com">hello@example.com</a></p>
+      <p>The code is MIT licensed. The Kinlo name, logo and screenshots are not.</p>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>
