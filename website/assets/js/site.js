@@ -1,4 +1,4 @@
-/* Kinlo site script: split calculator, two staged demos, one reveal. No dependencies, nothing is sent anywhere. */
+/* Kinlo site script: split calculator, two staged demos, a split-types demo, a scroll-stepped ledger, one reveal. No dependencies, nothing is sent anywhere. */
 (function () {
   'use strict';
 
@@ -72,6 +72,7 @@
       payer: document.getElementById('payer'),
       rows: document.getElementById('rows'),
       status: document.getElementById('calc-status'),
+      sum: document.getElementById('calc-sum'),
       stepDown: document.getElementById('step-down'),
       stepUp: document.getElementById('step-up')
     };
@@ -213,6 +214,8 @@
       }
       var sum = shares.reduce(function (a, b) { return a + b; }, 0);
       var matched = okTotal && sum === T && bad < 0;
+      /* the addition itself, so the last paisa can be checked by eye */
+      el.sum.textContent = okTotal && bad < 0 ? (state.n <= 4 ? shares.map(fmt).join(' + ') : state.n + ' shares') + ' = ' + fmt(sum) : '';
       var payer = state.payer;
       var hasPayer = payer >= 0 && payer < state.n;
       var lis = el.rows.children;
@@ -262,6 +265,7 @@
     function sync(full) {
       var c = readCount();
       if (!c.ok) {
+        el.sum.textContent = '';
         setStatus('invalid', 'Choose 4 to 12 people here.', 'Pick 2 or 3 above for smaller groups.');
         return;
       }
@@ -315,60 +319,157 @@
     sync(true);
   }
 
-  /* ---------- staged demos ---------- */
+  /* ---------- staged demos: they play only when the visitor asks, once per press ---------- */
   var demos = document.querySelectorAll('.demo');
   Array.prototype.forEach.call(demos, function (d) {
-    var pause = d.querySelector('[data-demo-pause]');
-    var replay = d.querySelector('[data-demo-replay]');
+    var play = d.querySelector('[data-demo-play]');
     var last = d.querySelector('[data-demo-last]');
-    var paused = false;
-    var visible = false;
-    var timer = 0;
-
-    function set(s) { d.setAttribute('data-state', s); }
-    function setPaused(p) {
-      paused = p;
-      d.setAttribute('data-paused', p ? 'true' : 'false');
-      if (p) clearTimeout(timer);
-      if (pause) { pause.textContent = p ? 'Play' : 'Stop'; pause.setAttribute('aria-pressed', p ? 'true' : 'false'); }
-    }
-    function play() {
-      clearTimeout(timer);
-      setPaused(false);
-      set('ready');
-      void d.offsetWidth;
-      set('playing');
-    }
-    /* the demo loops: after the last frame it rests a moment, then starts again, until the visitor presses Stop */
-    function loopSoon() {
-      clearTimeout(timer);
-      if (paused || !visible) return;
-      timer = setTimeout(function () { if (!paused && visible) play(); }, 2400);
-    }
     if (last) last.addEventListener('animationend', function () {
-      if (d.getAttribute('data-state') === 'playing') { set('done'); loopSoon(); }
+      if (d.getAttribute('data-state') === 'playing') d.setAttribute('data-state', 'done');
     });
-    if (pause) pause.addEventListener('click', function () {
-      if (paused) {
-        setPaused(false);
-        if (d.getAttribute('data-state') !== 'playing') play();
-      } else {
-        setPaused(true);
-      }
+    if (play) play.addEventListener('click', function () {
+      if (reduce) return;
+      d.setAttribute('data-state', 'ready');
+      void d.offsetWidth;
+      d.setAttribute('data-state', 'playing');
+      play.textContent = 'Replay';
     });
-    if (replay) replay.addEventListener('click', play);
-
-    /* with reduced motion, or no way to tell when it is on screen, show the finished frame and do not animate */
-    if (reduce || !('IntersectionObserver' in window)) { set('done'); return; }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        visible = en.isIntersecting;
-        if (!visible) { clearTimeout(timer); return; }
-        if (!paused && d.getAttribute('data-state') !== 'playing') play();
-      });
-    }, { threshold: 0.5 });
-    io.observe(d);
   });
+
+  /* ---------- four ways to share one bill ---------- */
+  var ways = document.querySelector('[data-ways]');
+  if (ways) {
+    var WTOTAL = 100000; /* Rs 1,000.00 in paise */
+    var byWeight = function (w) {
+      var W = w.reduce(function (a, b) { return a + b; }, 0);
+      var out = w.map(function (x) { return Math.floor(WTOTAL * x / W); });
+      var left = WTOTAL - out.reduce(function (a, b) { return a + b; }, 0);
+      for (var i = 0; left > 0; i++, left--) out[i % out.length]++;
+      return out;
+    };
+    var MODES = {
+      equal: { why: 'Everyone pays the same. The extra paisa goes to the first people in the list.', ins: ['equal', 'equal', 'equal'], amt: equalSplit(WTOTAL, 3) },
+      exact: { why: 'You enter each amount. The amounts must add up to the bill.', ins: ['entered ' + fmt(60000), 'entered ' + fmt(25000), 'entered ' + fmt(15000)], amt: [60000, 25000, 15000] },
+      percent: { why: 'You give each person a percentage. The percentages must add up to 100.', ins: ['45%', '35%', '20%'], amt: byWeight([45, 35, 20]) },
+      shares: { why: 'You give each person a number of shares. Asha has 2 of the 4 shares, so she pays half.', ins: ['2 shares', '1 share', '1 share'], amt: byWeight([2, 1, 1]) }
+    };
+    var wRows = ways.querySelectorAll('.wrows li');
+    var wWhy = ways.querySelector('.ways__why');
+    var wSum = ways.querySelector('.ways__sum');
+    var showWay = function (key) {
+      var m = MODES[key];
+      wWhy.textContent = m.why;
+      Array.prototype.forEach.call(wRows, function (li, i) {
+        li.querySelector('.w__in').textContent = m.ins[i];
+        li.querySelector('.w__amt').textContent = fmt(m.amt[i]);
+        li.querySelector('.w__bar i').style.setProperty('--w', (m.amt[i] / WTOTAL).toFixed(4));
+      });
+      var total = m.amt.reduce(function (a, b) { return a + b; }, 0);
+      wSum.textContent = m.amt.map(fmt).join(' + ') + ' = ' + fmt(total);
+    };
+    ways.addEventListener('change', function (e) { if (e.target.name === 'way') showWay(e.target.value); });
+    Array.prototype.forEach.call(ways.querySelectorAll('[data-needs-js]'), function (n) { n.disabled = false; });
+    showWay('equal');
+  }
+
+  /* ---------- one bill, from entry to settled: scroll moves the steps, buttons do the same ---------- */
+  var jr = document.querySelector('[data-journey]');
+  if (jr) {
+    var ledger = jr.querySelector('[data-ledger]');
+    var jbtns = jr.querySelectorAll('[data-jsteps] button');
+    var jnext = jr.querySelector('[data-journey-next]');
+    var track = jr.querySelector('.journey__track');
+    var FOCUS = { 1: 'exp', 2: 'exp', 3: 'bal', 4: 'pay', 5: 'pay' };
+    var step = 5;
+    var mode = '';
+    var mq = window.matchMedia ? window.matchMedia('(min-width: 60rem) and (min-height: 46rem)') : null;
+    var setStep = function (n) {
+      step = n;
+      ledger.setAttribute('data-step', String(n));
+      ledger.setAttribute('data-focus', FOCUS[n]);
+      Array.prototype.forEach.call(jbtns, function (b) {
+        if (Number(b.getAttribute('data-step')) === n) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+      });
+      if (jnext) jnext.textContent = n === 5 ? 'Start over' : 'Next step';
+    };
+    var span = function () { return track.offsetHeight - window.innerHeight; };
+    var fromScroll = function () {
+      var s = span();
+      if (s <= 0) return;
+      var p = Math.min(1, Math.max(0, -track.getBoundingClientRect().top / s));
+      var n = Math.min(5, Math.floor(p * 5) + 1);
+      if (n !== step) setStep(n);
+    };
+    var ticking = false;
+    var onScroll = function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; fromScroll(); });
+    };
+    var apply = function () {
+      var m = !('IntersectionObserver' in window) || reduce ? 'static' : (mq && mq.matches ? 'scroll' : 'tap');
+      if (m === mode) return;
+      mode = m;
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      jr.classList.toggle('is-stepped', m !== 'static');
+      jr.classList.toggle('is-scroll', m === 'scroll');
+      if (jnext) jnext.hidden = m !== 'tap';
+      Array.prototype.forEach.call(jbtns, function (b) { b.disabled = m === 'static'; });
+      if (m === 'static') {
+        ledger.setAttribute('data-step', '5');
+        ledger.removeAttribute('data-focus');
+        Array.prototype.forEach.call(jbtns, function (b) { b.removeAttribute('aria-current'); });
+        step = 5;
+      } else {
+        setStep(1);
+        if (m === 'scroll') {
+          window.addEventListener('scroll', onScroll, { passive: true });
+          window.addEventListener('resize', onScroll);
+          requestAnimationFrame(fromScroll);
+        }
+      }
+    };
+    Array.prototype.forEach.call(jbtns, function (b) {
+      b.addEventListener('click', function () {
+        var n = Number(b.getAttribute('data-step'));
+        if (mode === 'scroll') {
+          var top = track.getBoundingClientRect().top + window.pageYOffset + ((n - 1) / 5 + 0.02) * span();
+          window.scrollTo({ top: top, behavior: 'smooth' });
+        } else if (mode === 'tap') {
+          setStep(n);
+        }
+      });
+    });
+    if (jnext) jnext.addEventListener('click', function () { setStep(step === 5 ? 1 : step + 1); });
+    if (mq && mq.addEventListener) mq.addEventListener('change', apply);
+    apply();
+  }
+
+  /* ---------- hero: the paper sheets behind the calculator drift a few pixels with a mouse; touch and reduced motion get none ---------- */
+  var sheets = document.querySelector('[data-sheets]');
+  var heroEl = document.querySelector('.hero');
+  if (sheets && heroEl && !reduce && window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    var tx = 0, ty = 0, cx = 0, cy = 0, raf = 0;
+    var glide = function () {
+      cx += (tx - cx) * 0.12;
+      cy += (ty - cy) * 0.12;
+      sheets.style.setProperty('--px', cx.toFixed(3));
+      sheets.style.setProperty('--py', cy.toFixed(3));
+      raf = Math.abs(tx - cx) > 0.002 || Math.abs(ty - cy) > 0.002 ? requestAnimationFrame(glide) : 0;
+    };
+    heroEl.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var r = heroEl.getBoundingClientRect();
+      tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
+      ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      if (!raf) raf = requestAnimationFrame(glide);
+    });
+    heroEl.addEventListener('pointerleave', function () {
+      tx = 0; ty = 0;
+      if (!raf) raf = requestAnimationFrame(glide);
+    });
+  }
 
   /* ---------- contents list: open on wide screens, closed on phones ---------- */
   var toc = document.querySelector('[data-toc]');

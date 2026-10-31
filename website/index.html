@@ -35,6 +35,9 @@
       </div>
     </div>
 
+    <div class="calc-wrap" data-sheets>
+    <span class="sheet sheet--b" aria-hidden="true"></span>
+    <span class="sheet sheet--a" aria-hidden="true"></span>
     <form class="calc" id="calc-form" novalidate aria-labelledby="calc-h" autocomplete="off">
       <h2 class="visually-hidden" id="calc-h">Split calculator</h2>
       <div class="calc__grid">
@@ -89,9 +92,98 @@
         <li class="row"><input class="row__name" type="text" value="Meera" aria-label="Name of person 3" disabled data-needs-js><output class="row__amt num">&#8377;33.33</output><span class="row__note">pays <bdi>Asha</bdi> &#8377;33.33</span></li>
       </ol>
 
+      <p class="calc__sum num" id="calc-sum">&#8377;33.34 + &#8377;33.33 + &#8377;33.33 = &#8377;100.00</p>
+
       <p class="calc__status" id="calc-status" role="status" aria-live="polite" data-state="ok"><strong>Shares add up to &#8377;100.00.</strong> Ravi pays Asha &#8377;33.33. Meera pays Asha &#8377;33.33.</p>
       <p class="calc__nojs">This is a saved example. Turn on JavaScript to change it.</p>
     </form>
+    </div>
+  </div>
+</section>
+
+<section class="journey" id="journey" aria-labelledby="journey-h" data-journey>
+  <div class="journey__track">
+    <div class="journey__sticky">
+      <div class="container journey__grid">
+        <div class="journey__text">
+          <h2 id="journey-h">One bill, from entry to settled.</h2>
+          <ol class="jsteps" data-jsteps>
+            <li><button type="button" data-step="1" disabled><span class="n" aria-hidden="true">1</span><span class="jt"><b>Add the expenses.</b><span class="d"><span>A weekend away. Asha pays the hotel, Ravi the dinner, Meera the cab.</span></span></span></button></li>
+            <li><button type="button" data-step="2" disabled><span class="n" aria-hidden="true">2</span><span class="jt"><b>Share them out.</b><span class="d"><span>Each cost is split equally between the four of them.</span></span></span></button></li>
+            <li><button type="button" data-step="3" disabled><span class="n" aria-hidden="true">3</span><span class="jt"><b>See who is ahead.</b><span class="d"><span>Everything nets into one balance each. Asha is owed &#8377;3,700.</span></span></span></button></li>
+            <li><button type="button" data-step="4" disabled><span class="n" aria-hidden="true">4</span><span class="jt"><b>Fewer payments.</b><span class="d"><span>Nine payments if each cost were settled alone. Three once the balances are netted.</span></span></span></button></li>
+            <li><button type="button" data-step="5" disabled><span class="n" aria-hidden="true">5</span><span class="jt"><b>Record the settlement.</b><span class="d"><span>When someone pays, mark it settled. Kinlo keeps the record. The money moves outside the app.</span></span></span></button></li>
+          </ol>
+        </div>
+
+        <div class="ledger" role="group" aria-label="Example ledger: a Goa weekend, four people" data-ledger data-step="5">
+          <p class="ledger__top"><b>Goa weekend</b><span>Example, not a real group</span></p>
+
+          <section class="lg lg--exp" aria-labelledby="lg-exp">
+            <h3 id="lg-exp">Expenses</h3>
+            <ul>
+              <li><span class="nm">Hotel</span><span class="by"><bdi>Asha</bdi> paid</span><b class="amt">&#8377;6,000</b><span class="sh">&#8377;1,500 each</span></li>
+              <li><span class="nm">Dinner</span><span class="by"><bdi>Ravi</bdi> paid</span><b class="amt">&#8377;2,000</b><span class="sh">&#8377;500 each</span></li>
+              <li><span class="nm">Cab</span><span class="by"><bdi>Meera</bdi> paid</span><b class="amt">&#8377;1,200</b><span class="sh">&#8377;300 each</span></li>
+            </ul>
+          </section>
+
+          <div class="ledger__cols">
+            <section class="lg lg--bal" aria-labelledby="lg-bal">
+              <h3 id="lg-bal">Balances</h3>
+              <ul>
+                <li><bdi>Asha</bdi><span>gets back <b class="amt">&#8377;3,700</b></span></li>
+                <li><bdi>Ravi</bdi><span>owes <b class="amt">&#8377;300</b></span></li>
+                <li><bdi>Meera</bdi><span>owes <b class="amt">&#8377;1,100</b></span></li>
+                <li><bdi>Dev</bdi><span>owes <b class="amt">&#8377;2,300</b></span></li>
+              </ul>
+              <p class="lg__sum">Total &#8377;9,200. Each share &#8377;2,300.</p>
+            </section>
+
+            <section class="lg lg--pay" aria-labelledby="lg-pay">
+              <h3 id="lg-pay">Payments</h3>
+              <ul>
+                <li><span><bdi>Ravi</bdi> pays <bdi>Asha</bdi></span><b class="amt">&#8377;300</b><span class="st"><span class="st__a">To pay</span><span class="st__b">Settled</span></span></li>
+                <li><span><bdi>Meera</bdi> pays <bdi>Asha</bdi></span><b class="amt">&#8377;1,100</b><span class="st"><span class="st__a">To pay</span><span class="st__b">Settled</span></span></li>
+                <li><span><bdi>Dev</bdi> pays <bdi>Asha</bdi></span><b class="amt">&#8377;2,300</b><span class="st"><span class="st__a">To pay</span><span class="st__b">Settled</span></span></li>
+              </ul>
+              <p class="lg__sum">3 payments, not 9.</p>
+            </section>
+          </div>
+
+          <p class="ledger__note">Marked settled in Kinlo. The money itself moved outside it, in a UPI app or in cash.</p>
+          <div class="ledger__ctl"><button class="link-btn" type="button" data-journey-next hidden>Next step</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="ways-h">
+  <div class="container split">
+    <div class="split__text" data-reveal>
+      <h2 id="ways-h">Four ways to share one bill.</h2>
+      <p>The same &#8377;1,000 dinner between Asha, Ravi and Meera. Pick a way and watch the shares change. The three that are not equal use numbers chosen so no paisa is left over.</p>
+    </div>
+    <div class="ways" data-ways data-reveal>
+      <fieldset class="ways__pick">
+        <legend>Split type</legend>
+        <div class="seg seg--grow" role="group" aria-label="Split type">
+          <input type="radio" name="way" id="w-eq" value="equal" checked disabled data-needs-js><label for="w-eq">Equal</label>
+          <input type="radio" name="way" id="w-ex" value="exact" disabled data-needs-js><label for="w-ex">Exact</label>
+          <input type="radio" name="way" id="w-pc" value="percent" disabled data-needs-js><label for="w-pc">Percent</label>
+          <input type="radio" name="way" id="w-sh" value="shares" disabled data-needs-js><label for="w-sh">Shares</label>
+        </div>
+      </fieldset>
+      <p class="ways__why" id="ways-why">Everyone pays the same. The extra paisa goes to the first people in the list.</p>
+      <ol class="wrows" aria-describedby="ways-why">
+        <li><bdi class="w__name">Asha</bdi><span class="w__in">equal</span><output class="w__amt num">&#8377;333.34</output><span class="w__bar" aria-hidden="true"><i></i></span></li>
+        <li><bdi class="w__name">Ravi</bdi><span class="w__in">equal</span><output class="w__amt num">&#8377;333.33</output><span class="w__bar" aria-hidden="true"><i></i></span></li>
+        <li><bdi class="w__name">Meera</bdi><span class="w__in">equal</span><output class="w__amt num">&#8377;333.33</output><span class="w__bar" aria-hidden="true"><i></i></span></li>
+      </ol>
+      <p class="ways__sum num" role="status" aria-live="polite">&#8377;333.34 + &#8377;333.33 + &#8377;333.33 = &#8377;1,000.00</p>
+      <p class="small">Example numbers, set by us. Try your own in the calculator at the top.</p>
+    </div>
   </div>
 </section>
 
@@ -101,9 +193,7 @@
       <h2 id="tour-h">Circles, friends, and who paid.</h2>
       <ul class="tour__list">
         <li><b>Circles and friends.</b> Split with a group or one person.</li>
-        <li><b>Four ways to split.</b> Equal, exact amounts, percentages or shares.</li>
-        <li><b>Fewer payments.</b> A circle&rsquo;s debts are netted down to fewer transfers.</li>
-        <li><b>Settle in your UPI app.</b> Kinlo keeps the record and never holds your money.</li>
+        <li><b>Settle outside the app.</b> Kinlo keeps the record and never holds your money.</li>
         <li><b>Repeating expenses.</b> Rent comes back every week, month or year.</li>
       </ul>
     </div>
@@ -118,10 +208,10 @@
   <div class="container split">
     <div class="split__text" data-reveal>
       <h2 id="scan-h">Screenshot in, expense out.</h2>
-      <p>An AI service reads your UPI or bank payment screenshot. You check the result.</p>
+      <p>An AI service reads your UPI or bank payment screenshot into a personal expense. You check it before you rely on it. It does not create a shared expense.</p>
       <p class="small">Free plan: 3 scans a month.</p>
     </div>
-    <figure class="demo demo--receipt" data-state="ready" data-paused="false" aria-labelledby="scan-cap">
+    <figure class="demo demo--receipt" data-state="done" aria-labelledby="scan-cap">
       <div class="demo__stage">
         <div class="pane" aria-hidden="true">
           <p class="pane__title small">Payment screenshot</p>
@@ -140,11 +230,11 @@
           <span class="badge" data-demo-last>Needs review</span>
         </div>
       </div>
+      <p class="visually-hidden">Example: a payment screenshot from Example Cafe, &#8377;480.00 on 24 Oct, becomes a personal expense with the same amount, merchant and date, marked Needs review.</p>
       <div class="demo__bar">
         <figcaption id="scan-cap">Demo, not live: nothing is uploaded and the cafe is made up.</figcaption>
         <div class="demo__ctl">
-          <button class="link-btn" type="button" data-demo-pause aria-pressed="false">Stop</button>
-          <button class="link-btn" type="button" data-demo-replay>Replay</button>
+          <button class="link-btn" type="button" data-demo-play>Play demo</button>
         </div>
       </div>
     </figure>
@@ -153,7 +243,7 @@
 
 <section class="section section--tall" aria-labelledby="nudge-h">
   <div class="container split split--flip">
-    <figure class="demo demo--remind" data-state="ready" data-paused="false" aria-labelledby="nudge-cap">
+    <figure class="demo demo--remind" data-state="done" aria-labelledby="nudge-cap">
       <div class="demo__stage">
         <div class="friend" aria-hidden="true">
           <span class="friend__av">R</span>
@@ -168,17 +258,17 @@
           <p class="notif__text">Asha reminded you about &#8377;33.33 you owe them.</p>
         </div>
       </div>
+      <p class="visually-hidden">Example: Ravi owes Asha &#8377;33.33. Asha taps Send reminder. Ravi sees: Asha reminded you about &#8377;33.33 you owe them.</p>
       <div class="demo__bar">
         <figcaption id="nudge-cap">Demo, not live. Reminder notifications are not working in the current preview APK yet.</figcaption>
         <div class="demo__ctl">
-          <button class="link-btn" type="button" data-demo-pause aria-pressed="false">Stop</button>
-          <button class="link-btn" type="button" data-demo-replay>Replay</button>
+          <button class="link-btn" type="button" data-demo-play>Play demo</button>
         </div>
       </div>
     </figure>
     <div class="split__text" data-reveal>
       <h2 id="nudge-h">A nudge that does the chasing.</h2>
-      <p>Tap Send reminder on a friend who owes you. One a day, per person.</p>
+      <p>Tap Send reminder on a friend who owes you. One a day, per person. Kinlo records who owes what. It does not move money.</p>
     </div>
   </div>
 </section>

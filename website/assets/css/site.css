@@ -1,8 +1,8 @@
 /* Hallmark · shape: Workbench hero, ledger sections, one dark band · genre: modern-minimal · theme: custom · job: try · idea: "a bill that comes apart into exact shares, shown on a ledger" · vibe: "warm, calm, exact, a little bookish"
- * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the product (the working calculator, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and adds up to the paisa
+ * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the product (the working calculator over two ruled sheets, a scroll-stepped example ledger, a split-types demo, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and shows the addition to the paisa
  * axes: light/roman-serif/chromatic-green · posture: Committed · contrast: pass · fold: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: S, the split-and-ledger idea is shared by every bill splitter; moved the proof into exact paise arithmetic and honest limits (a staged demo is labelled, a missing notification is stated) */
-/* Hallmark · waive 84 · the two staged demos show a server-side AI step and a push notification that a static page cannot call · a mock is the only honest way to show them, and each is labelled as a demo */
+/* Hallmark · waive 84 · the two staged demos, the scroll-stepped ledger and the split-types demo show a server-side AI step, a push notification and app behaviour that a static page cannot call · a mock is the only honest way to show them, and each is labelled a demo or an example with numbers set by us */
 /* Hallmark · dismissed 58 · the privacy and terms pages are legal documents whose words are the disclosures, so cutting them to 80 per screen would remove facts a reader is owed; the landing page holds the budget */
 @import url("./tokens.css");
 @import url("./base.css");
@@ -53,7 +53,7 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
 
 /* hero */
-.hero { background: linear-gradient(180deg, var(--color-paper-3) 0%, var(--color-paper) 72%); padding-bottom: var(--space-2xl); }
+.hero { overflow-x: clip; background: linear-gradient(180deg, var(--color-paper-3) 0%, var(--color-paper) 72%); padding-bottom: var(--space-2xl); }
 .hero__grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--space-2xl); align-items: start; padding-top: var(--space-xl); }
 .hero__text { display: flex; flex-direction: column; gap: var(--space-lg); padding-top: var(--space-lg); }
 .hero__text .actions { margin-top: var(--space-xs); }
@@ -164,7 +164,6 @@ html:not(.js) .demo__ctl { display: none; }
 .demo[data-state="playing"] .hit--3 { animation: hit 0.9s var(--ease-out) 1.4s both; }
 .demo[data-state="playing"] .fld { animation: land 0.55s var(--ease-out) both; animation-delay: calc(2.2s + var(--i, 0) * 0.3s); }
 .demo[data-state="playing"] .badge { animation: land 0.55s var(--ease-out) 3.6s both; }
-.demo[data-paused="true"] *, .demo[data-paused="true"] *::before, .demo[data-paused="true"] *::after { animation-play-state: paused !important; }
 @keyframes scan { 0% { opacity: 0; transform: translateY(-100%); } 12% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; transform: translateY(500%); } }
 @keyframes hit { 0% { box-shadow: 0 0 0 2px transparent; } 30% { box-shadow: 0 0 0 2px var(--color-accent-2); } 100% { box-shadow: 0 0 0 2px var(--color-accent-2); } }
 @keyframes land { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
@@ -186,6 +185,80 @@ html:not(.js) .demo__ctl { display: none; }
 .demo[data-state="playing"] .notif { animation: drop 0.6s var(--ease-out) 1.8s both; }
 @keyframes press { 0% { transform: none; } 40% { transform: translateY(1px) scale(0.97); } 100% { transform: none; } }
 @keyframes drop { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+
+/* hero sheets: two ruled sheets sit behind the calculator and shift a few pixels with a mouse; the calculator never moves */
+.calc-wrap { position: relative; isolation: isolate; }
+.calc-wrap > .calc { position: relative; z-index: 1; }
+.sheet { position: absolute; inset: 0; z-index: 0; border-radius: var(--radius-card); pointer-events: none; will-change: transform; }
+.sheet--a { background: var(--color-paper-3); outline: 1px solid var(--color-rule); outline-offset: -1px; transform: translate3d(calc(12px + var(--px, 0) * 7px), calc(12px + var(--py, 0) * 7px), 0); }
+.sheet--b { background: repeating-linear-gradient(180deg, var(--color-tint) 0 27px, var(--color-rule) 27px 28px); transform: translate3d(calc(24px + var(--px, 0) * 14px), calc(24px + var(--py, 0) * 14px), 0); }
+.calc__sum { margin: var(--space-sm) 0 0; min-height: 1.5em; font-size: var(--text-sm); font-weight: 500; color: var(--color-ink-2); overflow-wrap: anywhere; }
+
+/* journey: one example ledger, five steps. Scroll moves the steps on wide, tall screens; the buttons do the same anywhere. */
+.journey { background: var(--color-paper-2); }
+.journey__grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: var(--space-2xl); align-items: center; padding-block: var(--section-gap-s); }
+.journey__text h2 { max-width: 14ch; }
+.jsteps { margin: var(--space-lg) 0 0; padding: 0; list-style: none; display: grid; gap: var(--space-2xs); }
+.jsteps button { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--space-sm); width: 100%; padding: var(--space-sm) var(--space-md); border: 0; border-left: 2px solid var(--color-rule); background: transparent; color: var(--color-ink-2); font: 500 var(--text-md)/1.4 var(--font-body); text-align: left; cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out); }
+.jsteps button:hover:not(:disabled) { background: var(--color-paper-3); }
+.jsteps button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.jsteps button:disabled { cursor: default; }
+.jsteps button[aria-current="step"] { border-left-color: var(--color-accent); color: var(--color-ink); }
+.jsteps .n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-accent); }
+.jsteps .jt, .jsteps .d, .jsteps .d > span { display: block; }
+.jsteps b { display: block; color: var(--color-ink); font-weight: 600; }
+.is-stepped .jsteps .d { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-long) var(--ease-out); }
+.is-stepped .jsteps .d > span { min-height: 0; overflow: hidden; }
+.is-stepped .jsteps [aria-current="step"] .d { grid-template-rows: 1fr; }
+.link-btn[hidden] { display: none; }
+.journey.is-scroll .journey__track { height: 420vh; }
+.journey.is-scroll .journey__sticky { position: sticky; top: 0; height: 100vh; height: 100svh; display: flex; align-items: center; }
+.journey.is-scroll .journey__grid { padding-block: var(--space-xl); }
+
+.ledger { padding: var(--space-lg); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-card); outline: 1px solid var(--color-rule); outline-offset: -1px; font-variant-numeric: tabular-nums; }
+.ledger__top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2xs) var(--space-md); margin: 0 0 var(--space-md); font-size: var(--text-sm); color: var(--color-ink-2); }
+.ledger__top b { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-display); color: var(--color-ink); }
+.ledger__cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-xl); margin-top: var(--space-lg); }
+.lg h3 { margin: 0; padding-bottom: var(--space-2xs); border-bottom: 2px solid var(--color-rule); font: 600 var(--text-sm)/1.3 var(--font-body); letter-spacing: 0; color: var(--color-ink-2); transition: border-color var(--dur-long) var(--ease-out), color var(--dur-long) var(--ease-out); }
+.ledger[data-focus="exp"] .lg--exp h3, .ledger[data-focus="bal"] .lg--bal h3, .ledger[data-focus="pay"] .lg--pay h3 { border-bottom-color: var(--color-accent); color: var(--color-accent); }
+.lg ul { margin: 0; padding: 0; list-style: none; }
+.lg li { padding: var(--space-xs) 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
+.lg .amt { font-weight: 600; text-align: right; }
+.lg--exp li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto 7rem; gap: var(--space-sm); align-items: baseline; }
+.lg--exp .nm { font-weight: 600; }
+.lg--exp .by, .lg--exp .sh { font-size: var(--text-sm); color: var(--color-ink-2); }
+.lg--exp .sh { text-align: right; }
+.lg--bal li { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); }
+.lg--bal li > bdi { font-weight: 600; }
+.lg--pay li { display: grid; grid-template-columns: minmax(0, 1fr) auto 4.75rem; gap: var(--space-sm); align-items: baseline; }
+.st { display: grid; justify-items: end; font-size: var(--text-sm); }
+.st > span { grid-area: 1 / 1; transition: opacity var(--dur-short) var(--ease-out); }
+.st__a { color: var(--color-ink-2); }
+.st__b { padding: 0 var(--space-xs); border-radius: var(--space-2xs); background: var(--color-tint); color: var(--color-accent); font-weight: 600; opacity: 0; }
+.ledger[data-step="5"] .st__a { opacity: 0; }
+.ledger[data-step="5"] .st__b { opacity: 1; }
+.lg__sum { margin: var(--space-xs) 0 0; font-size: var(--text-sm); color: var(--color-ink-2); }
+.ledger__note { margin: var(--space-lg) 0 0; padding-top: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); color: var(--color-ink-2); }
+.ledger__ctl { margin-top: var(--space-xs); }
+.lg--exp .sh, .lg--bal, .lg--pay, .ledger__note { transition: opacity var(--dur-long) var(--ease-out), transform var(--dur-long) var(--ease-out); }
+.is-stepped .ledger[data-step="1"] .sh { opacity: 0; }
+.is-stepped .ledger:is([data-step="1"], [data-step="2"]) .lg--bal { opacity: 0; transform: translateY(8px); }
+.is-stepped .ledger:is([data-step="1"], [data-step="2"], [data-step="3"]) .lg--pay { opacity: 0; transform: translateY(8px); }
+.is-stepped .ledger:not([data-step="5"]) .ledger__note { opacity: 0; }
+
+/* four ways to share one bill */
+.ways { display: grid; gap: var(--space-md); }
+.ways fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.ways legend { display: block; margin: 0 0 var(--space-2xs); padding: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-ink-2); }
+.ways__why { margin: 0; min-height: 3em; max-width: 52ch; font-size: var(--text-md); color: var(--color-ink-2); }
+.wrows { margin: 0; padding: 0; list-style: none; border-top: var(--rule-hair) solid var(--color-ink); }
+.wrows li { display: grid; grid-template-columns: minmax(0, 1fr) auto 7rem; column-gap: var(--space-md); align-items: baseline; padding: var(--space-sm) 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
+.w__name { font-weight: 600; }
+.w__in { font-size: var(--text-sm); color: var(--color-ink-2); text-align: right; }
+.w__amt { text-align: right; font-size: var(--text-lg); font-weight: 600; }
+.w__bar { grid-column: 1 / -1; display: block; height: 6px; margin-top: var(--space-xs); border-radius: 3px; background: var(--color-paper-3); overflow: hidden; }
+.w__bar i { display: block; height: 100%; background: var(--color-accent-2); transform: scaleX(var(--w, 0.3333)); transform-origin: left; transition: transform var(--dur-long) var(--ease-out); }
+.ways__sum { margin: 0; font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; }
 
 /* what differs */
 .diff { margin: var(--space-xl) 0 0; padding: 0; border-top: var(--rule-hair) solid var(--color-ink); }
@@ -255,7 +328,7 @@ html:not(.js) .demo__ctl { display: none; }
 
 /* focus on dark and small-screen layout */
 @media (max-width: 60rem) {
-  .hero__grid, .split, .split--flip, .tour, .band__grid, .doc__grid { grid-template-columns: minmax(0, 1fr); }
+  .hero__grid, .split, .split--flip, .tour, .band__grid, .doc__grid, .journey__grid { grid-template-columns: minmax(0, 1fr); }
   .hero__grid { gap: var(--space-xl); padding-top: var(--space-md); }
   .hero__text { padding-top: 0; }
   h1 { max-width: 16ch; }
@@ -264,10 +337,21 @@ html:not(.js) .demo__ctl { display: none; }
   .diff__row { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
   .doc__grid { gap: var(--space-md); padding-top: var(--space-lg); }
   .split--flip .demo { order: 2; }
+  .journey__grid { gap: var(--space-xl); padding-block: var(--section-gap-s) var(--space-2xl); }
 }
 @media (max-width: 40rem) {
   .hero__text .actions .btn, .band__text .actions .btn { width: 100%; }
   .calc { padding: var(--space-md); }
+  .sheet--b { display: none; }
+  .sheet--a { transform: translate3d(6px, 6px, 0); }
+  .ledger { padding: var(--space-md); }
+  .ledger__cols { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
+  .lg--exp li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "nm amt" "by sh"; row-gap: 0; }
+  .lg--exp .nm { grid-area: nm; } .lg--exp .amt { grid-area: amt; } .lg--exp .by { grid-area: by; } .lg--exp .sh { grid-area: sh; }
+  .wrows li { grid-template-columns: minmax(0, 1fr) auto; }
+  .w__in { grid-column: 1; grid-row: 2; text-align: left; }
+  .w__amt { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .w__bar { grid-row: 3; }
   .calc__row2 { grid-template-columns: minmax(0, 1fr); }
   .demo--receipt .demo__stage { grid-template-columns: minmax(0, 1fr); }
   .demo__stage { padding: var(--space-md); }
@@ -288,6 +372,10 @@ html:not(.js) .demo__ctl { display: none; }
   .data td:first-child::before { content: none; }
 }
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .w__bar i, .lg h3, .jsteps button, .st > span { transition: none; }
+  .sheet { transform: translate3d(12px, 12px, 0); }
+  .sheet--b { transform: translate3d(24px, 24px, 0); }
   .js [data-reveal] { opacity: 1; transform: none; transition: none; }
   .js .demo[data-state] .fld, .js .demo[data-state] .badge, .js .demo[data-state] .notif, .js .demo[data-state] .friend__main { opacity: 1; transform: none; animation: none; }
   .demo[data-state] .scan__bar, .demo[data-state] .hit, .demo[data-state] .friend .btn { animation: none; }
