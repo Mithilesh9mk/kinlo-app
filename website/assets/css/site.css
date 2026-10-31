@@ -105,8 +105,8 @@ output.row__amt { display: block; padding-right: 0; }
 .input.row__amt { min-height: 2.75rem; padding: 0 var(--space-sm); }
 .row__note { grid-column: 1 / -1; min-width: 0; font-size: var(--text-sm); color: var(--color-ink-2); overflow-wrap: anywhere; }
 .row__note bdi { font-weight: 600; }
-.calc__status { margin-top: var(--space-md); min-height: 3.25rem; padding: var(--space-sm) var(--space-md); border-radius: var(--radius-input); background: var(--color-paper-2); font-size: var(--text-sm); line-height: 1.5; color: var(--color-ink); }
-.calc__status[data-state="mismatch"], .calc__status[data-state="invalid"] { background: var(--color-paper-3); color: var(--color-ink); }
+.calc__status { margin-top: var(--space-md); min-height: 3.25rem; padding: var(--space-sm) 0; border-top: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); line-height: 1.5; color: var(--color-ink); }
+.calc__status[data-state="mismatch"], .calc__status[data-state="invalid"] { color: var(--color-ink); }
 .calc__status[data-state="mismatch"] b, .calc__status[data-state="invalid"] b { color: var(--color-error); }
 .calc__nojs { margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--color-ink-2); }
 .js .calc__nojs { display: none; }
