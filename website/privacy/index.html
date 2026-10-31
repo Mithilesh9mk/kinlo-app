@@ -65,7 +65,7 @@
         <tbody>
           <tr><td>Sign-in</td><td data-label="What">Your email address, and a password or Google sign-in.</td><td data-label="Why">To create and secure your account. Supabase Authentication handles the password. With Google sign-in, Google shares your email and basic profile with it.</td></tr>
           <tr><td>Profile</td><td data-label="What">Your name, an optional phone number, an avatar you pick and an optional UPI ID.</td><td data-label="Why">To show you to friends and to pre-fill a payment in your UPI app.</td></tr>
-          <tr><td>Expenses and balances</td><td data-label="What">Amounts, descriptions, categories, dates, who paid, each person&rsquo;s share, circles, settlements and an activity log.</td><td data-label="Why">To work out who owes whom and show it to the people involved.</td></tr>
+          <tr><td>Expenses and balances</td><td data-label="What">Amounts, descriptions, categories, dates, who paid, each person&rsquo;s share, circles, settlements, repeating expenses and an activity log.</td><td data-label="Why">To work out who owes whom and show it to the people involved.</td></tr>
           <tr><td>People you add</td><td data-label="What">The name, and phone number if you enter it, of someone who has not joined Kinlo.</td><td data-label="Why">So you can record expenses with them before they install.</td></tr>
           <tr><td>Personal spending and reminders</td><td data-label="What">Entries and reminders you keep for yourself.</td><td data-label="Why">For your own tracking. Only you can see them.</td></tr>
           <tr><td>Payment screenshots</td><td data-label="What">The image you scan, the text read from it, and the amount, merchant, date and category found.</td><td data-label="Why">See &ldquo;Scanning a payment screenshot&rdquo; below.</td></tr>
@@ -82,7 +82,7 @@
         <li>The AI service gets the image and a fixed instruction that includes today&rsquo;s date. It does not get your name, email or account ID.</li>
         <li>Kinlo asks Anthropic&rsquo;s Claude first. If that fails or looks unsure, it may ask Google&rsquo;s Gemini, then a larger Claude model.</li>
         <li>What comes back (amount, merchant, date, category and the text on the image) is saved on your personal entry. Check it before you save.</li>
-        <li>We do not keep the AI conversation. Our server logs record errors only, and an error log can include a short piece of the provider&rsquo;s reply. They never include your image.</li>
+        <li>We do not keep the AI conversation. Our server logs note which AI service was called and any errors. An error log can include a short piece of the provider&rsquo;s reply. They never include your image.</li>
         <li>Each AI company handles the images it receives under its own terms, and we do not control how long it keeps them. Do not scan screenshots that show card numbers or anything you do not want processed.</li>
         <li>In this preview, removing an entry does not remove its image. Deleting your account does.</li>
         <li>The free plan allows 3 scans a month, also counted per app install. Gold allows 125.</li>
@@ -91,7 +91,7 @@
       <h2 id="contacts">Your contacts</h2>
       <ul>
         <li>When you add a friend, Android&rsquo;s own contact picker opens. You choose one person, and only that person&rsquo;s name and number are used.</li>
-        <li>Contact sync is off until you turn it on. If you do, phone numbers from your contacts (the last ten digits) are sent to our server and checked against Kinlo accounts. Names stay on your phone. The numbers are used to look for matches and are not stored.</li>
+        <li>Contact sync is off until you turn it on. If you do, phone numbers from your contacts (the last ten digits) are sent to our server and checked against Kinlo accounts. Names stay on your phone. The numbers are used to look for matches and are not stored. Kinlo does remember which accounts matched, so that you can add them as friends.</li>
         <li>You can turn contact sync off in Profile.</li>
         <li>If someone has your number in their contacts and uses contact sync, or types your number to add you, they can see that you use Kinlo, with your name, avatar and phone number.</li>
       </ul>
@@ -99,6 +99,7 @@
       <h2 id="see">Who can see your data</h2>
       <ul>
         <li>People in a shared expense or circle see that expense, its amount, the balance between you, and your name and avatar. That is the point of the app.</li>
+        <li>If you send a friend a payment reminder, they get a notification with your name and the amount they owe you.</li>
         <li>Your personal spending entries and reminders are visible only to you.</li>
         <li>As the person who runs Kinlo, we can technically reach the database to fix problems. We do not browse it for any other reason.</li>
       </ul>
@@ -146,7 +147,7 @@
       <p>Kinlo is for people aged 18 and over. We do not knowingly collect data from anyone younger. If you think a child has an account, email us and we will remove it.</p>
 
       <h2 id="changes">Changes</h2>
-      <p>If we change this policy in a way that matters, we will change the date at the top and tell you in the app or by email.</p>
+      <p>If we change this policy in a way that matters, we will change the date at the top and the version, and try to tell you in the app first.</p>
 
       <h2 id="contact">Contact and grievances</h2>
       <p>For questions, requests or complaints, use the email address at the foot of this page. The grievance contact is Mithilesh Kale.</p>
