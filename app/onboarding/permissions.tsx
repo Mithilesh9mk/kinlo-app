@@ -206,7 +206,7 @@ export default function PermissionsScreen() {
               <View className="flex-1">
                 <Text className="font-bold text-sm text-primary">Notifications</Text>
                 <Text className="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
-                  Know the moment a friend adds an expense or settles up with you.
+                  Lets Kinlo notify you when a friend adds an expense, settles up with you or sends a reminder.
                 </Text>
                 {statusLine(notifState) && (
                   <Text className="text-xs font-bold mt-1" style={{ color: notifState === 'granted' ? '#004c22' : '#b45309' }}>

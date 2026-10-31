@@ -211,7 +211,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Children',
       body: [
-        'Kinlo is for people aged 18 and over. We do not knowingly collect data from anyone younger. If you think a child has an account, email us and we will remove it.',
+        'Kinlo is for people aged 18 and over, and creating an account confirms that you are. We do not knowingly collect data from anyone younger. If you think a child has an account, email us and we will remove it.',
       ],
     },
     {
@@ -251,7 +251,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     {
       heading: 'Your account',
       body: [
-        'You must be 18 or older.',
+        'You must be 18 or older. By creating an account you confirm that you are.',
         'Give accurate information and keep your sign-in details safe. You are responsible for what is entered from your account.',
         'One person, one account. Do not pretend to be someone else.',
         'We recommend turning on two-factor sign-in.',
