@@ -265,7 +265,7 @@ html:not(.js) .demo__ctl { display: none; }
 .is-stepped .ledger:not([data-step="5"]) .ledger__note { opacity: 0; }
 
 /* four ways to share one bill: the bars are real range inputs, so they work by drag, touch and arrow keys */
-@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 33.33%; }
+@property --fill { syntax: "<percentage>"; inherits: true; initial-value: 33.33%; }
 .ways { display: grid; gap: var(--space-md); }
 .ways__top { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-md); }
 .ways fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }

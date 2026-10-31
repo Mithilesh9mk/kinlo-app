@@ -390,6 +390,7 @@
     var wReset = ways.querySelector('[data-ways-reset]');
     var wReady = false;
     var wLive = ways.querySelector('#ways-live');
+    var dragBase = null; /* the values at the start of the current drag */
     var WHY = {
       equal: 'Everyone pays the same. The extra paisa goes to the first people in the list.',
       exact: 'You enter each amount, and the amounts must add up to the bill. Drag one bar and the others share out what is left.',
@@ -439,10 +440,10 @@
     };
 
     ways.addEventListener('change', function (e) {
-      if (e.target.name === 'way') { st.mode = e.target.value; renderWays(); }
+      if (e.target.name === 'way') { dragBase = null; st.mode = e.target.value; renderWays(); }
     });
     /* screen readers hear the result once per finished change, not on every pixel of a drag */
-    ways.addEventListener('change', function () { wLive.textContent = wSum.textContent; });
+    ways.addEventListener('change', function () { dragBase = null; wLive.textContent = wSum.textContent; });
     ways.addEventListener('input', function (e) {
       var t = e.target;
       if (t === wTotal) {
@@ -450,15 +451,16 @@
         var code = v.ok ? (v.paise <= 0 ? 'zero' : (v.paise > WMAX ? 'big' : 'ok')) : v.code;
         wHelp.textContent = code === 'ok' || code === 'empty' ? '' : WMSG[code];
         t.setAttribute('aria-invalid', code === 'ok' || code === 'empty' ? 'false' : 'true');
-        if (code === 'ok') { st.exact = alloc(v.paise, st.exact); st.total = v.paise; renderWays(); }
+        if (code === 'ok') { dragBase = null; st.exact = alloc(v.paise, st.exact); st.total = v.paise; renderWays(); }
         return;
       }
       if (!t.classList || !t.classList.contains('w__range')) return;
       var i = Array.prototype.indexOf.call(wRows, t.parentNode);
       var n = Number(t.value);
-      if (st.mode === 'percent') st.pct = pin(st.pct, i, n, 100);
+      /* the others are always shared out from where they stood when the drag began, so dragging back restores them exactly */
+      if (st.mode === 'percent') { if (!dragBase) dragBase = st.pct.slice(); st.pct = pin(dragBase, i, n, 100); }
       else if (st.mode === 'shares') st.shr[i] = n;
-      else if (st.mode === 'exact') st.exact = pin(st.exact, i, n, st.total);
+      else if (st.mode === 'exact') { if (!dragBase) dragBase = st.exact.slice(); st.exact = pin(dragBase, i, n, st.total); }
       renderWays();
     });
     wReset.addEventListener('click', function () {
