@@ -291,3 +291,29 @@ test('I: debt simplification conserves every net position',
 
 test('J: mixed currencies are never summed',
   { todo: 'M5 — single-currency system; cannot be satisfied or violated yet' }, () => {});
+
+// ---------------------------------------------------------------------------
+// Tie-break: equal remainders go to the lower index, every time
+// ---------------------------------------------------------------------------
+
+test('percent: an exact remainder tie goes to the earlier participant', () => {
+  // ₹10.72 split 27/52/21: the first two remainders are exactly equal (44 and
+  // 44), so the spare paisa belongs to the first. A floating-point version gave
+  // it to the second.
+  assert.deepEqual(calculatePercentSplit(10.72, [27, 52, 21]), [2.9, 5.57, 2.25]);
+});
+
+test('shares: a remainder tie goes to the earlier participant and the total holds', () => {
+  const split = calculateSharesSplit(0.07, [2, 1, 1]);
+  assert.deepEqual(split, [0.03, 0.02, 0.02]);
+  assert.equal(sumPaise(split), 7);
+});
+
+test('percent and shares always conserve the total, whatever the amount', () => {
+  for (let cents = 1; cents <= 3000; cents += 7) {
+    const pct = calculatePercentSplit(cents / 100, [33.33, 33.33, 33.34]);
+    assert.equal(sumPaise(pct), cents);
+    const shr = calculateSharesSplit(cents / 100, [3, 5, 7, 11]);
+    assert.equal(sumPaise(shr), cents);
+  }
+});
