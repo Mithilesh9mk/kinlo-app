@@ -38,13 +38,14 @@ export const LEGAL_VERSION = '1.0';
 export const LEGAL_EFFECTIVE_DATE = '31 October 2026';
 
 /**
- * TODO(owner): ASSUMPTION, NOT CONFIRMED. "kinlo.app" was written here before
- * any domain was bought. Replace it with the real domain once the site is
- * live (or set it to '' to hide the "Read this on our website" link in the
- * legal screen until then). Nothing else in the app needs to change. The
- * website serves /privacy, /terms and /delete-account.
+ * TODO(owner): no domain is owned yet, so this is empty and the "Read this on
+ * our website" link stays hidden in the legal screen (websiteUrlFor returns
+ * null for an empty value, and app/legal/[doc].tsx only renders the link when
+ * it gets a URL). Set it to the real https origin once the site is live;
+ * nothing else in the app needs to change. The website serves /privacy,
+ * /terms and /delete-account.
  */
-export const PUBLIC_WEBSITE_URL = 'https://kinlo.app';
+export const PUBLIC_WEBSITE_URL = '';
 export const PUBLIC_PRIVACY_URL = `${PUBLIC_WEBSITE_URL}/privacy`;
 export const PUBLIC_TERMS_URL = `${PUBLIC_WEBSITE_URL}/terms`;
 export const PUBLIC_DELETION_URL = `${PUBLIC_WEBSITE_URL}/delete-account`;
@@ -53,11 +54,13 @@ export const PUBLIC_DELETION_URL = `${PUBLIC_WEBSITE_URL}/delete-account`;
 export const GRIEVANCE_OFFICER_NAME = 'Mithilesh Kale';
 
 /**
- * TODO(owner): ASSUMPTION, NOT CONFIRMED. "privacy@kinlo.app" needs the real
- * domain and an inbox you actually read. The website footer still shows a
- * placeholder address; both must end up pointing at the same inbox.
+ * TODO(owner): PLACEHOLDER. hello@example.com is the same placeholder the
+ * website footer uses. Replace it with ONE monitored inbox, identical to the
+ * website footer, BEFORE any release or OTA that includes this file: users are
+ * told to send privacy and deletion requests here. Do not use an address on a
+ * domain you do not own, since whoever registers it would receive them.
  */
-export const GRIEVANCE_EMAIL = 'privacy@kinlo.app';
+export const GRIEVANCE_EMAIL = 'hello@example.com';
 
 /** Website page for each in-app document, or null if the link should be hidden. */
 export function websiteUrlFor(doc: string | undefined): string | null {
@@ -126,10 +129,10 @@ export const PRIVACY_POLICY: LegalDocument = {
         'The AI service gets the image and a fixed instruction that includes today’s date. It does not get your name, email or account ID.',
         'Kinlo asks Anthropic’s Claude first. If that fails or looks unsure, it may ask Google’s Gemini, then a larger Claude model.',
         'What comes back (amount, merchant, date, category and the text on the image) is saved on your personal entry. Check it before you save.',
-        'We do not keep the AI conversation. Our server logs note which AI service was called and any errors. An error log can include a short piece of the provider’s reply. They never include your image.',
+        'We do not keep the AI conversation. Our server logs note which AI service was called, the status it returned, the type of any error and how long the call took. They do not include the provider’s reply, your image or the details read from it.',
         'Each AI company handles the images it receives under its own terms, and we do not control how long it keeps them. Do not scan screenshots that show card numbers or anything you do not want processed.',
         'In this preview, removing an entry does not remove its image. Deleting your account does.',
-        'The free plan allows 3 scans a month, also counted per app install. Gold allows 125.',
+        'The free plan allows 3 scans a month per account, and 6 a month in total across all accounts used on one app install. Gold allows 125.',
       ],
     },
     {
@@ -181,8 +184,8 @@ export const PRIVACY_POLICY: LegalDocument = {
       heading: 'Deleting your account',
       body: [
         'Delete your account in the app from Profile → Data & Export Compliance → Delete Account & Data. The app shows what will be removed and what will stay before you confirm. Outstanding balances do not block deletion. Deleting cannot be undone.',
-        'Erased: your login (email, password and Google link); your name, phone number, avatar, UPI ID and notification token; your personal spending entries, reminders and drafts; your friend links and reminder records; your repeating expenses, plan, coupon and scan records and usage counters; and your scanned payment screenshots. The screenshot clean-up is best effort: if it fails, the rest of the deletion still goes ahead.',
-        'Kept, with your identity removed (your name becomes “Deleted user”): shared expenses and their amounts, who paid, each person’s share and settlements, descriptions you wrote on shared expenses, circle memberships and activity entries. These are also other people’s records. Deleting does not cancel money you owe or are owed.',
+        'Erased: your login (email, password and Google link); your name, phone number, avatar, UPI ID and notification token; your personal spending entries, reminders and drafts; your friend links and reminder records; your repeating expenses, plan, coupon and scan records and usage counters; your scanned payment screenshots; and people you added who have not joined and have no expense history. Screenshots are removed in batches. If a removal fails, the rest of the deletion still goes ahead and we log how many files failed, so you can email us to check.',
+        'Kept, with your identity removed (your name becomes “Deleted user”): shared expenses and their amounts, who paid, each person’s share and settlements, descriptions you wrote on shared expenses, circle memberships and activity entries. People you added who have expense history also stay, with the name and number you entered, because those expenses still need them. These are also other people’s records. Deleting does not cancel money you owe or are owed.',
         `If you cannot open the app, email ${GRIEVANCE_EMAIL} from the address on your account with the subject “Delete my Kinlo account”. We will reply to confirm and aim to finish within 30 days. Never send your password.`,
       ],
     },
@@ -271,7 +274,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
       body: [
         'An AI service reads the screenshot. It can misread or miss details, so check the amount, merchant, date and category before you save. What you save is your responsibility.',
         'Only scan screenshots you have the right to use.',
-        'The free plan includes 3 scans a month, also counted per app install. Gold includes 125. Allowances reset on the 1st of each month (India time) and may change.',
+        'The free plan includes 3 scans a month per account, and 6 a month in total across all accounts used on one app install. Gold includes 125. Allowances reset on the 1st of each month (India time) and may change.',
         'Paid plans are not on sale in the preview. Gold is given by coupon or by us. If that changes, the price and billing terms will be shown in the app before you buy, and these terms will be updated.',
       ],
     },

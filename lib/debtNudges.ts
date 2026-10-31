@@ -62,7 +62,7 @@ export function describeNudgeResult(result: NudgeResult, friendName: string): st
       // and depends on the friend's device having a push token with
       // notifications on. Neither the RPC nor the dispatcher reports whether a
       // push actually arrived, so "sent" would overpromise.
-      return `Reminder saved. ${friendName} will see it when notifications are on for their device.`;
+      return `Reminder saved. We can't confirm it reached ${friendName} yet.`;
     case 'cooldown': {
       const next = result.nextAllowedAt ? new Date(result.nextAllowedAt) : null;
       const when = next && !Number.isNaN(next.getTime())
