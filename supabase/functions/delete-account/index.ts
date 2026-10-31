@@ -94,22 +94,57 @@ serve(async (req) => {
 
     // 2. Receipt images. Best-effort: the account data is already gone, and
     //    failing the whole deletion over leftover files would leave the user
-    //    unable to complete a statutory request. Logged loudly instead.
+    //    unable to complete a statutory request. Counted and logged instead.
+    //
+    //    Paged: one list() call returns at most PAGE_SIZE entries, so a user
+    //    with more files than that used to keep the rest forever. Each pass
+    //    lists, removes what it listed, and moves on. `skip` is the number of
+    //    entries that are still there after a pass (failed removals, folder
+    //    placeholders) so the next list starts after them and a stubborn
+    //    object cannot make this loop forever. MAX_PASSES is a second backstop.
+    //    Only counts are logged: no file names, no user ids.
+    //    'receipts' is the only bucket the app writes per-user (0037).
+    const PAGE_SIZE = 500
+    const MAX_PASSES = 200
+    let storageRemoved = 0
+    let storageFailed = 0
     try {
-      const { data: files, error: listError } = await admin.storage
-        .from('receipts')
-        .list(userId, { limit: 1000 })
+      let skip = 0
+      for (let pass = 0; pass < MAX_PASSES; pass++) {
+        const { data: files, error: listError } = await admin.storage
+          .from('receipts')
+          .list(userId, { limit: PAGE_SIZE, offset: skip })
 
-      if (listError) throw listError
+        if (listError) {
+          storageFailed += 1
+          console.error('Receipt cleanup: list failed:', listError.message)
+          break
+        }
+        if (!files || files.length === 0) break
 
-      if (files && files.length > 0) {
-        const paths = files.map((f) => `${userId}/${f.name}`)
-        const { error: removeError } = await admin.storage.from('receipts').remove(paths)
-        if (removeError) throw removeError
+        // Entries with a null id are folder placeholders, not objects.
+        const objects = files.filter((f) => f.id !== null)
+        const folders = files.length - objects.length
+
+        if (objects.length > 0) {
+          const paths = objects.map((f) => `${userId}/${f.name}`)
+          const { error: removeError } = await admin.storage.from('receipts').remove(paths)
+          if (removeError) {
+            // Keep going: the next page may still be removable.
+            storageFailed += objects.length
+            skip += objects.length
+            console.error('Receipt cleanup: batch remove failed:', removeError.message)
+          } else {
+            storageRemoved += objects.length
+          }
+        }
+        skip += folders
       }
     } catch (storageError) {
-      console.error('Receipt cleanup failed for deleted account:', userId, storageError)
+      storageFailed += 1
+      console.error('Receipt cleanup threw:', (storageError as Error).message)
     }
+    console.log(`Receipt cleanup finished: removed=${storageRemoved} failed=${storageFailed}`)
 
     // 3. The login itself. After this the JWT the caller used is dead.
     const { error: deleteError } = await admin.auth.admin.deleteUser(userId)
@@ -124,7 +159,7 @@ serve(async (req) => {
       }, 500)
     }
 
-    return json({ ok: true })
+    return json({ ok: true, storage_removed: storageRemoved, storage_failed: storageFailed })
   } catch (error) {
     console.error('delete-account error:', error)
     return json({ ok: false, code: 'error', error: (error as Error).message }, 500)

@@ -57,7 +57,12 @@ export async function sendDebtNudge(
 export function describeNudgeResult(result: NudgeResult, friendName: string): string {
   switch (result.reason) {
     case 'sent':
-      return `Reminder sent to ${friendName}.`;
+      // Truthful about what happened: the reminder is recorded (and counts
+      // against the daily limit), but delivery of the push is fire-and-forget
+      // and depends on the friend's device having a push token with
+      // notifications on. Neither the RPC nor the dispatcher reports whether a
+      // push actually arrived, so "sent" would overpromise.
+      return `Reminder saved. ${friendName} will see it when notifications are on for their device.`;
     case 'cooldown': {
       const next = result.nextAllowedAt ? new Date(result.nextAllowedAt) : null;
       const when = next && !Number.isNaN(next.getTime())

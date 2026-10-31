@@ -158,13 +158,13 @@ export default function SettleUpScreen() {
       const { data: authData } = await supabase.auth.getUser();
       
       const finalFriendId = selectedFriendId;
-      let creditorPushToken = null;
 
       if (authData?.user) {
-        // Checking creditor push token in public.users using UUID
-        const { data: creditorData } = await supabase.from('users').select('push_token').eq('id', finalFriendId).single();
-        if (creditorData) creditorPushToken = creditorData.push_token;
-        
+        // (A lookup of the creditor's push_token used to live here. Its result
+        // was never read, and push_token is no longer selectable by clients
+        // (migration 0071); push delivery goes through the push-notify
+        // function, which reads tokens with the service role.)
+
         // Who actually handed over the money. 'owed' means the friend owed me
         // and is now paying me back, so I am NOT the payer. Writing the payer
         // as the caller regardless — which this screen used to do — recorded

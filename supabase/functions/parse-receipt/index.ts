@@ -4,6 +4,41 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 console.log("Hello from parse-receipt!")
 
+// LOGGING POLICY. Function logs may only carry non-personal facts: provider
+// name, HTTP status, an error type/code, latency, and a short fixed-vocabulary
+// reason. Never log a provider's reply text or error body (it can echo the
+// receipt), extracted merchant/amount/raw text, the image path, or a user id.
+// ProviderError carries only those safe fields; anything else that is caught
+// is logged by its class name alone (a JSON.parse SyntaxError message quotes
+// the reply it choked on, so error messages are never logged).
+class ProviderError extends Error {
+  provider: string
+  status: number
+  errType: string
+  constructor(provider: string, status: number, errType: string) {
+    super(`${provider} ${status}`)
+    this.name = 'ProviderError'
+    this.provider = provider
+    this.status = status
+    this.errType = errType
+  }
+}
+
+// Non-personal label for any caught value: the database/PostgREST error code
+// if there is one, else the error's class name. Never its message.
+function errLabel(e: unknown): string {
+  if (e instanceof ProviderError) return `${e.provider} status=${e.status} type=${e.errType}`
+  const code = (e as { code?: unknown } | null)?.code
+  if (typeof code === 'string' || typeof code === 'number') return safeToken(String(code))
+  return safeToken((e as { name?: unknown } | null)?.name)
+}
+
+// Collapse a provider-supplied label (error type, finish reason) to a short
+// token, or 'unknown'. Anything free-form is dropped rather than truncated.
+function safeToken(v: unknown): string {
+  return typeof v === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(v) ? v : 'unknown'
+}
+
 // Reads and categorises a payment-app screenshot into structured fields
 // (amount, merchant, date, category) via one Claude vision call. See
 // supabase/migrations/0036_personal_transactions.sql for why this exists and
@@ -233,22 +268,18 @@ async function callClaudeVision(
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '')
-    console.error('Claude API error:', response.status, errText)
-    let detail = errText
+    // errText is parsed only for its error type label; the body is never logged.
+    let errType = 'unknown'
     try {
-      const parsed = JSON.parse(errText)
-      if (parsed?.error?.message) {
-        detail = parsed.error.message
-      }
+      errType = safeToken(JSON.parse(errText)?.error?.type)
     } catch {}
-    throw new Error(`Claude ${response.status}: ${detail}`)
+    throw new ProviderError('claude', response.status, errType)
   }
 
   const resBody = await response.json()
   const toolUse = resBody.content?.find((c: { type: string }) => c.type === 'tool_use')
   if (!toolUse || !toolUse.input) {
-    console.error('Claude returned no tool_use block:', JSON.stringify(resBody).slice(0, 1000))
-    throw new Error('Claude returned unparseable extraction')
+    throw new ProviderError('claude', response.status, `no_tool_use_${safeToken(resBody?.stop_reason)}`)
   }
 
   return toolUse.input as Record<string, unknown>
@@ -353,16 +384,19 @@ async function callGeminiVision(
   )
   if (!geminiResponse.ok) {
     const errText = await geminiResponse.text().catch(() => '')
-    console.error('Gemini API error:', geminiResponse.status, errText)
-    throw new Error(`Gemini ${geminiResponse.status}`)
+    let errType = 'unknown'
+    try {
+      errType = safeToken(JSON.parse(errText)?.error?.status)
+    } catch {}
+    throw new ProviderError('gemini', geminiResponse.status, errType)
   }
   const geminiBody = await geminiResponse.json()
   const candidate = geminiBody.candidates?.[0]
   if (!candidate || (candidate.finishReason && candidate.finishReason !== 'STOP')) {
-    throw new Error(`Gemini returned no usable candidate: ${candidate?.finishReason ?? 'no candidate'}`)
+    throw new ProviderError('gemini', geminiResponse.status, `finish_${candidate ? safeToken(candidate.finishReason) : 'no_candidate'}`)
   }
   const responseText: string | undefined = candidate.content?.parts?.[0]?.text
-  if (!responseText) throw new Error('Gemini candidate had no text part')
+  if (!responseText) throw new ProviderError('gemini', geminiResponse.status, 'no_text_part')
   return JSON.parse(responseText) as Record<string, unknown>
 }
 
@@ -376,9 +410,9 @@ async function releaseScan(
   if (!scanId) return
   try {
     const { error } = await client.rpc('release_receipt_scan', { p_scan_id: scanId })
-    if (error) console.warn('release_receipt_scan failed:', error)
+    if (error) console.warn('release_receipt_scan failed: code=' + errLabel(error))
   } catch (e) {
-    console.warn('release_receipt_scan threw:', e)
+    console.warn('release_receipt_scan threw: ' + errLabel(e))
   }
 }
 
@@ -429,7 +463,7 @@ serve(async (req) => {
       .rpc('check_and_increment_receipt_rate_limit')
       .single()
     if (rateLimitError) {
-      console.error('Rate limit check failed:', rateLimitError)
+      console.error('Rate limit check failed: code=' + errLabel(rateLimitError))
       return json({ ok: false, code: 'upstream_error', error: 'Could not process request right now' }, 500)
     }
     if (!rateLimit.allowed) {
@@ -450,7 +484,7 @@ serve(async (req) => {
         ;({ data: reserveData, error: reserveError } = await callerClient.rpc('reserve_receipt_scan'))
       }
       if (reserveError) {
-        console.warn('reserve_receipt_scan failed, proceeding:', reserveError)
+        console.warn('reserve_receipt_scan failed, proceeding: code=' + errLabel(reserveError))
       } else {
         const reserve = Array.isArray(reserveData) ? reserveData[0] : reserveData
         if (reserve && typeof reserve === 'object') {
@@ -476,7 +510,7 @@ serve(async (req) => {
         }
       }
     } catch (quotaError) {
-      console.warn('reserve_receipt_scan threw, proceeding:', quotaError)
+      console.warn('reserve_receipt_scan threw, proceeding: ' + errLabel(quotaError))
     }
 
     const body = await req.json().catch(() => ({}))
@@ -562,20 +596,22 @@ serve(async (req) => {
     }
 
     let raw: Record<string, unknown> | null = null
-    // Provider error text stays in the function logs; the client only ever
+    // Provider error bodies are not logged or returned; the client only ever
     // gets this generic message, so no upstream detail can leak through it.
     const genericError = 'Could not read this image right now'
     for (const [name, run] of attempts) {
+      const startedAt = Date.now()
       try {
         const result = await run()
         if (isGood(result)) {
           raw = result
           break
         }
-        console.log('Weak extraction from', name, '- trying next provider')
+        console.log(`Weak extraction from ${name} (reason=low_quality) after ${Date.now() - startedAt}ms - trying next provider`)
         if (!raw || (typeof raw.amount !== 'number' && typeof result.amount === 'number')) raw = result
       } catch (callError) {
-        console.error(name, 'extraction error:', callError)
+        // Label and latency only: see the LOGGING POLICY at the top.
+        console.error(`${name} extraction error: ${errLabel(callError)} after ${Date.now() - startedAt}ms`)
       }
     }
     if (!raw) {
@@ -591,7 +627,7 @@ serve(async (req) => {
     const extraction = clampExtraction(raw)
     return json({ ok: true, extraction })
   } catch (error) {
-    console.error('parse-receipt error:', error)
+    console.error('parse-receipt error: ' + errLabel(error))
     await releaseScan(quotaClient, scanId)
     return json({ ok: false, code: 'upstream_error', error: 'Could not read this image right now' }, 200)
   }

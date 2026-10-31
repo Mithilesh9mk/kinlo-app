@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-27T10:16:20.115Z",
-  "totalFiles": 178,
+  "timestamp": "2026-10-31T06:32:26.216Z",
+  "totalFiles": 179,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -183,7 +183,8 @@
       "supabase/migrations/0067_tighten_recurring_expenses_grants.sql",
       "supabase/migrations/0068_close_relationship_gaps.sql",
       "supabase/migrations/0069_record_expense_participant_check.sql",
-      "supabase/migrations/0070_connection_request_preview_consent.sql"
+      "supabase/migrations/0070_connection_request_preview_consent.sql",
+      "supabase/migrations/0071_push_token_coupon_billing_events_hardening.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",
