@@ -322,28 +322,49 @@
     var replay = d.querySelector('[data-demo-replay]');
     var last = d.querySelector('[data-demo-last]');
     var paused = false;
+    var visible = false;
+    var timer = 0;
 
     function set(s) { d.setAttribute('data-state', s); }
     function setPaused(p) {
       paused = p;
       d.setAttribute('data-paused', p ? 'true' : 'false');
-      if (pause) { pause.textContent = p ? 'Play' : 'Pause'; pause.setAttribute('aria-pressed', p ? 'true' : 'false'); }
+      if (p) clearTimeout(timer);
+      if (pause) { pause.textContent = p ? 'Play' : 'Stop'; pause.setAttribute('aria-pressed', p ? 'true' : 'false'); }
     }
     function play() {
+      clearTimeout(timer);
       setPaused(false);
       set('ready');
       void d.offsetWidth;
       set('playing');
     }
-    if (last) last.addEventListener('animationend', function () { if (d.getAttribute('data-state') === 'playing') set('done'); });
-    if (pause) pause.addEventListener('click', function () { setPaused(!paused); });
+    /* the demo loops: after the last frame it rests a moment, then starts again, until the visitor presses Stop */
+    function loopSoon() {
+      clearTimeout(timer);
+      if (paused || !visible) return;
+      timer = setTimeout(function () { if (!paused && visible) play(); }, 2400);
+    }
+    if (last) last.addEventListener('animationend', function () {
+      if (d.getAttribute('data-state') === 'playing') { set('done'); loopSoon(); }
+    });
+    if (pause) pause.addEventListener('click', function () {
+      if (paused) {
+        setPaused(false);
+        if (d.getAttribute('data-state') !== 'playing') play();
+      } else {
+        setPaused(true);
+      }
+    });
     if (replay) replay.addEventListener('click', play);
 
+    /* with reduced motion, or no way to tell when it is on screen, show the finished frame and do not animate */
     if (reduce || !('IntersectionObserver' in window)) { set('done'); return; }
-    var seen = false;
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
-        if (en.isIntersecting && !seen) { seen = true; io.disconnect(); play(); }
+        visible = en.isIntersecting;
+        if (!visible) { clearTimeout(timer); return; }
+        if (!paused && d.getAttribute('data-state') !== 'playing') play();
       });
     }, { threshold: 0.5 });
     io.observe(d);
