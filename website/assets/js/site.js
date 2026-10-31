@@ -389,6 +389,7 @@
     var wHelp = ways.querySelector('#w-total-help');
     var wReset = ways.querySelector('[data-ways-reset]');
     var wReady = false;
+    var wLive = ways.querySelector('#ways-live');
     var WHY = {
       equal: 'Everyone pays the same. The extra paisa goes to the first people in the list.',
       exact: 'You enter each amount, and the amounts must add up to the bill. Drag one bar and the others share out what is left.',
@@ -421,7 +422,7 @@
         rg.disabled = st.mode === 'equal';
         rg.min = '0';
         rg.max = String(vmax);
-        rg.step = st.mode === 'exact' ? '100' : '1';
+        rg.step = st.mode === 'exact' && st.total % 100 === 0 ? '100' : '1';
         rg.value = String(val);
         rg.setAttribute('aria-label', name + '’s ' + (st.mode === 'exact' ? 'amount' : st.mode === 'percent' ? 'percentage' : st.mode === 'shares' ? 'shares' : 'share'));
         rg.setAttribute('aria-valuetext', vtext);
@@ -440,6 +441,8 @@
     ways.addEventListener('change', function (e) {
       if (e.target.name === 'way') { st.mode = e.target.value; renderWays(); }
     });
+    /* screen readers hear the result once per finished change, not on every pixel of a drag */
+    ways.addEventListener('change', function () { wLive.textContent = wSum.textContent; });
     ways.addEventListener('input', function (e) {
       var t = e.target;
       if (t === wTotal) {

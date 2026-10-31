@@ -288,6 +288,7 @@ html:not(.js) .demo__ctl { display: none; }
 .w__range:disabled::-webkit-slider-thumb { width: 0; height: 0; border-width: 0; box-shadow: none; }
 .w__range:disabled::-moz-range-thumb { width: 0; height: 0; border-width: 0; box-shadow: none; }
 .ways__sum { margin: 0; font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; }
+.js .ways__nojs { display: none; }
 .ways__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-xs) var(--space-md); }
 .ways__foot .small { flex: 1 1 18rem; max-width: 46ch; }
 
