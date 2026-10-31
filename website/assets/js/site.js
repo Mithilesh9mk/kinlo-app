@@ -4,6 +4,11 @@
 
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /* the hero launch sequence is a class that boot.js sets before first paint; end it after it has played, or at the first touch of the page */
+  var endLaunch = function () { document.documentElement.classList.remove('launching'); };
+  setTimeout(endLaunch, 3600);
+  ['pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, endLaunch, { once: true }); });
+
   /* ---------- money in integer paise ---------- */
   var MAX_PAISE = 1000000000; /* Rs 1,00,00,000 */
   var NAMES = ['Asha', 'Ravi', 'Meera', 'Dev', 'Isha', 'Kabir', 'Nila', 'Om', 'Pari', 'Rohan', 'Sana', 'Tara'];
@@ -345,40 +350,127 @@
     });
   });
 
-  /* ---------- four ways to share one bill ---------- */
+  /* ---------- four ways to share one bill: drag a bar or type a total; every share is recomputed in whole paise with the app's largest-remainder rule ---------- */
   var ways = document.querySelector('[data-ways]');
   if (ways) {
-    var WTOTAL = 100000; /* Rs 1,000.00 in paise */
-    var byWeight = function (w) {
-      var W = w.reduce(function (a, b) { return a + b; }, 0);
-      var out = w.map(function (x) { return Math.floor(WTOTAL * x / W); });
-      var left = WTOTAL - out.reduce(function (a, b) { return a + b; }, 0);
-      for (var i = 0; left > 0; i++, left--) out[i % out.length]++;
+    var WMAX = 10000000; /* Rs 1,00,000: keeps every product below 2^53, so the integer maths stays exact */
+    var sumOf = function (a) { return a.reduce(function (x, y) { return x + y; }, 0); };
+    /* floor every share, then hand the leftover paise to the largest fractions first, ties by order */
+    var alloc = function (total, w) {
+      var W = sumOf(w);
+      if (W <= 0) return w.map(function () { return 0; });
+      var out = [], rem = [];
+      w.forEach(function (x, i) { var p = total * x; out[i] = Math.floor(p / W); rem[i] = p % W; });
+      var left = total - sumOf(out);
+      var order = w.map(function (_, i) { return i; }).sort(function (a, b) { return rem[b] - rem[a] || a - b; });
+      for (var k = 0; k < left; k++) out[order[k % order.length]]++;
       return out;
     };
-    var MODES = {
-      equal: { why: 'Everyone pays the same. The extra paisa goes to the first people in the list.', ins: ['equal', 'equal', 'equal'], amt: equalSplit(WTOTAL, 3) },
-      exact: { why: 'You enter each amount. The amounts must add up to the bill.', ins: ['entered ' + fmt(60000), 'entered ' + fmt(25000), 'entered ' + fmt(15000)], amt: [60000, 25000, 15000] },
-      percent: { why: 'You give each person a percentage. The percentages must add up to 100.', ins: ['45%', '35%', '20%'], amt: byWeight([45, 35, 20]) },
-      shares: { why: 'You give each person a number of shares. Asha has 2 of the 4 shares, so she pays half.', ins: ['2 shares', '1 share', '1 share'], amt: byWeight([2, 1, 1]) }
+    /* set one value, then share what is left among the others in proportion to what they had */
+    var pin = function (vals, i, v, target) {
+      var next = vals.slice();
+      v = Math.max(0, Math.min(target, v));
+      next[i] = v;
+      var idx = [], olds = [];
+      vals.forEach(function (x, j) { if (j !== i) { idx.push(j); olds.push(x); } });
+      var rest = target - v;
+      var parts = alloc(rest, sumOf(olds) > 0 ? olds : olds.map(function () { return 1; }));
+      idx.forEach(function (j, k) { next[j] = parts[k]; });
+      return next;
     };
+    var fresh = function () { return { total: 100000, pct: [45, 35, 20], shr: [2, 1, 1], exact: [60000, 25000, 15000] }; };
+    var st = fresh();
+    st.mode = 'equal';
+
     var wRows = ways.querySelectorAll('.wrows li');
     var wWhy = ways.querySelector('.ways__why');
     var wSum = ways.querySelector('.ways__sum');
-    var showWay = function (key) {
-      var m = MODES[key];
-      wWhy.textContent = m.why;
-      Array.prototype.forEach.call(wRows, function (li, i) {
-        li.querySelector('.w__in').textContent = m.ins[i];
-        li.querySelector('.w__amt').textContent = fmt(m.amt[i]);
-        li.querySelector('.w__bar i').style.setProperty('--w', (m.amt[i] / WTOTAL).toFixed(4));
-      });
-      var total = m.amt.reduce(function (a, b) { return a + b; }, 0);
-      wSum.textContent = m.amt.map(fmt).join(' + ') + ' = ' + fmt(total);
+    var wTotal = ways.querySelector('#w-total');
+    var wHelp = ways.querySelector('#w-total-help');
+    var wReset = ways.querySelector('[data-ways-reset]');
+    var wReady = false;
+    var WHY = {
+      equal: 'Everyone pays the same. The extra paisa goes to the first people in the list.',
+      exact: 'You enter each amount, and the amounts must add up to the bill. Drag one bar and the others share out what is left.',
+      percent: 'Percentages must add up to 100. Drag one bar and the others share out what is left.',
+      shares: 'Shares are a ratio, so any numbers work: 2, 1, 1 means Asha pays half. A leftover paisa goes to the largest fraction first, the same rule the app uses.'
     };
-    ways.addEventListener('change', function (e) { if (e.target.name === 'way') showWay(e.target.value); });
+    var WMSG = { empty: 'Enter the bill total.', invalid: 'Use numbers only, like 1,250.50.', decimals: 'Rupees and paise only: two decimal places at most.', big: 'This demo stops at ₹1,00,000.', zero: 'The total must be more than ₹0.' };
+
+    var amounts = function () {
+      if (st.mode === 'equal') return equalSplit(st.total, 3);
+      if (st.mode === 'percent') return alloc(st.total, st.pct);
+      if (st.mode === 'shares') return alloc(st.total, st.shr);
+      return st.exact.slice();
+    };
+
+    var renderWays = function () {
+      var amt = amounts();
+      var total = sumOf(amt);
+      wWhy.textContent = WHY[st.mode];
+      Array.prototype.forEach.call(wRows, function (li, i) {
+        var rg = li.querySelector('.w__range');
+        var inEl = li.querySelector('.w__in');
+        var amtEl = li.querySelector('.w__amt');
+        var name = li.querySelector('.w__name').textContent;
+        var label, vmax, val, vtext;
+        if (st.mode === 'equal') { label = 'equal'; vmax = 100; val = Math.round(amt[i] / st.total * 100); vtext = fmt(amt[i]); }
+        else if (st.mode === 'percent') { label = st.pct[i] + '%'; vmax = 100; val = st.pct[i]; vtext = st.pct[i] + ' percent, ' + fmt(amt[i]); }
+        else if (st.mode === 'shares') { label = st.shr[i] + (st.shr[i] === 1 ? ' share' : ' shares'); vmax = 10; val = st.shr[i]; vtext = label + ', ' + fmt(amt[i]); }
+        else { label = 'entered'; vmax = st.total; val = st.exact[i]; vtext = fmt(amt[i]); }
+        rg.disabled = st.mode === 'equal';
+        rg.min = '0';
+        rg.max = String(vmax);
+        rg.step = st.mode === 'exact' ? '100' : '1';
+        rg.value = String(val);
+        rg.setAttribute('aria-label', name + '’s ' + (st.mode === 'exact' ? 'amount' : st.mode === 'percent' ? 'percentage' : st.mode === 'shares' ? 'shares' : 'share'));
+        rg.setAttribute('aria-valuetext', vtext);
+        var fill = st.mode === 'equal' ? amt[i] / st.total * 100 : (val / vmax * 100);
+        rg.style.setProperty('--fill', fill.toFixed(2) + '%');
+        inEl.textContent = label;
+        var now = fmt(amt[i]);
+        if (amtEl.textContent !== now) {
+          amtEl.textContent = now;
+          if (wReady && !reduce) { amtEl.classList.remove('is-flash'); void amtEl.offsetWidth; amtEl.classList.add('is-flash'); }
+        }
+      });
+      wSum.textContent = total === 0 ? 'Give at least one person a share.' : amt.map(fmt).join(' + ') + ' = ' + fmt(total);
+    };
+
+    ways.addEventListener('change', function (e) {
+      if (e.target.name === 'way') { st.mode = e.target.value; renderWays(); }
+    });
+    ways.addEventListener('input', function (e) {
+      var t = e.target;
+      if (t === wTotal) {
+        var v = parseMoney(t.value);
+        var code = v.ok ? (v.paise <= 0 ? 'zero' : (v.paise > WMAX ? 'big' : 'ok')) : v.code;
+        wHelp.textContent = code === 'ok' || code === 'empty' ? '' : WMSG[code];
+        t.setAttribute('aria-invalid', code === 'ok' || code === 'empty' ? 'false' : 'true');
+        if (code === 'ok') { st.exact = alloc(v.paise, st.exact); st.total = v.paise; renderWays(); }
+        return;
+      }
+      if (!t.classList || !t.classList.contains('w__range')) return;
+      var i = Array.prototype.indexOf.call(wRows, t.parentNode);
+      var n = Number(t.value);
+      if (st.mode === 'percent') st.pct = pin(st.pct, i, n, 100);
+      else if (st.mode === 'shares') st.shr[i] = n;
+      else if (st.mode === 'exact') st.exact = pin(st.exact, i, n, st.total);
+      renderWays();
+    });
+    wReset.addEventListener('click', function () {
+      var mode = st.mode;
+      st = fresh();
+      st.mode = mode;
+      wTotal.value = '1000';
+      wHelp.textContent = '';
+      wTotal.setAttribute('aria-invalid', 'false');
+      renderWays();
+    });
     Array.prototype.forEach.call(ways.querySelectorAll('[data-needs-js]'), function (n) { n.disabled = false; });
-    showWay('equal');
+    wReset.hidden = false;
+    renderWays();
+    wReady = true;
   }
 
   /* ---------- one bill, from entry to settled: scroll moves the steps, buttons do the same ---------- */

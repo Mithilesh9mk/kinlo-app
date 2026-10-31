@@ -163,26 +163,39 @@
   <div class="container split">
     <div class="split__text" data-reveal>
       <h2 id="ways-h">Four ways to share one bill.</h2>
-      <p>The same &#8377;1,000 dinner between Asha, Ravi and Meera. Pick a way and watch the shares change. The three that are not equal use numbers chosen so no paisa is left over.</p>
+      <p>The same bill between Asha, Ravi and Meera. Pick a way, then drag the bars or change the total. The shares always add back up to the bill, to the last paisa.</p>
     </div>
     <div class="ways" data-ways data-reveal>
-      <fieldset class="ways__pick">
-        <legend>Split type</legend>
-        <div class="seg seg--grow" role="group" aria-label="Split type">
-          <input type="radio" name="way" id="w-eq" value="equal" checked disabled data-needs-js><label for="w-eq">Equal</label>
-          <input type="radio" name="way" id="w-ex" value="exact" disabled data-needs-js><label for="w-ex">Exact</label>
-          <input type="radio" name="way" id="w-pc" value="percent" disabled data-needs-js><label for="w-pc">Percent</label>
-          <input type="radio" name="way" id="w-sh" value="shares" disabled data-needs-js><label for="w-sh">Shares</label>
+      <div class="ways__top">
+        <div>
+          <label class="fld-label" for="w-total">Bill total</label>
+          <div class="money">
+            <span class="money__sign" aria-hidden="true">&#8377;</span>
+            <input class="input input--money" id="w-total" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-describedby="w-total-help" disabled data-needs-js>
+          </div>
+          <p class="help" id="w-total-help" aria-live="polite"></p>
         </div>
-      </fieldset>
+        <fieldset class="ways__pick">
+          <legend>Split type</legend>
+          <div class="seg seg--grow" role="group" aria-label="Split type">
+            <input type="radio" name="way" id="w-eq" value="equal" checked disabled data-needs-js><label for="w-eq">Equal</label>
+            <input type="radio" name="way" id="w-ex" value="exact" disabled data-needs-js><label for="w-ex">Exact</label>
+            <input type="radio" name="way" id="w-pc" value="percent" disabled data-needs-js><label for="w-pc">Percent</label>
+            <input type="radio" name="way" id="w-sh" value="shares" disabled data-needs-js><label for="w-sh">Shares</label>
+          </div>
+        </fieldset>
+      </div>
       <p class="ways__why" id="ways-why">Everyone pays the same. The extra paisa goes to the first people in the list.</p>
       <ol class="wrows" aria-describedby="ways-why">
-        <li><bdi class="w__name">Asha</bdi><span class="w__in">equal</span><output class="w__amt num">&#8377;333.34</output><span class="w__bar" aria-hidden="true"><i></i></span></li>
-        <li><bdi class="w__name">Ravi</bdi><span class="w__in">equal</span><output class="w__amt num">&#8377;333.33</output><span class="w__bar" aria-hidden="true"><i></i></span></li>
-        <li><bdi class="w__name">Meera</bdi><span class="w__in">equal</span><output class="w__amt num">&#8377;333.33</output><span class="w__bar" aria-hidden="true"><i></i></span></li>
+        <li><bdi class="w__name">Asha</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.34</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Asha&rsquo;s share" disabled></li>
+        <li><bdi class="w__name">Ravi</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Ravi&rsquo;s share" disabled></li>
+        <li><bdi class="w__name">Meera</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Meera&rsquo;s share" disabled></li>
       </ol>
       <p class="ways__sum num" role="status" aria-live="polite">&#8377;333.34 + &#8377;333.33 + &#8377;333.33 = &#8377;1,000.00</p>
-      <p class="small">Example numbers, set by us. Try your own in the calculator at the top.</p>
+      <div class="ways__foot">
+        <p class="small">Pick Exact, Percent or Shares, then drag a bar or use the arrow keys. Example people, nothing is saved.</p>
+        <button class="link-btn" type="button" data-ways-reset hidden>Reset</button>
+      </div>
     </div>
   </div>
 </section>
