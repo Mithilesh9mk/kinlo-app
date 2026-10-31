@@ -1,7 +1,7 @@
 /* Tokens. Every colour and font on the site is declared here and nowhere else.
    Brand values come from the app's tailwind.config.js (primary #004c22, primary-container #166534,
    secondary-container #caead6, primary-fixed #a6f4b5, inverse-primary #8bd79b, on-surface, on-surface-variant, error)
-   written in OKLCH. The paper family is white mixed with 3 to 10 percent of #166534. */
+   written in OKLCH. The paper family is white mixed with 5 to 12 percent of #166534. */
 :root {
   --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
 
@@ -15,10 +15,10 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
 
-  /* paper family: white + 3%, 6%, 10% of #166534 (OKLCH, hue 159) */
-  --color-paper: oklch(98.4% 0.005 159);
-  --color-paper-2: oklch(96.8% 0.006 159);
-  --color-paper-3: oklch(94.7% 0.011 159);
+  /* paper family: white + 5%, 8%, 12% of #166534 (OKLCH, hue 159); main text on the 5% paper is 15.8:1, muted text 6.0:1 */
+  --color-paper: oklch(97.3% 0.005 159);
+  --color-paper-2: oklch(95.7% 0.009 159);
+  --color-paper-3: oklch(93.6% 0.013 159);
   --color-surface: oklch(99.4% 0.003 159);
   /* ink: on-surface #1c1c19 and on-surface-variant #404940, nudged to the green hue */
   --color-ink: oklch(22.5% 0.012 150);

@@ -1,5 +1,5 @@
 /* Hallmark · shape: Workbench hero, ledger sections, one dark band · genre: modern-minimal · theme: custom · job: try · idea: "a bill that comes apart into exact shares, shown on a ledger" · vibe: "warm, calm, exact, a little bookish"
- * paper: oklch(98.4% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the product (the working calculator, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and adds up to the paisa
+ * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the product (the working calculator, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and adds up to the paisa
  * axes: light/roman-serif/chromatic-green · posture: Committed · contrast: pass · fold: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: S, the split-and-ledger idea is shared by every bill splitter; moved the proof into exact paise arithmetic and honest limits (a staged demo is labelled, a missing notification is stated) */
 /* Hallmark · waive 84 · the two staged demos show a server-side AI step and a push notification that a static page cannot call · a mock is the only honest way to show them, and each is labelled as a demo */
@@ -8,7 +8,7 @@
 @import url("./base.css");
 
 /* Why these choices (anti-default notes, one line each).
-   Palette: the app's own greens, so the site and the app read as one product; the paper is white mixed with 3 to 10 percent of #166534, not cream.
+   Palette: the app's own greens, so the site and the app read as one product; the paper is white mixed with 5 to 12 percent of #166534, not cream.
    Serif display: a bill-splitter is a ledger; an old-style serif says "accounts" and avoids the geometric-sans default; system stack so nothing is downloaded.
    Hero: the calculator is the proof, so it sits in the first screen instead of a picture of a phone.
    Hairlines not cards: sections are separated by rules and paper steps, so there is no grid of identical tiles.
@@ -133,9 +133,9 @@ output.row__amt { display: block; padding-right: 0; }
 
 /* staged demos */
 .demo { margin: 0; }
-.demo__stage { display: grid; gap: var(--space-md); padding: var(--space-lg); border-radius: var(--radius-card); background: var(--color-paper-2); }
+.demo__stage { display: grid; gap: var(--space-md); }
 .demo--receipt .demo__stage { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; }
-.pane { position: relative; display: flex; flex-direction: column; justify-content: center; gap: var(--space-xs); min-height: 15rem; padding: var(--space-lg); border-radius: var(--radius-input); background: var(--color-surface); overflow: hidden; }
+.pane { position: relative; display: flex; flex-direction: column; justify-content: center; gap: var(--space-xs); min-height: 15rem; padding: var(--space-lg); border-radius: var(--radius-input); background: var(--color-surface); outline: 1px solid var(--color-rule); outline-offset: -1px; overflow: hidden; }
 .pane__title { margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-ink-2); }
 .fields .fld:nth-child(1) { --i: 0; }
 .fields .fld:nth-child(2) { --i: 1; }
@@ -171,7 +171,7 @@ html:not(.js) .demo__ctl { display: none; }
 
 /* reminder demo */
 .demo--remind .demo__stage { align-content: center; min-height: 19rem; }
-.friend { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-md); align-items: center; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-input); background: var(--color-surface); }
+.friend { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-md); align-items: center; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-input); background: var(--color-surface); border: 1px solid var(--color-rule); }
 .friend__av { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: var(--radius-pill); background: var(--color-tint); color: var(--color-accent); font-weight: 700; }
 .friend__main { min-width: 0; }
 .friend__name { font-weight: 600; }
