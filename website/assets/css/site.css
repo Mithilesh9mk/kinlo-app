@@ -1,5 +1,5 @@
 /* Hallmark · shape: Workbench hero, ledger sections, one dark band · genre: modern-minimal · theme: custom · job: try · idea: "a bill that comes apart into exact shares, shown on a ledger" · vibe: "warm, calm, exact, a little bookish"
- * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the app's own leaf mark drawing itself, a soft green ink that follows the mouse over the hero and the download band, the product (the working calculator over two ruled sheets, a scroll-stepped example ledger, a split-types demo, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and shows the addition to the paisa
+ * paper: oklch(97.3% 0.005 159) · accent: oklch(36.5% 0.097 151) · display: Iowan Old Style system serif stack · body: system-ui · hero: headline and one sentence on the left, the live split calculator on the right · nav: wordmark left, one text link right, no rule · footer: wordmark and three links over one legal line, no columns · imagery: the app's own leaf mark drawing itself, a narrow green ink line that follows the mouse down every page, the product (the working calculator over two ruled sheets, a scroll-stepped example ledger, a split-types demo, two staged demos, one real app screenshot) · signature: a split calculator in the hero that divides Rs 100 by 3 into 33.34, 33.33, 33.33 and shows the addition to the paisa
  * axes: light/roman-serif/chromatic-green · posture: Committed · contrast: pass · fold: pass · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: S, the split-and-ledger idea is shared by every bill splitter; moved the proof into exact paise arithmetic and honest limits (a staged demo is labelled, a missing notification is stated) */
 /* Hallmark · waive 84 · the two staged demos, the scroll-stepped ledger and the split-types demo show a server-side AI step, a push notification and app behaviour that a static page cannot call · a mock is the only honest way to show them, and each is labelled a demo or an example with numbers set by us */
@@ -196,9 +196,9 @@ html:not(.js) .demo__ctl { display: none; }
 @keyframes leaf-draw { 0% { stroke-dashoffset: 1; fill-opacity: 0; } 62% { stroke-dashoffset: 0; fill-opacity: 0; } 100% { stroke-dashoffset: 0; fill-opacity: 1; } }
 
 /* cursor ink: a soft wash that follows the mouse over the hero and the download band, then fades and stops */
-.hero, .band { position: relative; }
-.hero > .container, .band > .container { position: relative; z-index: 1; }
-.ink { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: blur(6px); }
+.ink-host { position: relative; }
+.ink-host > :not(.ink) { position: relative; z-index: 1; }
+.ink { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: blur(3px); }
 .ink--hero { opacity: 0.32; }
 .ink--band { opacity: 0.3; }
 

@@ -498,6 +498,7 @@
       var cv = document.createElement('canvas');
       cv.className = 'ink ' + cls;
       cv.setAttribute('aria-hidden', 'true');
+      host.classList.add('ink-host');
       host.insertBefore(cv, host.firstChild);
       var buf = document.createElement('canvas');
       var f = { host: host, cv: cv, ctx: cv.getContext('2d'), buf: buf, bctx: buf.getContext('2d'), rgb: rgb, last: null, lastMove: 0, alive: false };
@@ -516,7 +517,7 @@
         var dx = f.last ? x - f.last.x : 0, dy = f.last ? y - f.last.y : 0;
         var dist = Math.sqrt(dx * dx + dy * dy);
         var n = f.last ? Math.max(1, Math.ceil(dist / 5)) : 1;
-        var rad = 26 + Math.min(dist, 40) * 0.7;
+        var rad = 11 + Math.min(dist, 40) * 0.3; /* a narrow brush */
         for (var i = 1; i <= n; i++) {
           var px = f.last ? f.last.x + dx * i / n : x;
           var py = f.last ? f.last.y + dy * i / n : y;
@@ -557,8 +558,13 @@
       if (again) raf = requestAnimationFrame(frame); else prev = 0;
     };
 
-    addField(heroEl, '22,101,52', 'ink--hero');
-    addField(document.querySelector('.band'), '166,244,181', 'ink--band');
+    /* every section, the header and the footer get their own sheet of ink (legal pages: the whole article), so it follows the mouse down the whole site */
+    var hosts = Array.prototype.slice.call(document.querySelectorAll('.nav, main > section, .foot'));
+    if (!document.querySelector('main > section')) { var mainEl = document.querySelector('main'); if (mainEl) hosts.push(mainEl); }
+    hosts.forEach(function (h) {
+      var dark = h.classList.contains('band');
+      addField(h, dark ? '166,244,181' : '22,101,52', dark ? 'ink--band' : 'ink--hero');
+    });
 
     if (sheets && heroEl) {
       heroEl.addEventListener('pointermove', function (e) {
