@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
-import { LEGAL_DOCS, LEGAL_LAST_UPDATED, LEGAL_VERSION } from '../../lib/legal';
+import { LEGAL_DOCS, LEGAL_EFFECTIVE_DATE, LEGAL_VERSION, websiteUrlFor } from '../../lib/legal';
 
 /**
  * Renders the privacy policy or terms from lib/legal.ts.
@@ -20,6 +20,14 @@ export default function LegalScreen() {
   const { doc } = useLocalSearchParams<{ doc: string }>();
 
   const document = LEGAL_DOCS[doc ?? ''];
+  const websiteUrl = websiteUrlFor(doc);
+
+  const openWebsite = () => {
+    if (!websiteUrl) return;
+    // Opening the browser can fail (no browser, bad URL); there is nothing
+    // useful to show, and the text on this screen is complete anyway.
+    Linking.openURL(websiteUrl).catch(() => {});
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
@@ -51,9 +59,21 @@ export default function LegalScreen() {
         </View>
       ) : (
         <ScrollView className="flex-1 px-5 pt-4" contentContainerStyle={{ paddingBottom: 48 }}>
-          <Text className="text-xs text-on-surface-variant mb-5">
-            Last updated {LEGAL_LAST_UPDATED} · v{LEGAL_VERSION}
+          <Text className="text-xs text-on-surface-variant mb-2">
+            Effective {LEGAL_EFFECTIVE_DATE} · version {LEGAL_VERSION}
           </Text>
+          {websiteUrl ? (
+            <Text
+              className="text-xs font-semibold text-primary underline mb-5"
+              accessibilityRole="link"
+              onPress={openWebsite}
+              suppressHighlighting
+            >
+              Read this on our website
+            </Text>
+          ) : (
+            <View className="mb-3" />
+          )}
 
           {document.sections.map((section) => (
             <View key={section.heading} className="mb-6">
