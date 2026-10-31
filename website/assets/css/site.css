@@ -31,6 +31,7 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
 .nav__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); min-height: 4rem; }
 .wordmark { display: inline-flex; align-items: center; gap: var(--space-xs); font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-display); text-decoration: none; color: var(--color-accent); }
 .nav__link { display: inline-flex; align-items: center; min-height: 2.75rem; font-size: var(--text-md); font-weight: 500; color: var(--color-ink); text-decoration-color: var(--color-rule); white-space: nowrap; }
+.nav__link { transition: color var(--dur-short) var(--ease-out), text-decoration-color var(--dur-short) var(--ease-out); }
 .nav__link:hover { text-decoration-color: var(--color-accent); color: var(--color-accent); }
 
 /* buttons: one filled primary recipe, a quiet variant, and a band rebinding */
@@ -278,7 +279,8 @@ html:not(.js) .demo__ctl { display: none; }
 .ways__sum { margin: 0; font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; }
 
 /* what differs */
-.diff { margin: var(--space-xl) 0 0; padding: 0; border-top: var(--rule-hair) solid var(--color-ink); }
+.diff { position: relative; margin: var(--space-xl) 0 0; padding: 0; }
+.diff::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--rule-hair); background: var(--color-ink); transform-origin: left; }
 .diff__row { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: var(--space-xl); padding: var(--space-lg) 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
 .diff dt { font-family: var(--font-display); font-size: var(--text-title); font-weight: 600; line-height: 1.2; }
 .diff dd { margin: 0; font-size: var(--text-md); color: var(--color-ink-2); max-width: 54ch; }
@@ -389,7 +391,32 @@ html:not(.js) .demo__ctl { display: none; }
   .data td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; color: var(--color-ink-2); }
   .data td:first-child::before { content: none; }
 }
+/* smooth motion, one family: rise 14px with the long ease, staggered by index. Nothing loops. */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes flash { from { background-color: var(--color-tint); box-shadow: 0 0 0 4px var(--color-tint); } to { background-color: transparent; box-shadow: 0 0 0 4px transparent; } }
+.hero__text > :nth-child(1), .calc-wrap { --i: 0; }
+.hero__text > :nth-child(2) { --i: 1; }
+.hero__text > :nth-child(3) { --i: 2; }
+.js .hero__text > *, .js .calc-wrap { animation: rise 760ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 90ms + 80ms); }
+.js .calc-wrap { animation-delay: 260ms; }
+.row__amt.is-flash { border-radius: 4px; animation: flash 800ms var(--ease-out) both; }
+.diff__row:nth-child(1), .tour__list li:nth-child(1) { --i: 0; }
+.diff__row:nth-child(2), .tour__list li:nth-child(2) { --i: 1; }
+.diff__row:nth-child(3), .tour__list li:nth-child(3) { --i: 2; }
+.diff__row:nth-child(4) { --i: 3; }
+.diff__row:nth-child(5) { --i: 4; }
+.js .diff__row, .js .tour__list li { opacity: 0; transform: translateY(12px); transition: opacity 640ms var(--ease-out), transform 640ms var(--ease-out); transition-delay: calc(var(--i, 0) * 80ms + 120ms); }
+.js .is-in .diff__row, .js .is-in .tour__list li { opacity: 1; transform: none; }
+.js .diff::before { transform: scaleX(0); transition: transform 1000ms var(--ease-out); }
+.js .is-in .diff::before { transform: scaleX(1); }
+.js .shot img { transform: scale(0.96); transition: transform 900ms var(--ease-out); }
+.js .shot.is-in img { transform: none; }
+
 @media (prefers-reduced-motion: reduce) {
+  .js .hero__text > *, .js .calc-wrap { animation: none; }
+  .js .diff__row, .js .tour__list li, .js .shot img { opacity: 1; transform: none; transition: none; }
+  .js .diff::before { transform: none; transition: none; }
+  .row__amt.is-flash { animation: none; }
   .js .mark:not(.is-drawn) path { stroke-dashoffset: 0; fill-opacity: 1; }
   .js .mark.is-drawn path { animation: none; }
   .ink { display: none; }

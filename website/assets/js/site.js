@@ -78,6 +78,7 @@
     };
     var state = { n: 3, mode: 'equal', payer: 0, names: NAMES.slice(), custom: [] };
     var built = { n: 0, mode: '' };
+    var ready = false; /* the amounts flash when they change, but not on first paint */
 
     var peopleRadio = function () { return form.querySelector('input[name="people"]:checked').value; };
     var modeRadio = function () { return form.querySelector('input[name="mode"]:checked').value; };
@@ -222,7 +223,14 @@
 
       for (var k = 0; k < state.n; k++) {
         var li = lis[k];
-        if (state.mode === 'equal') li.querySelector('output').textContent = fmt(shares[k]);
+        if (state.mode === 'equal') {
+          var out = li.querySelector('output');
+          var now = fmt(shares[k]);
+          if (out.textContent !== now) {
+            out.textContent = now;
+            if (ready && !reduce) { out.classList.remove('is-flash'); void out.offsetWidth; out.classList.add('is-flash'); }
+          }
+        }
         if (!okTotal || !hasPayer) { noteFor(li, []); continue; }
         if (k === payer) {
           noteFor(li, matched ? ['paid ' + fmt(T) + ', gets back ' + fmt(T - shares[k])] : ['paid ' + fmt(T)]);
@@ -317,6 +325,7 @@
     /* enable the controls: they ship disabled so the page is honest without script */
     Array.prototype.forEach.call(form.querySelectorAll('[data-needs-js]'), function (n) { n.disabled = false; });
     sync(true);
+    ready = true;
   }
 
   /* ---------- staged demos: they play only when the visitor asks, once per press ---------- */
