@@ -91,10 +91,10 @@ export const DATA_PRACTICES = [
   'Expenses and balances: amounts, descriptions, categories, dates, who paid, each person’s share, circles, settlements, repeating expenses and an activity log.',
   'People you add: the name, and phone number if you enter it, of someone who has not joined Kinlo.',
   'Personal spending and reminders you keep for yourself, which only you can see.',
-  'Payment screenshots you choose to scan: the image, the text read from it, and the amount, merchant, date and category found.',
+  'Payment screenshots you choose to scan: the image, and the amount, merchant, date and category found.',
   'A notification token from Expo, if you allow notifications.',
   'A random ID the app creates for your install (not a hardware ID), used to stop free scan and coupon limits being bypassed with extra accounts.',
-  'Your plan (Free or Gold), any coupon you redeemed, and short-lived counts of scans, lookups and reminders, used to apply limits and prevent abuse.',
+  'Your plan (Free or Gold), any coupon you redeemed, and counts and records of scans, lookups and reminders, used to apply limits and prevent abuse. Rate-limit counters are short-lived. Scan and reminder records are kept until you delete your account.',
 ] as const;
 
 export const PRIVACY_POLICY: LegalDocument = {
@@ -120,6 +120,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       body: [
         ...DATA_PRACTICES,
         'If the app hits a fatal error, a note about it is saved on your phone only. It is not sent to us.',
+        'Unsaved scan drafts and cached data are kept on your phone. A draft is removed when you save or discard it, and cached data is cleared when you sign out.',
       ],
     },
     {
@@ -128,10 +129,10 @@ export const PRIVACY_POLICY: LegalDocument = {
         'Scanning is optional. When you scan, the image is uploaded to a private storage area that only your account can read, and the image is sent to an AI service to read it.',
         'The AI service gets the image and a fixed instruction that includes today’s date. It does not get your name, email or account ID.',
         'Kinlo asks Anthropic’s Claude first. If that fails or looks unsure, it may ask Google’s Gemini, then a larger Claude model.',
-        'What comes back (amount, merchant, date, category and the text on the image) is saved on your personal entry. Check it before you save.',
+        'What comes back (amount, merchant, date and category) is saved on your personal entry. The text on the image is read to find these and is not kept. Check it before you save.',
         'We do not keep the AI conversation. Our server logs note which AI service was called, the status it returned, the type of any error and how long the call took. They do not include the provider’s reply, your image or the details read from it.',
         'Each AI company handles the images it receives under its own terms, and we do not control how long it keeps them. Do not scan screenshots that show card numbers or anything you do not want processed.',
-        'In this preview, removing an entry does not remove its image. Deleting your account does.',
+        'In this preview, removing an entry does not remove its image, and the image from a scan you did not save also stays. Deleting your account removes them.',
         'The free plan allows 3 scans a month per account, and 6 a month in total across all accounts used on one app install. Gold allows 125.',
       ],
     },
@@ -141,14 +142,14 @@ export const PRIVACY_POLICY: LegalDocument = {
         'When you add a friend, your phone’s own contact picker opens. You choose one person, and only that person’s name and number are used.',
         'Contact sync is off until you turn it on. If you do, phone numbers from your contacts (the last ten digits) are sent to our server and checked against Kinlo accounts. Names stay on your phone. The numbers are used to look for matches and are not stored. Kinlo does remember which accounts matched, so that you can add them as friends.',
         'You can turn contact sync off in Profile.',
-        'If someone has your number in their contacts and uses contact sync, or types your number to add you, they can see that you use Kinlo, with your name, avatar and phone number.',
+        'If someone has your number in their contacts and uses contact sync, or types your number to add you, they can see that you use Kinlo, with your name and phone number, and your avatar if they find you through contact sync.',
       ],
     },
     {
       heading: 'Who can see your data',
       body: [
-        'People in a shared expense or circle see that expense, its amount, the balance between you, and your name and avatar. That is the point of the app.',
-        'If you send a friend a payment reminder, they get a notification with your name and the amount they owe you.',
+        'People in a shared expense or circle see that expense, its amount, the balance between you, and your name and avatar. They can also see the phone number and UPI ID on your profile, if you added them. That is the point of the app.',
+        'Kinlo sends notifications to other people about things you do: a payment reminder, a new, changed or deleted shared expense, a recorded payment, a request to delete an expense, a connection request, or a number you added that joins. They can include your name, the expense description and the amount. Kinlo cannot confirm that a notification arrived.',
         'Your personal spending entries and reminders are visible only to you.',
         'As the person who runs Kinlo, we can technically reach the database to fix problems. We do not browse it for any other reason.',
       ],
@@ -162,7 +163,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         'Google (sign-in): only if you choose Google sign-in. It receives your sign-in details.',
         'Expo: notifications and app updates. It receives your notification token and the message, and update requests from your phone.',
         'GitHub: hosts the preview APK download, under its own policy.',
-        'These providers may process data on servers outside India. We may also share data if the law or a valid legal order requires it.',
+        'These providers may process data on servers outside India, and Supabase, Expo and GitHub keep their own server logs, which can include IP addresses, under their own policies. We may also share data if the law or a valid legal order requires it.',
       ],
     },
     {
@@ -183,9 +184,9 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Deleting your account',
       body: [
-        'Delete your account in the app from Profile → Data & Export Compliance → Delete Account & Data. The app shows what will be removed and what will stay before you confirm. Outstanding balances do not block deletion. Deleting cannot be undone.',
+        'Delete your account in the app from Profile → Data & Export Compliance → Delete Account & Data. The app shows what will be removed and what will stay, then asks you to type DELETE and confirm again. Outstanding balances do not block deletion. Deleting cannot be undone. If deleting stops partway, your private data may already be gone: try again from the app, and if it still fails, email us.',
         'Erased: your login (email, password and Google link); your name, phone number, avatar, UPI ID and notification token; your personal spending entries, reminders and drafts; your friend links and reminder records; your repeating expenses, plan, coupon and scan records and usage counters; your scanned payment screenshots; and people you added who have not joined and have no expense history. Screenshots are removed in batches. If a removal fails, the rest of the deletion still goes ahead and we log how many files failed, so you can email us to check. The login is removed last; if that step fails, the plan, coupon, scan and usage records tied to it can remain until we finish the deletion with you by email.',
-        'Kept, with your identity removed (your name becomes “Deleted user”): shared expenses and their amounts, who paid, each person’s share and settlements, descriptions you wrote on shared expenses, circle memberships and activity entries. People you added who have expense history also stay, with the name and number you entered, because those expenses still need them. These are also other people’s records. Deleting does not cancel money you owe or are owed.',
+        'Kept, with your identity removed (your name becomes “Deleted user”): shared expenses and their amounts, who paid, each person’s share and settlements, descriptions you wrote on shared expenses, circle memberships and activity entries. People you added who have expense history also stay, with the name and number you entered, because those expenses still need them. Anything you typed into a description or note on a shared expense stays as written, including any names in it. A record of which accounts matched when someone looked up a phone number, and records of connection requests between you and others, also stay; your account row keeps no name, phone number or UPI ID. These are also other people’s records. Deleting does not cancel money you owe or are owed.',
         `If you cannot open the app, email ${GRIEVANCE_EMAIL} from the address on your account with the subject “Delete my Kinlo account”. We will reply to confirm and aim to finish within 30 days. Never send your password.`,
       ],
     },
@@ -236,7 +237,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
       body: [
         'Kinlo keeps a record of who owes whom. It never holds or moves money.',
         'Scanned numbers are read by AI and can be wrong. Check them.',
-        'This is a preview build, so expect bugs and changes.',
+        'This is an Android preview build, so expect bugs and changes.',
         'These terms are governed by the laws of India.',
       ],
     },
@@ -244,7 +245,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
       heading: 'What Kinlo is',
       body: [
         'Kinlo is a record-keeping tool for shared expenses and your own spending. It works out balances from what you and the people you share with enter.',
-        'Kinlo does not hold, transfer or process money, and it has no payment gateway. When you settle up, it opens your own UPI app with the details filled in. The payment happens between you, the other person and your payment providers.',
+        'Kinlo does not hold or transfer money or process payments, and it has no payment gateway. When you settle up, it opens your own UPI app with the details filled in. The payment happens between you, the other person and your payment providers. Marking a payment as settled records what you tell Kinlo. It cannot see whether the UPI payment went through.',
       ],
     },
     {
@@ -259,7 +260,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     {
       heading: 'Using Kinlo properly',
       body: [
-        'Do not use Kinlo to break the law, harass anyone, or reach data that belongs to other people. Do not get around its limits, for example by making extra accounts to collect free scans or reuse a coupon. Do not overload or reverse engineer the service beyond what the open-source licence allows. Send reminders reasonably: Kinlo allows one per person per day, and only while a balance is open.',
+        'Do not use Kinlo to break the law, harass anyone, or reach data that belongs to other people. Do not get around its limits, for example by making extra accounts to collect free scans or reuse a coupon. Do not overload or reverse engineer the service beyond what the open-source licence allows. Send reminders reasonably: you can send each person one reminder every 24 hours, and only while they owe you money.',
         'We may suspend an account that breaks these rules.',
       ],
     },
@@ -275,7 +276,9 @@ export const TERMS_OF_SERVICE: LegalDocument = {
         'An AI service reads the screenshot. It can misread or miss details, so check the amount, merchant, date and category before you save. What you save is your responsibility.',
         'Only scan screenshots you have the right to use.',
         'The free plan includes 3 scans a month per account, and 6 a month in total across all accounts used on one app install. Gold includes 125. Allowances reset on the 1st of each month (India time) and may change.',
+        'Every plan also allows at most 20 scans in any 24 hours. Limits are counted on our server and are best effort: if a count cannot be checked, a scan may still go through, and the per-install count restarts if you reinstall the app or clear its data. A scan that fails is not counted against your allowance.',
         'Paid plans are not on sale in the preview. Gold is given by coupon or by us. If that changes, the price and billing terms will be shown in the app before you buy, and these terms will be updated.',
+        'Gold also lifts the free plan’s limit of 3 active reminders and adds a CSV statement export. Gold from a coupon ends on the date the app shows. Splitting, circles, balances and settling up stay free.',
       ],
     },
     {
