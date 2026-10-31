@@ -573,7 +573,7 @@ export default function ProfileScreen() {
     const confirmed = await new Promise<boolean>((resolve) => {
       showAlert(
         'Last chance',
-        'This permanently deletes your account, your personal expenses, your saved receipts and your login.\n\nIt cannot be undone, and we cannot recover it for you afterwards.',
+        'This permanently deletes your account, your personal expenses and reminders, your saved receipts, your friend list and your login.\n\nIt cannot be undone, and we cannot recover it for you afterwards.',
         [
           { text: 'Keep my account', style: 'cancel', onPress: () => resolve(false) },
           { text: 'Delete forever', style: 'destructive', onPress: () => resolve(true) },
@@ -836,7 +836,7 @@ export default function ProfileScreen() {
                   </View>
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Data & Export Compliance</Text>
-                    <Text className="text-xs text-on-surface-variant">PDF exporter, Delete Account (GDPR)</Text>
+                    <Text className="text-xs text-on-surface-variant">PDF exporter, Delete account and data</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
@@ -1569,8 +1569,8 @@ export default function ProfileScreen() {
               </View>
 
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
-                <Text className="font-headline text-base font-bold text-on-surface">Data Erasure Right (GDPR/CCPA)</Text>
-                <Text className="text-xs text-on-surface-variant leading-relaxed">Complying with global financial regulations, you have the right to be forgotten. Wiping your profile erases personal data, anonymizing splits.</Text>
+                <Text className="font-headline text-base font-bold text-on-surface">Delete your account and data</Text>
+                <Text className="text-xs text-on-surface-variant leading-relaxed">You can delete your account and personal data at any time. Expenses you shared with other people stay on their records with your identity removed.</Text>
                 <View className="w-full h-px bg-outline-variant/30 my-2" />
                 <AnimatedPressable onPress={handleDeleteAccountAttempt} className="w-full h-12 bg-red-100 border border-red-300 rounded-2xl flex-row items-center justify-center active:scale-95"><MaterialIcons name="delete-forever" size={18} color={COLORS.error} /><Text className="text-error font-bold text-xs uppercase tracking-wider">Delete Account & Data</Text></AnimatedPressable>
               </View>
@@ -1675,9 +1675,10 @@ export default function ProfileScreen() {
               <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}>
                 <Text className="text-xs font-semibold text-on-surface mb-2">Permanently deleted</Text>
                 <Text className="text-xs text-on-surface-variant leading-relaxed mb-3">
-                  Your name, phone number and UPI ID · {deletionPreview.personalEntries} personal
-                  {deletionPreview.personalEntries === 1 ? ' expense' : ' expenses'} · your saved
-                  receipt images · your friend list · your login
+                  Your name, phone number, avatar and UPI ID · {deletionPreview.personalEntries} personal
+                  {deletionPreview.personalEntries === 1 ? ' expense' : ' expenses'} · your reminders,
+                  repeating expenses and drafts · your saved receipt images · your friend list · your
+                  plan and usage records · your login
                 </Text>
 
                 <Text className="text-xs font-semibold text-on-surface mb-2">Kept, without your name</Text>
@@ -1686,7 +1687,8 @@ export default function ProfileScreen() {
                   {deletionPreview.sharedExpenses === 1 ? 'expense' : 'expenses'}
                   {deletionPreview.openGroups > 0 ? ` and ${deletionPreview.openGroups} circle${deletionPreview.openGroups === 1 ? '' : 's'}` : ''}
                   {' '}stay on the other people&apos;s records, shown as &ldquo;Deleted user&rdquo;. Removing them
-                  would change someone else&apos;s balance.
+                  would change someone else&apos;s balance. People you added who have expense history keep
+                  the name and number you entered.
                 </Text>
 
                 {(deletionPreview.youOwe > 0 || deletionPreview.owedToYou > 0) && (

@@ -250,7 +250,7 @@ export default function PermissionsScreen() {
               <View className="flex-1">
                 <Text className="font-bold text-sm text-primary">Contacts</Text>
                 <Text className="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
-                  Find which of your contacts already use Kinlo — only matching phone numbers are checked.
+                  Find which of your contacts already use Kinlo. Their phone numbers are sent to our server to check for matches. Names stay on your phone.
                 </Text>
                 {statusLine(contactsState) && (
                   <Text className="text-xs font-bold mt-1" style={{ color: contactsState === 'granted' ? '#004c22' : '#b45309' }}>

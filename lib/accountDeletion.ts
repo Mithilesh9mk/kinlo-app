@@ -54,16 +54,27 @@ export async function deleteMyAccount(): Promise<void> {
     // and leaves data null, so the function's own message — which
     // distinguishes "your data is gone but the login remains" from "nothing
     // happened" — is only reachable through the stashed Response.
+    //
+    // The message is picked inside the try and thrown after it. It used to be
+    // thrown inside the try, where the catch swallowed it, so every failure
+    // showed the generic line below and the server's text never reached the
+    // screen.
+    let message = '';
     const context = (error as { context?: unknown }).context;
     if (context instanceof Response) {
       try {
         const body = await context.json();
-        if (body?.error) throw new Error(body.error);
+        if (body?.code === 'auth_delete_failed') {
+          message =
+            'Your private data was removed, but your login could not be deleted. Try again from Profile. If it still fails, email us at the address in the privacy policy.';
+        } else if (body?.error) {
+          message = String(body.error);
+        }
       } catch {
         // fall through to the generic message below
       }
     }
-    throw new Error('Could not delete your account. Please try again.');
+    throw new Error(message || 'Could not delete your account. Please try again.');
   }
 
   if (data && (data as any).ok === false) {

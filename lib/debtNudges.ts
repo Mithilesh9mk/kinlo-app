@@ -68,7 +68,7 @@ export function describeNudgeResult(result: NudgeResult, friendName: string): st
       const when = next && !Number.isNaN(next.getTime())
         ? next.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
         : 'later';
-      return `You already reminded ${friendName} today. Try again after ${when}.`;
+      return `You already reminded ${friendName} in the last 24 hours. Try again after ${when}.`;
     }
     case 'no_debt':
       return `You're already square with ${friendName}.`;
