@@ -208,8 +208,8 @@
   <div class="container split">
     <div class="split__text" data-reveal>
       <h2 id="scan-h">Screenshot in, expense out.</h2>
-      <p>An AI service reads your UPI or bank payment screenshot into a personal expense. You check it before you rely on it. It does not create a shared expense.</p>
-      <p class="small">Free plan: 3 scans a month.</p>
+      <p>An AI service reads your UPI or bank payment screenshot into a personal expense. You check it before you rely on it. It does not create a shared expense. The image is sent to an AI service (Anthropic, or Google as a backup) to be read.</p>
+      <p class="small">Free plan: 3 scans a month per account, 6 per app install.</p>
     </div>
     <figure class="demo demo--receipt" data-state="done" aria-labelledby="scan-cap">
       <div class="demo__stage">
@@ -231,12 +231,12 @@
         </div>
       </div>
       <p class="visually-hidden">Example: a payment screenshot from Example Cafe, &#8377;480.00 on 24 Oct, becomes a personal expense with the same amount, merchant and date, marked Needs review.</p>
-      <div class="demo__bar">
-        <figcaption id="scan-cap">Demo, not live: nothing is uploaded and the cafe is made up.</figcaption>
+      <figcaption class="demo__bar">
+        <span class="demo__cap" id="scan-cap">Demo, not live: nothing is uploaded and the cafe is made up.</span>
         <div class="demo__ctl">
           <button class="link-btn" type="button" data-demo-play>Play demo</button>
         </div>
-      </div>
+      </figcaption>
     </figure>
   </div>
 </section>
@@ -259,12 +259,12 @@
         </div>
       </div>
       <p class="visually-hidden">Example: Ravi owes Asha &#8377;33.33. Asha taps Send reminder. Ravi sees: Asha reminded you about &#8377;33.33 you owe them.</p>
-      <div class="demo__bar">
-        <figcaption id="nudge-cap">Demo, not live. Reminder notifications are not working in the current preview APK yet.</figcaption>
+      <figcaption class="demo__bar">
+        <span class="demo__cap" id="nudge-cap">Demo, not live. Reminder notifications are not working in the current preview APK yet.</span>
         <div class="demo__ctl">
           <button class="link-btn" type="button" data-demo-play>Play demo</button>
         </div>
-      </div>
+      </figcaption>
     </figure>
     <div class="split__text" data-reveal>
       <h2 id="nudge-h">A nudge that does the chasing.</h2>
@@ -277,8 +277,8 @@
   <div class="container" data-reveal>
     <h2 id="diff-h">What Kinlo does differently.</h2>
     <dl class="diff">
-      <div class="diff__row"><dt>Reminders are built in</dt><dd>Nudge a friend who owes you, once a day.</dd></div>
-      <div class="diff__row"><dt>Screenshots become expenses</dt><dd>Scan a payment screenshot instead of typing it.</dd></div>
+      <div class="diff__row"><dt>Reminders are built in</dt><dd>Nudge a friend who owes you, once a day. Notifications are not working in the current preview yet.</dd></div>
+      <div class="diff__row"><dt>Screenshots become personal expenses</dt><dd>Scan a payment screenshot instead of typing it.</dd></div>
       <div class="diff__row"><dt>Friends who have not joined</dt><dd>Add them first. If they join later, you both confirm the link.</dd></div>
       <div class="diff__row"><dt>Open source</dt><dd>MIT-licensed code on <a href="https://github.com/Mithilesh9mk/kinlo-app" rel="noopener">GitHub</a>. The Kinlo name and logo stay reserved.</dd></div>
       <div class="diff__row"><dt>Private by default</dt><dd>No ads, no tracking SDKs, no data sales. Read the <a href="/privacy">privacy policy</a>.</dd></div>
