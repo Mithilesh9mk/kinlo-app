@@ -1,0 +1,101 @@
+/* Hallmark · scroll scenes for the home page only. Device mechanics adapted from scrollcraft (MIT, (c) 2026 Nate Herk), styled with Kinlo tokens. Loaded by index.html and nothing else, so the legal pages are untouched. */
+
+/* ---- mechanics (from the engine's device layer; the engine writes the inline values) ---- */
+.sc-act--pinned { position: relative; }
+.sc-stage { position: sticky; inset-block-start: 0; height: 100vh; height: 100svh; overflow: clip; z-index: 1; }
+.sc-wait [data-sc-cue] { opacity: 0; will-change: opacity, transform; }
+.sc-split { display: inline-block; overflow: hidden; vertical-align: top; }
+.sc-split--line { display: block; padding-bottom: 0.14em; margin-bottom: -0.14em; }
+.sc-split__i { display: inline-block; will-change: transform, opacity; }
+.sc-is-split { opacity: 1 !important; }
+[data-sc-pan] { display: flex; will-change: transform; }
+[data-sc-parallax] { will-change: transform; }
+
+.progress { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 310; background: var(--color-accent-2); transform-origin: 0 50%; transform: scaleX(0); pointer-events: none; }
+
+/* ---- hero planes: three depths behind and in front of the live calculator ---- */
+section.hero > .planes { position: absolute; inset: 0; z-index: 0; overflow: clip; pointer-events: none; }
+section.hero > .planes--front { z-index: 2; }
+.plane { position: absolute; inset: 0; pointer-events: none; }
+.plane--far .plane__leaf { position: absolute; width: min(46rem, 62vw); right: -8%; top: 6%; fill: none; stroke: var(--color-tint); stroke-width: 3; stroke-linejoin: round; opacity: 0.9; }
+.slip { position: absolute; display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-lg); min-width: 11.5rem; padding: var(--space-xs) var(--space-md); background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-card); box-shadow: var(--shadow-card); font-size: var(--text-sm); color: var(--color-ink-2); }
+.slip b { font-weight: 600; color: var(--color-ink); }
+.slip i { font-style: normal; font-variant-numeric: tabular-nums; }
+.slip--1 { left: calc(var(--gutter) + 0.5rem); bottom: 2.5rem; transform: rotate(-2deg); }
+.slip--2 { left: calc(var(--gutter) + 3.5rem); bottom: 5.4rem; transform: rotate(1.5deg); }
+.slip--3 { left: calc(var(--gutter) + 1.5rem); bottom: 8.3rem; transform: rotate(-1deg); }
+.coin { position: absolute; display: grid; place-items: center; border-radius: 50%; background: var(--color-mint); color: var(--color-accent); font-family: var(--font-display); filter: blur(1.5px); }
+.coin--1 { left: 1.5%; bottom: 34%; width: 3.5rem; height: 3.5rem; font-size: 1.5rem; }
+.coin--2 { right: 1%; top: 16%; width: 2.25rem; height: 2.25rem; font-size: 1rem; filter: blur(2.5px); }
+
+/* ---- the screens rail (pan) ---- */
+.screens { background: var(--color-paper); }
+.screens__stage { display: flex; align-items: center; }
+.screens__rail { align-items: center; gap: var(--space-2xl); padding-inline: var(--gutter); height: 100%; }
+.screens__rail > * { flex: 0 0 auto; }
+.screens__lead { width: min(30rem, 78vw); display: grid; gap: var(--space-lg); }
+.screens__list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-md); }
+.screens__list li { font-size: var(--text-md); line-height: 1.5; color: var(--color-ink-2); padding-left: var(--space-md); border-left: 2px solid var(--color-tint); }
+.screens__list b { color: var(--color-ink); font-weight: 600; }
+.screen { margin: 0; display: grid; gap: var(--space-sm); width: max-content; }
+.screen__frame { height: min(64svh, 38rem); aspect-ratio: 600 / 1281; border-radius: 1.75rem; overflow: hidden; background: var(--color-surface); outline: 1px solid var(--color-rule); outline-offset: -1px; box-shadow: var(--shadow-card); }
+.screen__frame img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 100%; }
+.screen figcaption { max-width: 17rem; font-size: var(--text-sm); line-height: 1.4; color: var(--color-ink-2); }
+.screens__end { width: min(16rem, 60vw); padding-right: var(--gutter); }
+.screens__end p { font-size: var(--text-md); color: var(--color-muted); }
+
+/* ---- nine payments, or three (pin) ---- */
+.nine { background: linear-gradient(160deg, var(--color-field) 0%, var(--color-field-2) 100%); color: var(--color-field-ink); }
+.nine :focus-visible { outline-color: var(--color-focus-on-field); }
+.nine__stage { --t1: clamp(0, calc((var(--sc-p, 1) - 0.04) / 0.22), 1); --t2: clamp(0, calc((var(--sc-p, 1) - 0.46) / 0.2), 1); --t3: clamp(0, calc((var(--sc-p, 1) - 0.64) / 0.12), 1); --tb: clamp(0, calc((var(--sc-p, 1) - 0.3) / 0.1), 1); display: flex; align-items: center; }
+.nine__grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--space-2xl); align-items: center; }
+.nine__text { display: grid; gap: var(--space-lg); align-content: center; }
+.nine h2 { font-size: var(--text-display-s); color: var(--color-field-ink); max-width: 12ch; }
+.nine__beats p { font-size: var(--text-lead); line-height: 1.45; color: var(--color-field-ink); max-width: 46ch; }
+.sc-ready .nine__beats { display: grid; min-height: 9.5rem; }
+.sc-ready .nine__beats > p { grid-area: 1 / 1; }
+.nine__beats > p + p { margin-top: var(--space-md); }
+.sc-ready .nine__beats > p + p { margin-top: 0; }
+.nine__final { font-family: var(--font-display); font-size: var(--text-section) !important; line-height: 1.1 !important; color: var(--color-mint) !important; }
+.nine__count { display: grid; grid-template-columns: auto auto; align-items: baseline; justify-content: start; column-gap: var(--space-sm); font-family: var(--font-display); }
+.nine__n { grid-area: 1 / 1; font-size: var(--text-display); line-height: 1; letter-spacing: var(--tracking-display); }
+.nine__n--9 { color: var(--color-field-ink-2); opacity: calc(1 - var(--t2)); }
+.nine__n--3 { color: var(--color-mint); opacity: var(--t2); }
+.nine__u { grid-area: 1 / 2; align-self: end; font-family: var(--font-body); font-size: var(--text-md); color: var(--color-field-ink); padding-bottom: 0.4em; }
+.nine__note { font-size: var(--text-sm); color: var(--color-field-ink-2); }
+.nine__fig { justify-self: center; width: min(100%, 36rem); }
+.nine__svg { width: 100%; height: auto; max-height: 72svh; overflow: visible; }
+.nine__gross path { fill: none; stroke: var(--color-field-ink-2); stroke-width: 2; stroke-dasharray: 1; stroke-dashoffset: calc(1 - var(--t1)); opacity: calc(0.9 - 0.84 * var(--t2)); }
+.nine__net .n { fill: none; stroke: var(--color-mint); stroke-width: 4.5; stroke-dasharray: 1; stroke-dashoffset: calc(1 - var(--t2)); opacity: var(--t2); }
+.nine__net .h { fill: var(--color-mint); opacity: var(--t3); }
+.nine__amts text { font-family: var(--font-body); font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; fill: var(--color-field-ink); opacity: var(--t3); }
+.nine__nodes circle { fill: var(--color-field-2); stroke: var(--color-field-ink-2); stroke-width: 2; }
+.nine__nodes .i { font-family: var(--font-display); font-size: 22px; fill: var(--color-field-ink); }
+.nine__nodes .nm { font-family: var(--font-body); font-size: 19px; fill: var(--color-field-ink); }
+.nine__nodes .bal { font-family: var(--font-body); font-size: 17px; fill: var(--color-field-ink-2); opacity: var(--tb); }
+
+@media (max-width: 60rem) {
+  .plane--mid, .planes--front { display: none; }
+  .plane--far .plane__leaf { width: 80vw; right: -22%; top: 2%; opacity: 0.6; }
+  .screen__frame { height: min(68svh, 36rem); }
+  .nine__grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-md); align-content: center; }
+  .nine__text { gap: var(--space-sm); }
+  .nine h2 { font-size: var(--text-section); max-width: none; }
+  .nine__beats p { font-size: var(--text-md); }
+  .sc-ready .nine__beats { min-height: 7.5rem; }
+  .nine__final { font-size: var(--text-2xl) !important; }
+  .nine__count { display: none; }
+  .nine__note { display: none; }
+  .nine__svg { max-height: 40svh; }
+}
+
+/* ---- reduced motion: the engine is not started, so every scene is a plain, complete layout ---- */
+@media (prefers-reduced-motion: reduce) {
+  [data-sc-parallax], [data-sc-pan] { transform: none !important; }
+  .progress { display: none; }
+  .screens__stage { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding-block: var(--section-gap-l); }
+  .screens__rail > * { scroll-snap-align: center; }
+  .nine__stage { --t1: 1; --t2: 1; --t3: 1; --tb: 1; padding-block: var(--section-gap-l); }
+  .nine__beats > p + p { margin-top: var(--space-md); }
+  .nine__n--9 { display: none; }
+}

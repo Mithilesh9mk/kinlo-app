@@ -10,10 +10,12 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="assets/img/favicon.png" type="image/png">
 <link rel="stylesheet" href="assets/css/site.css">
+<link rel="stylesheet" href="assets/css/scenes.css">
 <script src="assets/js/boot.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
+<span class="progress" data-sc-progress aria-hidden="true"></span>
 
 <header class="nav">
   <div class="container nav__row">
@@ -24,7 +26,18 @@
 
 <main id="main">
 
-<section class="hero" aria-labelledby="hero-h">
+<section class="hero" aria-labelledby="hero-h" data-sc-act="flow">
+  <div class="planes" aria-hidden="true">
+    <div class="plane plane--far" data-sc-parallax="1.6"><svg class="plane__leaf" viewBox="190 190 640 640" focusable="false"><path d="M806 215 C700 222 560 238 440 280 C340 316 285 360 255 420 C232 466 215 510 215 548 C215 600 250 690 290 732 C340 620 430 505 563 437 C465 530 385 670 363 782 C410 802 460 808 510 806 C598 800 662 756 696 690 C726 634 745 556 765 472 C788 386 802 300 806 215 Z"/></svg></div>
+    <div class="plane plane--mid" data-sc-parallax="-0.9">
+      <span class="slip slip--1"><b>Hotel</b><i>&#8377;6,000</i></span>
+      <span class="slip slip--2"><b>Dinner</b><i>&#8377;2,000</i></span>
+      <span class="slip slip--3"><b>Cab</b><i>&#8377;1,200</i></span>
+    </div>
+  </div>
+  <div class="planes planes--front" aria-hidden="true">
+    <div class="plane plane--near" data-sc-parallax="-1.8"><span class="coin coin--1">&#8377;</span><span class="coin coin--2">&#8377;</span></div>
+  </div>
   <div class="container hero__grid">
     <div class="hero__text">
       <h1 id="hero-h">Split the bill to the last paisa.</h1>
@@ -101,6 +114,100 @@
   </div>
 </section>
 
+<section class="screens" id="tour" data-sc-act="pan" data-sc-span="3.8" aria-labelledby="tour-h">
+  <div class="screens__stage" data-sc-stage>
+    <div class="screens__rail" data-sc-pan="0.04">
+      <div class="screens__lead">
+        <h2 id="tour-h">Circles, friends, and who paid.</h2>
+        <ul class="screens__list">
+          <li><b>Circles and friends.</b> Split with a group or one person.</li>
+          <li><b>Settle outside the app.</b> Kinlo keeps the record and never holds your money.</li>
+          <li><b>Repeating expenses.</b> Rent comes back every week, month or year.</li>
+        </ul>
+      </div>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-add-expense.webp" width="600" height="1333" alt="The Add Expense screen in the Kinlo app: an amount of 0 rupees, a what-was-it-for field, category chips and a number pad." loading="lazy"></div>
+        <figcaption>Add an expense: an amount, what it was for, a category.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-circles.webp" width="600" height="1333" alt="The Your Circles screen in the Kinlo app: a search box and cards for travel circles, each showing its members and a Settled balance." loading="lazy"></div>
+        <figcaption>Circles: one card per group, with its balance.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-finance.webp" width="600" height="1333" alt="The Personal Spending screen in the Kinlo app: this month's total, a bar chart by month, Add from screenshot and Enter manually buttons, and spending by category." loading="lazy"></div>
+        <figcaption>Personal spending, with Add from screenshot.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-insights.webp" width="600" height="1333" alt="The Insights screen in the Kinlo app: spending over the last four weeks as bars, with a split between shared and personal spending and a top category." loading="lazy"></div>
+        <figcaption>Insights: spending over a week, a month or longer.</figcaption>
+      </figure>
+      <div class="screens__end"><p>Screens from the Android preview.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="ways-h">
+  <div class="container split">
+    <div class="split__text" data-reveal>
+      <h2 id="ways-h">Four ways to share one bill.</h2>
+      <p>The same bill between Asha, Ravi and Meera. Pick a way, then drag the bars or change the total. The shares always add back up to the bill, to the last paisa.</p>
+    </div>
+    <div class="ways" data-ways data-reveal>
+      <div class="ways__top">
+        <div>
+          <label class="fld-label" for="w-total">Bill total</label>
+          <div class="money">
+            <span class="money__sign" aria-hidden="true">&#8377;</span>
+            <input class="input input--money" id="w-total" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-describedby="w-total-help" disabled data-needs-js>
+          </div>
+          <p class="help" id="w-total-help" aria-live="polite"></p>
+        </div>
+        <fieldset class="ways__pick">
+          <legend>Split type</legend>
+          <div class="seg seg--grow" role="group" aria-label="Split type">
+            <input type="radio" name="way" id="w-eq" value="equal" checked disabled data-needs-js><label for="w-eq">Equal</label>
+            <input type="radio" name="way" id="w-ex" value="exact" disabled data-needs-js><label for="w-ex">Exact</label>
+            <input type="radio" name="way" id="w-pc" value="percent" disabled data-needs-js><label for="w-pc">Percent</label>
+            <input type="radio" name="way" id="w-sh" value="shares" disabled data-needs-js><label for="w-sh">Shares</label>
+          </div>
+        </fieldset>
+      </div>
+      <p class="ways__why" id="ways-why">Everyone pays the same. The extra paisa goes to the first people in the list.</p>
+      <ol class="wrows" aria-describedby="ways-why">
+        <li><bdi class="w__name">Asha</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.34</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Asha&rsquo;s share" disabled></li>
+        <li><bdi class="w__name">Ravi</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Ravi&rsquo;s share" disabled></li>
+        <li><bdi class="w__name">Meera</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Meera&rsquo;s share" disabled></li>
+      </ol>
+      <p class="ways__sum num">&#8377;333.34 + &#8377;333.33 + &#8377;333.33 = &#8377;1,000.00</p>
+      <p class="visually-hidden" id="ways-live" role="status" aria-live="polite"></p>
+      <p class="small ways__nojs">This is a saved example. Turn on JavaScript to change it.</p>
+      <div class="ways__foot">
+        <p class="small">Pick Exact, Percent or Shares, then drag a bar or use the arrow keys. Example people, nothing is saved.</p>
+        <button class="link-btn" type="button" data-ways-reset hidden>Reset</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="nine" id="fewer" data-sc-act="pin" data-sc-span="4.6" aria-labelledby="nine-h">
+  <div class="nine__stage" data-sc-stage>
+    <div class="container nine__grid">
+      <div class="nine__text">
+        <h2 id="nine-h" data-sc-cue="0 1 0 0">Nine payments, or three.</h2>
+        <div class="nine__beats">
+          <p data-sc-cue="0 0.34 0 0.3">A weekend away: hotel, dinner and cab, shared by four friends. Settle each cost on its own and that is nine payments.</p>
+          <p data-sc-cue="0.3 0.66 0.3 0.3">Kinlo adds it all up first, so each person ends with one balance.</p>
+          <p class="nine__final" data-sc-cue="0.62 1 0.25 0" data-sc-kinetic="lines">Three payments, all to Asha.</p>
+        </div>
+        <p class="nine__count num" aria-hidden="true"><span class="nine__n nine__n--9">9</span><span class="nine__n nine__n--3">3</span><span class="nine__u">payments</span></p>
+        <p class="nine__note">The numbers are the Goa weekend example, not a real group.</p>
+        <p class="visually-hidden">Example: Asha paid &#8377;6,000 for the hotel, Ravi &#8377;2,000 for dinner and Meera &#8377;1,200 for the cab. Settled one cost at a time that is nine payments. Netted, it is three: Ravi pays Asha &#8377;300, Meera pays Asha &#8377;1,100 and Dev pays Asha &#8377;2,300.</p>
+      </div>
+      <div class="nine__fig"><svg class="nine__svg" viewBox="0 -24 520 460" aria-hidden="true" focusable="false"><g class="nine__gross"><path pathLength="1" d="M380 110 Q262 84 144 110"/><path pathLength="1" d="M385 293.4 Q276.1 189.5 138.3 128.9"/><path pathLength="1" d="M110 280 Q136 212 110 144"/><path pathLength="1" d="M140 110 Q258 136 376 110"/><path pathLength="1" d="M410 280 Q436 212 410 144"/><path pathLength="1" d="M135 293.4 Q272.8 232.7 381.7 128.9"/><path pathLength="1" d="M135 126.6 Q243.9 230.5 381.7 291.1"/><path pathLength="1" d="M410 140 Q384 208 410 276"/><path pathLength="1" d="M140 310 Q258 336 376 310"/></g><g class="nine__net"><path class="n" pathLength="1" d="M380 110 L145 110"/><path class="h" d="M141 110 L155 103 L155 117 Z"/><path class="n" pathLength="1" d="M385 293.4 L139.1 129.4"/><path class="h" d="M135.8 127.2 L151.3 129.1 L143.6 140.8 Z"/><path class="n" pathLength="1" d="M110 280 L110 145"/><path class="h" d="M110 141 L117 155 L103 155 Z"/></g><g class="nine__amts"><text x="262" y="92" text-anchor="middle">&#8377;300</text><text x="338" y="222" text-anchor="middle">&#8377;1,100</text><text x="92" y="214" text-anchor="end">&#8377;2,300</text></g><g class="nine__nodes"><circle cx="110" cy="110" r="26"/><text class="i" x="110" y="117" text-anchor="middle">A</text><text class="nm" x="110" y="68" text-anchor="middle">Asha</text><text class="bal" x="110" y="48" text-anchor="middle">gets back &#8377;3,700</text><circle cx="410" cy="110" r="26"/><text class="i" x="410" y="117" text-anchor="middle">R</text><text class="nm" x="410" y="68" text-anchor="middle">Ravi</text><text class="bal" x="410" y="48" text-anchor="middle">owes &#8377;300</text><circle cx="410" cy="310" r="26"/><text class="i" x="410" y="317" text-anchor="middle">M</text><text class="nm" x="410" y="362" text-anchor="middle">Meera</text><text class="bal" x="410" y="384" text-anchor="middle">owes &#8377;1,100</text><circle cx="110" cy="310" r="26"/><text class="i" x="110" y="317" text-anchor="middle">D</text><text class="nm" x="110" y="362" text-anchor="middle">Dev</text><text class="bal" x="110" y="384" text-anchor="middle">owes &#8377;2,300</text></g></svg></div>
+    </div>
+  </div>
+</section>
+
 <section class="journey" id="journey" aria-labelledby="journey-h" data-journey>
   <div class="journey__track">
     <div class="journey__sticky">
@@ -156,66 +263,6 @@
         </div>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="section section--mid" aria-labelledby="ways-h">
-  <div class="container split">
-    <div class="split__text" data-reveal>
-      <h2 id="ways-h">Four ways to share one bill.</h2>
-      <p>The same bill between Asha, Ravi and Meera. Pick a way, then drag the bars or change the total. The shares always add back up to the bill, to the last paisa.</p>
-    </div>
-    <div class="ways" data-ways data-reveal>
-      <div class="ways__top">
-        <div>
-          <label class="fld-label" for="w-total">Bill total</label>
-          <div class="money">
-            <span class="money__sign" aria-hidden="true">&#8377;</span>
-            <input class="input input--money" id="w-total" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-describedby="w-total-help" disabled data-needs-js>
-          </div>
-          <p class="help" id="w-total-help" aria-live="polite"></p>
-        </div>
-        <fieldset class="ways__pick">
-          <legend>Split type</legend>
-          <div class="seg seg--grow" role="group" aria-label="Split type">
-            <input type="radio" name="way" id="w-eq" value="equal" checked disabled data-needs-js><label for="w-eq">Equal</label>
-            <input type="radio" name="way" id="w-ex" value="exact" disabled data-needs-js><label for="w-ex">Exact</label>
-            <input type="radio" name="way" id="w-pc" value="percent" disabled data-needs-js><label for="w-pc">Percent</label>
-            <input type="radio" name="way" id="w-sh" value="shares" disabled data-needs-js><label for="w-sh">Shares</label>
-          </div>
-        </fieldset>
-      </div>
-      <p class="ways__why" id="ways-why">Everyone pays the same. The extra paisa goes to the first people in the list.</p>
-      <ol class="wrows" aria-describedby="ways-why">
-        <li><bdi class="w__name">Asha</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.34</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Asha&rsquo;s share" disabled></li>
-        <li><bdi class="w__name">Ravi</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Ravi&rsquo;s share" disabled></li>
-        <li><bdi class="w__name">Meera</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Meera&rsquo;s share" disabled></li>
-      </ol>
-      <p class="ways__sum num">&#8377;333.34 + &#8377;333.33 + &#8377;333.33 = &#8377;1,000.00</p>
-      <p class="visually-hidden" id="ways-live" role="status" aria-live="polite"></p>
-      <p class="small ways__nojs">This is a saved example. Turn on JavaScript to change it.</p>
-      <div class="ways__foot">
-        <p class="small">Pick Exact, Percent or Shares, then drag a bar or use the arrow keys. Example people, nothing is saved.</p>
-        <button class="link-btn" type="button" data-ways-reset hidden>Reset</button>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section section--tall" aria-labelledby="tour-h">
-  <div class="container tour">
-    <div data-reveal>
-      <h2 id="tour-h">Circles, friends, and who paid.</h2>
-      <ul class="tour__list">
-        <li><b>Circles and friends.</b> Split with a group or one person.</li>
-        <li><b>Settle outside the app.</b> Kinlo keeps the record and never holds your money.</li>
-        <li><b>Repeating expenses.</b> Rent comes back every week, month or year.</li>
-      </ul>
-    </div>
-    <figure class="shot" data-reveal>
-      <img src="assets/img/add-expense.png" width="600" height="1333" alt="The Add Expense screen in the Kinlo app: an amount of 0 rupees, a what-was-it-for field, category chips and a number pad." loading="lazy">
-      <figcaption>Adding an expense in the preview app.</figcaption>
-    </figure>
   </div>
 </section>
 
@@ -341,5 +388,7 @@
 </footer>
 
 <script src="assets/js/site.js" defer></script>
+<script src="assets/js/scrollcraft.js" defer></script>
+<script src="assets/js/mount.js" defer></script>
 </body>
 </html>

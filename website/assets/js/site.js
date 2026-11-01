@@ -665,7 +665,7 @@
     };
 
     /* every section, the header and the footer get their own sheet of ink (legal pages: the whole article), so it follows the mouse down the whole site */
-    var hosts = Array.prototype.slice.call(document.querySelectorAll('.nav, main > section, .foot'));
+    var hosts = Array.prototype.slice.call(document.querySelectorAll('.nav, main > section:not([data-sc-act="pin"]):not([data-sc-act="pan"]), .foot'));
     if (!document.querySelector('main > section')) { var mainEl = document.querySelector('main'); if (mainEl) hosts.push(mainEl); }
     hosts.forEach(function (h) {
       var dark = h.classList.contains('band');
