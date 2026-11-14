@@ -10,6 +10,7 @@ import { useAlert } from '../../components/AppAlert';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { CATEGORIES, MAX_CATEGORY_LENGTH } from '../../lib/categories';
+import { formatINR } from '../../lib/format';
 
 /**
  * Module scope, NOT inside AmountScreen.
@@ -23,9 +24,11 @@ import { CATEGORIES, MAX_CATEGORY_LENGTH } from '../../lib/categories';
  * that took this screen down. Hoisting it makes the type stable, so the
  * buttons are reused instead of rebuilt.
  */
-const KeypadButton = ({ value, onPress, icon }: { value?: string; onPress: () => void; icon?: React.ReactNode }) => (
+const KeypadButton = ({ value, onPress, icon, label }: { value?: string; onPress: () => void; icon?: React.ReactNode; label?: string }) => (
   <AnimatedPressable
     onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={label ?? (value === '.' ? 'Decimal point' : value)}
     className="w-full aspect-square rounded-full flex items-center justify-center border border-white/35 active:scale-90 active:bg-white/90"
     style={{
       backgroundColor: 'rgba(255, 255, 255, 0.65)',
@@ -72,6 +75,8 @@ export default function AmountScreen() {
   // If navigating from a group, set groupId in context immediately
   const groupId = (params.groupId as string) || '';
   const groupName = (params.groupName as string) || '';
+  const friendName = (params.friendName as string) || '';
+  const contextLabel = groupName ? `In ${groupName}` : friendName ? `With ${friendName}` : '';
 
   useEffect(() => {
     if (groupId) {
@@ -101,7 +106,7 @@ export default function AmountScreen() {
 
       const label = draft!.description?.trim()
         ? `"${draft!.description.trim()}"`
-        : `₹${parseFloat(draft!.amount || '0').toFixed(2)}`;
+        : formatINR(parseFloat(draft!.amount || '0'));
 
       showAlert(
         'Unfinished expense',
@@ -242,6 +247,7 @@ export default function AmountScreen() {
       else {
         const parts = amount.split('.');
         if (parts[1] && parts[1].length >= 2) return; // limit to 2 decimal places
+        if (parts.length === 1 && parts[0].length >= 9) return; // cap integer part at 9 digits
         setAmount(amount + val);
       }
     }
@@ -311,13 +317,22 @@ export default function AmountScreen() {
       <View className="flex-row items-center justify-between px-5 h-16 w-full z-50">
         <AnimatedPressable
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
           className="w-10 h-10 items-center justify-center rounded-full hover:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
         </AnimatedPressable>
-        <Text className="font-headline-md text-xl text-primary font-semibold">
-          {editTransactionId ? 'Edit Expense' : 'Add Expense'}
-        </Text>
+        <View className="flex-1 items-center mx-2">
+          <Text className="font-headline-md text-xl text-primary font-semibold">
+            {editTransactionId ? 'Edit Expense' : 'Add Expense'}
+          </Text>
+          {contextLabel ? (
+            <View className="bg-surface-container rounded-full px-3 py-1 self-center max-w-full">
+              <Text className="text-xs text-on-surface-variant" numberOfLines={1}>{contextLabel}</Text>
+            </View>
+          ) : null}
+        </View>
         <View className="w-10">
           {isLoading && <ActivityIndicator color="#004c22" size="small" />}
         </View>
@@ -547,7 +562,8 @@ export default function AmountScreen() {
               <View className="w-[30%]"><KeypadButton value="0" onPress={() => appendValue('0')} /></View>
               <View className="w-[30%]">
                 <KeypadButton 
-                  icon={<MaterialIcons name="backspace" size={24} color="#1c1c19" />} 
+                  label="Delete last digit"
+                  icon={<MaterialIcons name="backspace" size={24} color="#1c1c19" />}
                   onPress={deleteValue} 
                 />
               </View>
@@ -564,7 +580,11 @@ export default function AmountScreen() {
             }`}
           >
             <Text className={`font-headline-md text-xl font-semibold ${isNextDisabled ? 'text-on-surface-variant/40' : 'text-on-primary'}`}>
-              Next
+              {!isNextDisabled
+                ? 'Next'
+                : !(parseFloat(amount) > 0)
+                  ? 'Enter an amount'
+                  : 'Add what it was for'}
             </Text>
             <MaterialIcons
               name="chevron-right"

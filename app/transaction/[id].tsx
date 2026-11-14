@@ -10,6 +10,12 @@ import { fetchTransactionHistory, describeEvent, relativeTime, ActivityEvent } f
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
+import { useToast } from '../../components/Toast';
+import { useAlert } from '../../components/AppAlert';
+import { useGlobalBalances } from '../../context/GlobalBalancesContext';
+import { voidTransaction } from '../../lib/recalculateSettlements';
+import { dispatchPushNotification } from '../../lib/pushDispatcher';
+import { formatINR } from '../../lib/format';
 
 /**
  * One expense, in full.
@@ -67,6 +73,9 @@ export default function TransactionDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const txId = Array.isArray(id) ? id[0] : id;
+  const { showToast: triggerToast } = useToast();
+  const { showAlert } = useAlert();
+  const { refreshBalances } = useGlobalBalances();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,14 +83,16 @@ export default function TransactionDetailScreen() {
   const [lines, setLines] = useState<Line[]>([]);
   const [payerName, setPayerName] = useState('');
   const [payerIsYou, setPayerIsYou] = useState(false);
+  // The signed-in user, so the header can tell whether they may edit or void.
+  const [meId, setMeId] = useState<string | null>(null);
   // Edits and voids recorded against this expense. Without this the screen
   // shows whatever it currently says, with no sign anyone changed it — which
   // on a shared expense is exactly when you want to know.
   const [history, setHistory] = useState<ActivityEvent[]>([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!txId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       // getSession reads the session already cached in storage. getUser makes a
       // network call to /auth/v1/user on every single load, and this screen sat
@@ -256,6 +267,7 @@ export default function TransactionDetailScreen() {
       setTx(data);
       setLines(built);
       setPayerIsYou(isPayerMe);
+      setMeId(me);
       setPayerName(isPayerMe ? 'You' : (nameOf[data.paid_by]?.name || 'Someone'));
       setError(null);
     } catch (e: any) {
@@ -289,6 +301,68 @@ export default function TransactionDetailScreen() {
     });
   };
 
+  // Same rule the group and friend screens apply before voiding directly: only
+  // the person who paid (paid_by, same as the database check in
+  // void_transaction) may act on it; everyone
+  // else would have to ask them. Settlements and already-voided expenses are
+  // never editable or voidable from here.
+  const canManage = !!tx && !!meId && tx.paid_by === meId
+    && tx.status !== 'voided' && tx.type !== 'settlement';
+
+  const editExpense = () => {
+    router.push({
+      pathname: '/expense/amount',
+      params: { editTxId: tx.id },
+    });
+  };
+
+  const confirmVoid = () => {
+    const label = tx.description || 'this expense';
+    showAlert(
+      'Void this expense?',
+      `Void "${label}"? Participants will no longer owe or be owed this amount.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Void',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // One database transaction: status change plus rebuild of every
+              // affected pair. See migrations/0015_void_transaction.sql.
+              const voidError = await voidTransaction(tx.id);
+              if (voidError) {
+                console.error('Void failed:', voidError.message);
+                triggerToast('Could not void this expense. Please try again.');
+                return;
+              }
+
+              await refreshBalances();
+              triggerToast('Expense voided successfully!');
+
+              const others = lines.filter(l => !l.isYou).map(l => l.userId);
+              if (others.length > 0) {
+                const { data: authData } = await supabase.auth.getUser();
+                dispatchPushNotification(
+                  others,
+                  'Expense Deleted',
+                  `${authData?.user?.user_metadata?.full_name || 'Someone'} deleted the expense: ${tx.description}.`
+                );
+              }
+
+              // Reload in place so the screen shows VOIDED and drops the
+              // actions, rather than leaving a stale, still-actionable page.
+              await load(true);
+            } catch (e) {
+              console.error('Error voiding transaction:', e);
+              triggerToast('Failed to void expense.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const Header = (
     <View className="flex-row items-center px-5 h-16 w-full border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.9)' }}>
       <AnimatedPressable
@@ -298,6 +372,25 @@ export default function TransactionDetailScreen() {
         <MaterialIcons name="arrow-back" size={24} color="#004c22" />
       </AnimatedPressable>
       <Text className="font-headline-md text-xl text-primary font-semibold" style={{ marginLeft: 6 }}>Expense</Text>
+      <View style={{ flex: 1 }} />
+      {canManage && (
+        <>
+          <AnimatedPressable
+            onPress={editExpense}
+            accessibilityLabel="Edit expense"
+            className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
+          >
+            <MaterialIcons name="edit" size={24} color="#004c22" />
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={confirmVoid}
+            accessibilityLabel="Void expense"
+            className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
+          >
+            <MaterialIcons name="block" size={24} color="#004c22" />
+          </AnimatedPressable>
+        </>
+      )}
     </View>
   );
 
@@ -329,45 +422,7 @@ export default function TransactionDetailScreen() {
               </View>
             </View>
 
-            {/* What has happened to this expense since it was created.
-              Only shown when something actually has — an expense nobody has
-              touched needs no history section, and rendering "created by X"
-              on every screen would be noise. */}
-          {history.filter(h => h.eventType !== 'expense_created'
-                            && h.eventType !== 'settlement_recorded').length > 0 && (
-            <View
-              className="rounded-2xl px-5 py-4 mt-4"
-              style={{ backgroundColor: 'rgba(248,235,220,0.5)', borderWidth: 1, borderColor: 'rgba(154,85,17,0.2)' }}
-            >
-              <View className="flex-row items-center mb-2">
-                <MaterialIcons name="history" size={14} color="#9a5511" />
-                <Text
-                  className="font-label-sm text-xs uppercase tracking-wider font-bold"
-                  style={{ color: '#9a5511', marginLeft: 6 }}
-                >
-                  This expense has changed
-                </Text>
-              </View>
-              {history
-                .filter(h => h.eventType !== 'expense_created' && h.eventType !== 'settlement_recorded')
-                .map(h => {
-                  const d = describeEvent(h);
-                  return (
-                    <View key={h.id} className="flex-row items-baseline mt-1">
-                      <Text className="text-sm text-on-surface flex-1" numberOfLines={2}>
-                        {d.title}
-                        {d.detail ? <Text className="font-semibold">{`  ${d.detail}`}</Text> : null}
-                      </Text>
-                      <Text className="text-xs text-on-surface-variant" style={{ marginLeft: 8 }}>
-                        {relativeTime(h.createdAt)}
-                      </Text>
-                    </View>
-                  );
-                })}
-            </View>
-          )}
-
-          {/* Your position */}
+            {/* Your position */}
             <View
               className="rounded-2xl px-5 py-4 mt-4"
               style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
@@ -407,7 +462,7 @@ export default function TransactionDetailScreen() {
           <MaterialIcons name="error-outline" size={44} color="#b91c1c" />
           <Text className="font-headline-md text-lg font-bold text-on-surface mt-3 text-center">Could not load this expense</Text>
           <Text className="text-sm text-on-surface-variant mt-2 text-center">{error}</Text>
-          <AnimatedPressable onPress={load} className="mt-5 bg-primary px-6 py-3 rounded-xl">
+          <AnimatedPressable onPress={() => load()} className="mt-5 bg-primary px-6 py-3 rounded-xl">
             <Text className="text-white font-semibold">Try Again</Text>
           </AnimatedPressable>
         </View>
@@ -422,6 +477,18 @@ export default function TransactionDetailScreen() {
   const totalFromYou = settleable.reduce((sum, l) => sum + (l.remaining < 0 ? -l.remaining : 0), 0);
   // Had a position on this expense, and it has been cleared.
   const fullySettled = lines.some(l => Math.abs(l.betweenUs) > 0.005) && settleable.length === 0;
+  // What has happened to this expense since it was created. Only shown when
+  // something actually has — an expense nobody has touched needs no history
+  // section, and rendering "created by X" on every screen would be noise.
+  const changes = history.filter(h => h.eventType !== 'expense_created'
+                                   && h.eventType !== 'settlement_recorded');
+  // When the void was recorded, if the history says so. Omitted otherwise.
+  const voidedAt = history.find(h => h.eventType === 'expense_voided')?.createdAt;
+  const voidedDate = voidedAt ? new Date(voidedAt) : null;
+  const voidedOn =
+    voidedDate && !isNaN(voidedDate.getTime())
+      ? ` on ${voidedDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+      : '';
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
@@ -429,6 +496,16 @@ export default function TransactionDetailScreen() {
 
       <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 60 }}>
         <View className="max-w-xl mx-auto w-full">
+
+          {/* Voided banner — directly under the header. The amount below is dimmed and no balance status is shown. */}
+          {isVoided && (
+            <View className="flex-row items-center rounded-xl px-4 py-3 mb-4 bg-surface-container">
+              <MaterialIcons name="block" size={18} color="#707a6f" />
+              <Text className="text-sm text-on-surface flex-1" style={{ marginLeft: 10 }}>
+                {`Voided${voidedOn} · no longer counted in anyone's balance`}
+              </Text>
+            </View>
+          )}
 
           {/* Summary */}
           <View
@@ -454,8 +531,11 @@ export default function TransactionDetailScreen() {
               {tx.description || 'Expense'}
             </Text>
 
-            <Text className="font-display-lg text-3xl font-bold text-primary mt-1">
-              ₹{Number(tx.amount).toFixed(2)}
+            <Text
+              className="font-display-lg text-3xl font-bold text-primary mt-1"
+              style={isVoided ? { opacity: 0.5, textDecorationLine: 'line-through' } : undefined}
+            >
+              {formatINR(Number(tx.amount))}
             </Text>
 
             <View className="flex-row flex-wrap items-center justify-center mt-3">
@@ -486,6 +566,38 @@ export default function TransactionDetailScreen() {
             )}
           </View>
 
+          {/* What has changed since creation */}
+          {changes.length > 0 && (
+            <View
+              className="rounded-2xl px-5 py-4 mt-4"
+              style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
+            >
+              <View className="flex-row items-center mb-1">
+                <MaterialIcons name="history" size={14} color="#707a6f" />
+                <Text
+                  className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold"
+                  style={{ marginLeft: 6 }}
+                >
+                  This expense has changed
+                </Text>
+              </View>
+              {changes.map(h => {
+                const d = describeEvent(h);
+                return (
+                  <View key={h.id} className="flex-row items-baseline mt-1">
+                    <Text className="text-sm text-on-surface flex-1" numberOfLines={2}>
+                      {d.title}
+                      {d.detail ? <Text className="font-semibold">{`  ${d.detail}`}</Text> : null}
+                    </Text>
+                    <Text className="text-xs text-on-surface-variant" style={{ marginLeft: 8 }}>
+                      {relativeTime(h.createdAt)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           {/* Your position */}
           {!isVoided && (totalToYou > 0 || totalFromYou > 0) && (
             <View
@@ -497,10 +609,10 @@ export default function TransactionDetailScreen() {
               </Text>
               <Text className="text-sm text-on-surface leading-relaxed">
                 {totalToYou > 0 && (
-                  <Text>You get back <Text className="font-bold" style={{ color: '#1f6c3a' }}>₹{totalToYou.toFixed(2)}</Text> from {settleable.filter(l => l.betweenUs > 0).length} {settleable.filter(l => l.betweenUs > 0).length === 1 ? 'person' : 'people'}. </Text>
+                  <Text>You get back <Text className="font-bold" style={{ color: '#1f6c3a' }}>{formatINR(totalToYou)}</Text> from {settleable.filter(l => l.betweenUs > 0).length} {settleable.filter(l => l.betweenUs > 0).length === 1 ? 'person' : 'people'}. </Text>
                 )}
                 {totalFromYou > 0 && (
-                  <Text>You owe <Text className="font-bold" style={{ color: '#ba1a1a' }}>₹{totalFromYou.toFixed(2)}</Text> to {payerName}.</Text>
+                  <Text>You owe <Text className="font-bold" style={{ color: '#ba1a1a' }}>{formatINR(totalFromYou)}</Text> to {payerName}.</Text>
                 )}
               </Text>
             </View>
@@ -545,7 +657,7 @@ export default function TransactionDetailScreen() {
                   </View>
 
                   <View className="items-end">
-                    <Text className="font-bold text-on-surface text-base">₹{l.share.toFixed(2)}</Text>
+                    <Text className="font-bold text-on-surface text-base">{formatINR(l.share)}</Text>
                     {clearedWithThisPerson ? (
                       <View className="flex-row items-center mt-0.5">
                         <MaterialIcons name="check-circle" size={12} color="#1f6c3a" />
@@ -553,7 +665,7 @@ export default function TransactionDetailScreen() {
                           settled
                         </Text>
                       </View>
-                    ) : Math.abs(l.remaining) > 0.005 ? (
+                    ) : !isVoided && Math.abs(l.remaining) > 0.005 ? (
                       <Text
                         className="text-xs font-bold mt-0.5"
                         style={{ color: l.remaining > 0 ? '#1f6c3a' : '#ba1a1a' }}
@@ -574,8 +686,8 @@ export default function TransactionDetailScreen() {
                     <MaterialIcons name="check-circle" size={17} color="white" />
                     <Text className="text-white font-bold text-sm" style={{ marginLeft: 7 }}>
                       {l.remaining > 0
-                        ? `Settle ₹${Math.abs(l.remaining).toFixed(2)} with ${l.name.split(' ')[0]}`
-                        : `Pay ${payerName.split(' ')[0]} ₹${Math.abs(l.remaining).toFixed(2)}`}
+                        ? `Settle ${formatINR(Math.abs(l.remaining))} with ${l.name.split(' ')[0]}`
+                        : `Pay ${payerName.split(' ')[0]} ${formatINR(Math.abs(l.remaining))}`}
                     </Text>
                   </AnimatedPressable>
                 )}

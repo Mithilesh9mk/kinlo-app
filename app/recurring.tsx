@@ -92,6 +92,13 @@ export default function RecurringScreen() {
     );
   };
 
+  // Monthly equivalent of everything still running (paused rules are left out).
+  const activeRules = rules.filter(r => r.active);
+  const monthlyTotal = activeRules.reduce(
+    (sum, r) => sum + (r.frequency === 'weekly' ? (r.amount * 52) / 12 : r.frequency === 'yearly' ? r.amount / 12 : r.amount),
+    0,
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       <View className="flex-row items-center px-5 h-16 border-b border-outline-variant/30">
@@ -113,6 +120,13 @@ export default function RecurringScreen() {
           Each one is added again by this phone when you open Kinlo on or after its due date, with the same
           split. To start one, turn on “Repeat this expense” when you add an expense.
         </Text>
+
+        {state === 'ready' && activeRules.length > 0 && (
+          <Text className="text-sm text-on-surface-variant mb-4" style={tabularNums}>
+            {formatINR(monthlyTotal, { decimals: 0 })} a month across {activeRules.length} repeating{' '}
+            {activeRules.length === 1 ? 'expense' : 'expenses'}
+          </Text>
+        )}
 
         {state === 'loading' && (
           <View className="gap-3">
@@ -160,6 +174,9 @@ export default function RecurringScreen() {
               <View className="flex-row items-start justify-between">
                 <View className="flex-1 pr-3">
                   <Text className="font-bold text-base text-on-surface" numberOfLines={1}>{r.description}</Text>
+                  {r.active && (
+                    <Text className="text-xs text-on-surface mt-0.5">Next: {formatDue(r.nextDue)}</Text>
+                  )}
                   <Text className="text-xs text-on-surface-variant mt-0.5">
                     {REPEAT_LABELS[r.frequency]} · {r.groupId ? 'Circle' : 'Friends'} · {r.splits.length} {r.splits.length === 1 ? 'person' : 'people'}
                   </Text>
@@ -167,13 +184,13 @@ export default function RecurringScreen() {
                 <Text className="font-bold text-base text-on-surface" style={tabularNums}>{formatINR(r.amount)}</Text>
               </View>
 
-              <Text className="text-xs mt-2" style={{ color: r.active ? '#404940' : '#b45309' }}>
-                {r.active
-                  ? `Next: ${formatDue(r.nextDue)}`
-                  : r.failCount >= 5
+              {!r.active && (
+                <Text className="text-xs mt-2" style={{ color: '#b45309' }}>
+                  {r.failCount >= 5
                     ? 'Paused — it could not be added several times (someone may have left). Resume to retry.'
                     : 'Paused'}
-              </Text>
+                </Text>
+              )}
 
               <View className="flex-row gap-2 mt-3">
                 <AnimatedPressable

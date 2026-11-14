@@ -26,6 +26,8 @@ export default function LegalScreen() {
       <View className="flex-row items-center px-5 h-16 w-full border-b border-outline-variant/30">
         <AnimatedPressable
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="arrow-back" size={24} color="#004c22" />

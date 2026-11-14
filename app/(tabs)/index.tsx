@@ -61,7 +61,7 @@ interface RecentActivity {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { totalBalance, loading: balancesLoading, error: balancesError, cachedAt: balancesCachedAt, refreshBalances } = useGlobalBalances();
+  const { totalBalance, outstanding: balanceRows, loading: balancesLoading, error: balancesError, cachedAt: balancesCachedAt, refreshBalances } = useGlobalBalances();
   // The context keeps the previous snapshot when a refresh fails, so `error`
   // alone can't tell "no data ever" from "stale-but-real data". Only show the
   // error branch if a balance has never loaded successfully this session and
@@ -167,6 +167,33 @@ export default function HomeScreen() {
   // for a moment on every open.
   const [personalSummary, setPersonalSummary] = useState<{ total: number; count: number } | null>(null);
 
+  // Friends strip: people with a balance first (largest first), then settled
+  // friends in their existing order. Works on a copy — state is not mutated.
+  // When two shown friends share a first name, the label gets the first
+  // letter of the last name ("Priya S") so they can be told apart.
+  const stripFriends = useMemo(() => {
+    const active = friendsList
+      .filter((f) => f.status !== 'settled')
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+    const settled = friendsList.filter((f) => f.status === 'settled');
+    const shown = [...active, ...settled].slice(0, 10);
+    const firstNameCounts = new Map<string, number>();
+    shown.forEach((f) => {
+      const key = (f.name || '').trim().toLowerCase();
+      firstNameCounts.set(key, (firstNameCounts.get(key) ?? 0) + 1);
+    });
+    return shown.map((f) => {
+      const key = (f.name || '').trim().toLowerCase();
+      let label = f.name;
+      if ((firstNameCounts.get(key) ?? 0) > 1) {
+        const parts = (f.fullName || '').trim().split(/\s+/);
+        const lastInitial = parts.length > 1 ? parts[parts.length - 1].charAt(0).toUpperCase() : '';
+        if (lastInitial) label = `${f.name} ${lastInitial}`;
+      }
+      return { friend: f, label };
+    });
+  }, [friendsList]);
+
   // First-run guidance cards. Only trust "no activity" once the live load has
   // finished — not while loading, and not when showing offline-cached data.
   const { showSplit, showPersonal, dismiss: dismissHint } = useFirstRunHints({
@@ -209,6 +236,9 @@ export default function HomeScreen() {
   // everything read on open — clears the badge immediately, and coming back
   // from anywhere else picks up anything new since the last check.
   const [unreadActivityCount, setUnreadActivityCount] = useState(0);
+  // Kept separately from the badge total so Home can surface the pending
+  // requests as their own row — a decision waiting, not just a number.
+  const [pendingConnectionCount, setPendingConnectionCount] = useState(0);
   const fetchUnreadActivity = useCallback(async () => {
     try {
       // Connection requests count toward the badge, but unlike events they
@@ -219,6 +249,7 @@ export default function HomeScreen() {
         fetchPendingConnectionCount(),
       ]);
       setUnreadActivityCount(unread + pendingConnections);
+      setPendingConnectionCount(pendingConnections);
     } catch (e) {
       console.error('Failed to fetch unread activity count:', e);
     }
@@ -573,8 +604,35 @@ export default function HomeScreen() {
   };
 
   const getBalanceCardAmount = () => {
-    return formatINR(totalBalance);
+    // Magnitude only: the "You owe" label already carries the direction, so a
+    // signed value reads as a double negative ("YOU OWE -₹450.00").
+    return formatINR(Math.abs(totalBalance));
   };
+
+  // Net hides what to chase vs what to pay. Show the split only when both
+  // sides exist; with one side the net already says it.
+  let splitOwed = 0;
+  let splitOwe = 0;
+  for (const f of balanceRows) {
+    if (f.balance > 0) splitOwed += f.balance;
+    else if (f.balance < 0) splitOwe += -f.balance;
+  }
+  const showBalanceSplit = splitOwed > 0.005 && splitOwe > 0.005;
+
+  // Brand-new account: no activity loaded yet, and the load itself did not
+  // fail. Same condition that renders the "Get started" checklist in the
+  // recent-activity list below, so the two cannot disagree.
+  const getStartedVisible = !activityLoading && loadStatus.recent !== 'failed' && recentActivity.length === 0;
+  // Nothing to settle on a fresh account: balances are known and there is no
+  // individual outstanding balance (balanceRows is already filtered to
+  // |balance| > 0.005). Uses the per-friend rows, not the net total, so two
+  // friends netting to zero still keep the button.
+  const hideSettleUp = getStartedVisible && !balancesLoading && !balanceFailed && balanceRows.length === 0;
+
+  // Plain label: /settle-up can't be preselected from the aggregate home
+  // balance (a friend's balance may span scopes; friend/[id] makes the user pick).
+  const settleUpLabel = 'Settle Up';
+  const settleUpA11yLabel = 'Settle up';
 
   const getBalanceCardColor = () => {
     if (totalBalance > 0) return 'text-primary';
@@ -672,6 +730,36 @@ export default function HomeScreen() {
           {greeting}{userFirstName ? `, ${userFirstName}` : ''}
         </Text>
 
+        {/* A pending connection request is a decision waiting on the user, so
+            it gets its own row here rather than only a count in the history
+            badge. Opens Activity, where the requests are listed and answered.
+            Renders nothing when there are none. */}
+        {pendingConnectionCount > 0 && (
+          <View className="px-6 mt-1 mb-1">
+            <AnimatedPressable
+              onPress={() => router.push('/activity')}
+              className="liquid-glass rounded-2xl p-4 flex-row items-center gap-3"
+              accessibilityRole="button"
+              accessibilityLabel={`Connection request waiting. ${pendingConnectionCount} ${pendingConnectionCount === 1 ? 'person wants' : 'people want'} to connect. Review`}
+            >
+              <View className="w-10 h-10 rounded-full items-center justify-center bg-surface-container">
+                <MaterialIcons name="person-add" size={20} color="#004c22" />
+              </View>
+              <View className="flex-1">
+                <Text className="font-semibold text-sm text-on-surface" numberOfLines={1}>
+                  Connection request waiting
+                </Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5" numberOfLines={1}>
+                  {pendingConnectionCount === 1
+                    ? '1 person wants to connect — review'
+                    : `${pendingConnectionCount} people want to connect — review`}
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
+            </AnimatedPressable>
+          </View>
+        )}
+
         {/* Friends row: a horizontally-scrolling strip plus a fixed "View
             All" button outside it. View All used to be the last item INSIDE
             the ScrollView — on Android, a tap there competes with that
@@ -701,7 +789,7 @@ export default function HomeScreen() {
             </AnimatedPressable>
 
             {/* Dynamic Friends List */}
-            {friendsList.slice(0, 10).map((friend, friendIndex) => (
+            {stripFriends.map(({ friend, label: friendLabel }, friendIndex) => (
               <AnimatedListItem key={friend.id} index={friendIndex}>
                 <AnimatedPressable
                   onPress={() => router.push({
@@ -719,7 +807,7 @@ export default function HomeScreen() {
                     <Avatar uri={friend.image} initials={friend.initials} />
                   </View>
                   <View className="items-center">
-                    <Text className="text-xs font-semibold text-on-surface">{friend.name}</Text>
+                    <Text className="text-xs font-semibold text-on-surface max-w-[80px]" numberOfLines={1}>{friendLabel}</Text>
                     <Text className={`text-[10px] font-bold mt-0.5 ${getBalanceTextColor(friend)}`} style={tabularNums}>
                       {getBalanceLabel(friend)}
                     </Text>
@@ -785,21 +873,37 @@ export default function HomeScreen() {
                 </AnimatedPressable>
               </View>
             ) : (
-              <Text
-                className={`text-5xl font-bold mb-6 ${getBalanceCardColor()}`}
-                style={tabularNums}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.6}
-              >{getBalanceCardAmount()}</Text>
+              <>
+                <Text
+                  className={`text-5xl font-bold ${showBalanceSplit ? 'mb-2' : 'mb-6'} ${getBalanceCardColor()}`}
+                  style={tabularNums}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                >{getBalanceCardAmount()}</Text>
+                {showBalanceSplit && (
+                  <Text className="text-xs text-on-surface-variant mb-6" style={tabularNums}>
+                    {`Owed ${formatINR(splitOwed)} · You owe ${formatINR(splitOwe)}`}
+                  </Text>
+                )}
+              </>
             )}
             <View className="flex-row gap-3 w-full">
-              <AnimatedPressable 
-                onPress={() => router.push('/settle-up')}
-                className="flex-1 bg-primary py-3.5 rounded-2xl items-center shadow-sm"
-              >
-                <Text className="text-white font-semibold text-base">Settle Up</Text>
-              </AnimatedPressable>
+              {!hideSettleUp && (
+                <AnimatedPressable
+                  onPress={() => router.push('/settle-up')}
+                  className="flex-1 bg-primary py-3.5 px-3 rounded-2xl items-center shadow-sm"
+                  accessibilityRole="button"
+                  accessibilityLabel={settleUpA11yLabel}
+                >
+                  <Text
+                    className="text-white font-semibold text-base"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.6}
+                  >{settleUpLabel}</Text>
+                </AnimatedPressable>
+              )}
               <AnimatedPressable 
                 onPress={() => router.push('/statement')}
                 className="flex-1 liquid-glass py-3.5 rounded-2xl items-center"
@@ -810,47 +914,40 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Insights Grid — both tiles real numbers now, both navigate to the
-            same monthly breakdown (Today's Spend is a subset of that story,
-            not a separate screen). Eco Impact (a static "Coming Soon" View)
-            is gone; can come back once there's real data behind it. Compacted
-            padding/icon size from the original single-tile version since two
-            tiles now share this row. */}
-        <View className="px-6 flex-row gap-3 mb-6">
+        {/* Insights tile — the split month figure, full width; tapping it opens
+            the split breakdown in Insights. Today's split is a small sub-line
+            that only appears when today's amount rounds to at least ₹1, or "Today —" when today's
+            load failed (so a failure is still visible, as before). The separate
+            Today tile was folded into this one to make room. */}
+        <View className="px-6 mb-6">
           <AnimatedPressable
             onPress={() => router.push({
               pathname: '/(tabs)/analytics',
               params: { scope: 'split', window: '6m', month: 'current', t: String(Date.now()) },
             })}
-            className="flex-1 liquid-glass rounded-2xl p-4"
+            className="w-full liquid-glass rounded-2xl p-4"
           >
             <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">
               <MaterialIcons name="trending-up" size={16} color="#004c22" />
             </View>
             <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">This month (split)</Text>
             <Text className="text-lg font-bold text-on-surface" style={tabularNums}>{loadStatus.monthly === 'failed' ? '—' : formatINR(monthlySpend, { decimals: 0 })}</Text>
-          </AnimatedPressable>
-
-          <AnimatedPressable
-            onPress={() => router.push({
-              pathname: '/(tabs)/analytics',
-              params: { scope: 'split', window: '1w', t: String(Date.now()) },
-            })}
-            className="flex-1 liquid-glass rounded-2xl p-4"
-          >
-            <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">
-              <MaterialIcons name="today" size={16} color="#004c22" />
-            </View>
-            <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">Today (split)</Text>
-            <Text className="text-lg font-bold text-on-surface" style={tabularNums}>{loadStatus.today === 'failed' ? '—' : formatINR(todaySpend, { decimals: 0 })}</Text>
+            {loadStatus.today === 'failed' ? (
+              <Text className="text-xs text-on-surface-variant mt-1" style={tabularNums}>Today —</Text>
+            ) : Math.abs(todaySpend) >= 0.5 ? (
+              <Text className="text-xs text-on-surface-variant mt-1" style={tabularNums}>{`Today ${formatINR(todaySpend, { decimals: 0 })}`}</Text>
+            ) : null}
           </AnimatedPressable>
         </View>
 
         {/* First-run guidance — dismissible, per device; hides itself once the
-            user has any splits / personal entries. */}
+            user has any splits / personal entries. The "Your first split" card
+            is held back while the "Get started" checklist is showing (it
+            covers the same step); the personal hint stays, as it is the only
+            Home entry point to /finance for a new account. */}
         {(showSplit || showPersonal) && (
           <View className="px-6 mb-6 gap-3">
-            {showSplit && (
+            {showSplit && !getStartedVisible && (
               <FirstRunHintCard
                 icon="group-add"
                 accent="#004c22"
@@ -1039,23 +1136,36 @@ export default function HomeScreen() {
                           ? (item.paidByName === 'You' ? `You paid ${item.friendName?.split(' ')[0] || 'a friend'}` : `${item.paidByName?.split(' ')[0]} paid you`)
                           : item.description}
                       </Text>
-                      <Text className="text-xs text-on-surface-variant mt-0.5">
-                        {isSettlement
-                          ? `Payment • ${item.date}`
-                          : `${item.paidByName} paid ${formatINR(item.amount, { decimals: 0 })}${item.locationLabel ? ` • ${item.locationLabel}` : ''} • ${item.date}`}
+                      {/* One caption: who paid, which circle, when. The amount is already on
+                          the right-hand side, so it is not repeated here. The date comes
+                          last but friendName is deliberately omitted: it means "who owes
+                          you" when you paid and "who you owe" when someone else paid, so
+                          it was ambiguous, and the payer cue + title already name people.
+                          Settlements carry the people in their title, so they only get a
+                          'Payment' tag. groupName is undefined for non-group expenses. */}
+                      <Text className="text-xs text-on-surface-variant mt-0.5" numberOfLines={1}>
+                        {[
+                          isSettlement
+                            ? 'Payment'
+                            : item.paidByName === 'You'
+                              ? 'You paid'
+                              : item.paidByName && item.paidByName !== 'Someone' && item.paidByName !== 'Unknown'
+                                ? `${item.paidByName.split(' ')[0]} paid`
+                                : null,
+                          item.groupName || null,
+                          item.date,
+                        ].filter(Boolean).join(' · ')}
                       </Text>
                       {/* A settlement is money changing hands, not a new charge.
                           Showing it with the same owe/owed wording made settling
-                          look like it had created another debt. */}
-                      <Text className={`text-xs font-semibold mt-0.5 ${isVoided ? 'text-outline' : (isSettlement || item.status === 'settled' || item.displayAmount <= 0 ? 'text-primary' : (item.isOwed ? 'text-primary' : 'text-error'))}`} style={tabularNums}>
-                        {isVoided
-                          ? 'Voided'
-                          : isSettlement
-                            ? 'Settled up'
-                            : (item.status === 'settled' || item.displayAmount <= 0
-                              ? 'Settled'
-                              : (item.isOwed ? `You are owed ${formatINR(item.displayAmount)}` : `You owe ${formatINR(item.displayAmount)}`))}
-                      </Text>
+                          look like it had created another debt. Status is only shown
+                          where the signed amount does not already say it; an open
+                          balance is carried by that amount's sign and colour. */}
+                      {(isVoided || isSettlement || item.status === 'settled' || item.displayAmount <= 0) && (
+                        <Text className={`text-xs font-semibold mt-0.5 ${isVoided ? 'text-outline' : 'text-primary'}`} style={tabularNums}>
+                          {isVoided ? 'Voided' : isSettlement ? 'Settled up' : 'Settled'}
+                        </Text>
+                      )}
                     </View>
                     {isSettlement ? (
                       <Text className="font-bold text-base" style={[tabularNums, { color: isVoided ? '#9ca3af' : '#4d5a51' }]}>

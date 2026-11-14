@@ -41,6 +41,9 @@ export default function LoginScreen() {
   const [authNotice, setAuthNotice] = useState('');
   const [isSendingMagicLink, setIsSendingMagicLink] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Set only when sign-up succeeded but no session came back (email confirmation
+  // required). Swaps the form card for a "Check your email" panel.
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -75,6 +78,7 @@ export default function LoginScreen() {
   // was closed without completing sign-in", which look identical from a
   // bare isLoading flag alone.
   const googleRedirectHandled = useRef(true);
+  const passwordInputRef = useRef<TextInput>(null);
 
   // Google's OAuth completion. React Native has no window for supabase-js
   // to redirect through, so signInWithOAuth() only returns an authorization
@@ -253,7 +257,7 @@ export default function LoginScreen() {
             // Already logged in (email confirmation disabled)
             await completeLogin();
           } else {
-            setAuthNotice('Account created! Please check your email for the confirmation link.');
+            setPendingConfirmationEmail(emailText.trim());
           }
         }
       } else {
@@ -300,7 +304,7 @@ export default function LoginScreen() {
       if (error) {
         setAuthError(friendlyAuthError(error.message, 'Failed to send reset link.'));
       } else {
-        setAuthNotice('✅ Password reset link sent to your email.');
+        setAuthNotice('✅ Reset link sent. Check your inbox (and spam). It may come from "Supabase Auth".');
       }
     } catch (e: any) {
       setAuthError(friendlyAuthError(e.message, 'Failed to send reset link.'));
@@ -311,7 +315,7 @@ export default function LoginScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 60 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
         <Animated.View 
           style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
           className="px-6 pt-16 max-w-xl mx-auto w-full space-y-8"
@@ -328,6 +332,54 @@ export default function LoginScreen() {
           </View>
 
           {/* Liquid Glass SSO Container */}
+          {pendingConfirmationEmail ? (
+            <View className="p-6 rounded-3xl items-center relative overflow-hidden" style={[styles.liquidGlass, { gap: 14 }]}>
+              <View className="w-16 h-16 rounded-full bg-secondary-container items-center justify-center">
+                <MaterialIcons name="mark-email-read" size={32} color="#004c22" />
+              </View>
+              <Text
+                accessibilityRole="header"
+                accessibilityLiveRegion="polite"
+                className="font-headline text-base font-bold text-on-surface uppercase tracking-wider text-center"
+              >
+                Check your email
+              </Text>
+              <Text className="text-sm text-on-surface-variant font-medium text-center leading-relaxed">
+                We sent a confirmation link to{' '}
+                <Text className="font-bold text-on-surface">{pendingConfirmationEmail}</Text>
+                . Open it to finish creating your account, then come back and sign in.
+              </Text>
+              <AnimatedPressable
+                onPress={() => {
+                  setEmailText(pendingConfirmationEmail);
+                  setPasswordText('');
+                  setIsSignUp(false);
+                  setAuthError('');
+                  setAuthNotice('');
+                  setPendingConfirmationEmail(null);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Back to sign in"
+                className="w-full rounded-2xl flex-row items-center justify-center shadow-sm bg-primary"
+                style={{ height: 46 }}
+              >
+                <Text className="text-white font-bold text-xs uppercase tracking-wider">Back to sign in</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => {
+                  setIsSignUp(true);
+                  setAuthError('');
+                  setAuthNotice('');
+                  setPendingConfirmationEmail(null);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Use a different email"
+                className="px-2 py-2"
+              >
+                <Text className="text-xs text-primary font-bold">Use a different email</Text>
+              </AnimatedPressable>
+            </View>
+          ) : (
           <View className="p-6 rounded-3xl space-y-4 relative overflow-hidden" style={styles.liquidGlass}>
             <View className="absolute -top-12 -right-12 w-32 h-32 bg-primary/5 rounded-full blur-2xl" />
 
@@ -358,25 +410,38 @@ export default function LoginScreen() {
                   </>
                 )}
               </AnimatedPressable>
+            </View>
 
-              <AnimatedPressable
-                onPress={() => handleSocialLogin('apple')}
-                accessibilityRole="button"
-                accessibilityLabel="Continue with Apple"
-                disabled={isLoading}
-                className="flex-1 h-12 bg-white border border-outline-variant/40 rounded-2xl flex-row items-center justify-center shadow-sm"
-              >
-                {isLoading && activeMethod === 'apple' ? (
-                  <ActivityIndicator size="small" color="#004c22" />
-                ) : (
-                  <>
-                    <MaterialIcons name="security" size={16} color="#004c22" />
-                    <Text className="text-primary font-bold text-xs uppercase tracking-wider" style={{ marginLeft: 6 }}>
-                      Apple
-                    </Text>
-                  </>
-                )}
-              </AnimatedPressable>
+            <Text className="text-xs text-on-surface-variant/70 font-medium text-center px-1">
+              Google opens your browser to pick an account, then brings you straight back here.
+            </Text>
+
+            {/* Apple and Truecaller are planned for the Play Store / App
+                Store launch. Plain Views, not AnimatedPressable — nothing
+                to press, and this keeps the shared component untouched. */}
+            <View className="flex-row justify-between" style={{ gap: 12 }}>
+              {[
+                { label: 'Apple', icon: 'security' as const },
+                { label: 'Truecaller', icon: 'call' as const },
+              ].map((p) => (
+                <View
+                  key={p.label}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`${p.label} sign-in, coming soon`}
+                  accessibilityState={{ disabled: true }}
+                  className="flex-1 h-12 bg-white border border-outline-variant/40 rounded-2xl flex-row items-center justify-center"
+                  style={{ opacity: 0.55 }}
+                >
+                  <MaterialIcons name={p.icon} size={16} color="#707a6f" />
+                  <Text className="text-on-surface-variant font-bold text-xs uppercase tracking-wider" style={{ marginLeft: 6 }}>
+                    {p.label}
+                  </Text>
+                  <View className="rounded-full bg-secondary-container px-1.5 py-0.5" style={{ marginLeft: 6 }}>
+                    <Text className="text-primary font-bold" style={{ fontSize: 9 }}>SOON</Text>
+                  </View>
+                </View>
+              ))}
             </View>
 
             <View className="flex-row items-center justify-between my-2">
@@ -396,7 +461,7 @@ export default function LoginScreen() {
             <View className="pt-1">
               <View className="flex-row p-1 rounded-2xl mb-3" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>
                 <AnimatedPressable
-                  onPress={() => { setIsSignUp(false); setAuthError(''); setAuthNotice(''); }}
+                  onPress={() => { setIsSignUp(false); setAuthError(''); setAuthNotice(''); setPendingConfirmationEmail(null); }}
                   accessibilityRole="button"
                   accessibilityLabel="Sign in"
                   accessibilityState={{ selected: !isSignUp }}
@@ -408,7 +473,7 @@ export default function LoginScreen() {
                   </Text>
                 </AnimatedPressable>
                 <AnimatedPressable
-                  onPress={() => { setIsSignUp(true); setAuthError(''); setAuthNotice(''); }}
+                  onPress={() => { setIsSignUp(true); setAuthError(''); setAuthNotice(''); setPendingConfirmationEmail(null); }}
                   accessibilityRole="button"
                   accessibilityLabel="Create account"
                   accessibilityState={{ selected: isSignUp }}
@@ -420,6 +485,12 @@ export default function LoginScreen() {
                   </Text>
                 </AnimatedPressable>
               </View>
+
+              <Text className="text-xs text-on-surface-variant/70 font-medium text-center px-1 mb-3">
+                {isSignUp
+                  ? "We'll email you a confirmation link. Tap it, then come back here and sign in."
+                  : 'Use the email and password you signed up with. Signed up with Google? Use the Google button above.'}
+              </Text>
 
               <View className="space-y-3" style={{ gap: 10 }}>
 
@@ -437,6 +508,11 @@ export default function LoginScreen() {
                     placeholderTextColor="rgba(64, 73, 64, 0.4)"
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
+                    blurOnSubmit={false}
                     className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
                     style={{ marginLeft: 6 }}
                   />
@@ -446,6 +522,7 @@ export default function LoginScreen() {
                 <View className="p-3.5 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
                   <MaterialIcons name="lock-outline" size={20} color="#707a6f" />
                   <TextInput
+                    ref={passwordInputRef}
                     value={passwordText}
                     onChangeText={setPasswordText}
                     accessibilityLabel="Password"
@@ -453,6 +530,10 @@ export default function LoginScreen() {
                     placeholderTextColor="rgba(64, 73, 64, 0.4)"
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
+                    autoComplete={isSignUp ? 'new-password' : 'password'}
+                    textContentType={isSignUp ? 'newPassword' : 'password'}
+                    returnKeyType="go"
+                    onSubmitEditing={() => { if (!isSendingMagicLink) handleEmailAuth(); }}
                     className="flex-1 font-semibold text-base text-on-surface p-0 focus:outline-none"
                     style={{ marginLeft: 6 }}
                   />
@@ -482,7 +563,7 @@ export default function LoginScreen() {
 
                 {/* Error Notification */}
                 {authError.length > 0 && (
-                  <Text className="text-xs text-error font-bold tracking-tight text-center px-1">
+                  <Text accessibilityLiveRegion="polite" className="text-xs text-error font-bold tracking-tight text-center px-1">
                     ⚠️ {authError}
                   </Text>
                 )}
@@ -490,7 +571,7 @@ export default function LoginScreen() {
                 {/* Success notice (e.g. account created, reset link sent) */}
                 {authNotice.length > 0 && (
                   <Text
-                    className="text-xs font-bold tracking-tight text-center px-1"
+                    className="text-xs font-bold tracking-tight text-center px-1" accessibilityLiveRegion="polite"
                     style={{ color: '#004c22' }}
                   >
                     {authNotice}
@@ -522,6 +603,7 @@ export default function LoginScreen() {
               </View>
             </View>
           </View>
+          )}
 
           {/* Privacy Disclaimer footer.
               These used to be styled as links with no onPress — underlined,

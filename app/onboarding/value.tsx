@@ -27,6 +27,47 @@ const SLIDES = [
   },
 ];
 
+// Static, decorative sample card shown under each slide's copy.
+function ExampleCard({ children }: { children: React.ReactNode }) {
+  return (
+    <View
+      accessibilityElementsHidden={true}
+      importantForAccessibility="no-hide-descendants"
+      className="w-full max-w-[280px] mt-4 p-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/30"
+    >
+      {children}
+    </View>
+  );
+}
+
+const EXAMPLES: React.ReactNode[] = [
+  <ExampleCard key="split">
+    <View className="flex-row items-center justify-between">
+      <Text maxFontSizeMultiplier={1.3} className="text-base font-bold text-on-surface">Dinner</Text>
+      <Text maxFontSizeMultiplier={1.3} className="text-base font-bold text-on-surface">₹1,240</Text>
+    </View>
+    <Text maxFontSizeMultiplier={1.3} className="text-xs text-on-surface-variant mt-1">Paid by you · split 4 ways</Text>
+    <Text maxFontSizeMultiplier={1.3} className="text-sm font-semibold text-primary mt-2">Priya owes you ₹310</Text>
+  </ExampleCard>,
+  <ExampleCard key="scan">
+    <View className="flex-row items-center justify-between">
+      <Text maxFontSizeMultiplier={1.3} className="text-base font-bold text-on-surface">Coffee shop</Text>
+      <Text maxFontSizeMultiplier={1.3} className="text-base font-bold text-on-surface">₹180</Text>
+    </View>
+    <Text maxFontSizeMultiplier={1.3} className="text-xs text-on-surface-variant mt-1">Read from a screenshot</Text>
+  </ExampleCard>,
+  <ExampleCard key="balance">
+    <View className="flex-row items-center justify-between">
+      <Text maxFontSizeMultiplier={1.3} numberOfLines={1} className="flex-1 mr-2 text-base font-bold text-on-surface">Personal this month</Text>
+      <Text maxFontSizeMultiplier={1.3} className="text-base font-bold text-on-surface">₹4,250</Text>
+    </View>
+    <View className="flex-row items-center justify-between mt-2">
+      <Text maxFontSizeMultiplier={1.3} className="text-base font-bold text-on-surface">You and Priya</Text>
+      <Text maxFontSizeMultiplier={1.3} className="text-sm font-semibold text-primary">All settled</Text>
+    </View>
+  </ExampleCard>,
+];
+
 export default function ValuePropScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -80,6 +121,7 @@ export default function ValuePropScreen() {
             <Text className="text-sm text-on-surface-variant/80 font-medium text-center leading-relaxed max-w-[280px]">
               {slide.body}
             </Text>
+            <View style={{ minHeight: 124, width: '100%', alignItems: 'center' }}>{EXAMPLES[index]}</View>
           </View>
         ))}
       </ScrollView>

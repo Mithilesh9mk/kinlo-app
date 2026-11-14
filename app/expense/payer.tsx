@@ -8,6 +8,7 @@ import { useExpense, PayerContribution } from '../../context/ExpenseContext';
 import { calculateEqualSplit } from '../../lib/splitCalculator';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { formatINR } from '../../lib/format';
 
 /**
  * Who paid — one person or several.
@@ -168,7 +169,7 @@ export default function PayerSelectionScreen() {
                 className="font-headline-md text-lg font-bold mt-0.5"
                 style={{ color: balanced ? '#004c22' : '#ba1a1a' }}
               >
-                {balanced ? `₹${total.toFixed(2)}` : `₹${Math.abs(remaining).toFixed(2)}`}
+                {balanced ? formatINR(total) : formatINR(Math.abs(remaining))}
               </Text>
             </View>
             <AnimatedPressable
@@ -246,7 +247,7 @@ export default function PayerSelectionScreen() {
       <View className="absolute bottom-0 left-0 w-full p-6 bg-gradient-to-t from-surface via-surface/95 to-transparent">
         {!canConfirm && (
           <Text className="text-xs text-error text-center mb-2 font-semibold">
-            The contributions need to add up to ₹{total.toFixed(2)} before you can continue.
+            The contributions need to add up to {formatINR(total)} before you can continue.
           </Text>
         )}
         <AnimatedPressable

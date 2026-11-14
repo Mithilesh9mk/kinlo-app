@@ -97,6 +97,12 @@ export default function FriendDetailScreen() {
   const [settleScopes, setSettleScopes] = useState<SettleScope[]>([]);
   const [isSettleScopeSheetOpen, setIsSettleScopeSheetOpen] = useState(false);
 
+  // Display-only composition of the header balance: the same scopes the
+  // Settle Up chooser lists (direct + each shared circle), with the same
+  // zero filter and labels. Filled by the load below from the ledger rows it
+  // already reads; never used to settle anything.
+  const [scopeBreakdown, setScopeBreakdown] = useState<{ label: string; balance: number }[]>([]);
+
   // Collaborative Permission Sheets
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
@@ -258,8 +264,47 @@ export default function FriendDetailScreen() {
           // apart, which is how this screen could show a figure that Home
           // and Settle Up disagreed with. The transaction list below is
           // still built locally — it is a history view, not the balance.
-          const balanceMap = await fetchBalanceMap(userId);
-          const totalBalance = balanceMap[finalFriendId] || 0;
+          //
+          // Read as scoped ledger rows (one request, same table and filter as
+          // fetchBalanceMap) so the header can also show which scopes the
+          // figure is made of. The total is the sum of every scope, which is
+          // exactly what fetchBalanceMap computes.
+          const ledgerRows = await fetchBalanceRows(userId);
+          const directBal = balanceMapForScope(ledgerRows, userId, null)[finalFriendId] || 0;
+          const ledgerGroupIds = Array.from(
+            new Set(ledgerRows.filter(r => r.group_id).map(r => r.group_id as string))
+          );
+          const ledgerGroupBals = ledgerGroupIds.map(gid => ({
+            gid,
+            bal: balanceMapForScope(ledgerRows, userId, gid)[finalFriendId] || 0,
+          }));
+          const totalBalance = ledgerGroupBals.reduce((sum, g) => sum + g.bal, directBal);
+
+          // Same scopes, order and zero filter as handleSettleUp's chooser.
+          const openGroupBals = ledgerGroupBals.filter(g => Math.abs(g.bal) > 0.005);
+          const breakdown: { label: string; balance: number }[] = [];
+          if (Math.abs(directBal) > 0.005) breakdown.push({ label: 'Direct', balance: directBal });
+          if (openGroupBals.length > 0) {
+            // Titles already resolved above cover most circles; only look up
+            // ones with no shared history. Display-only, so a failure here
+            // just falls back to the chooser's own default label.
+            const missing = openGroupBals.map(g => g.gid).filter(gid => !groupTitleMap[gid]);
+            if (missing.length > 0) {
+              try {
+                const { data: extra } = await supabase
+                  .from('groups')
+                  .select('id, title')
+                  .in('id', missing);
+                if (extra) for (const g of extra) groupTitleMap[g.id] = g.title || 'Circle';
+              } catch {
+                // keep default labels
+              }
+            }
+            for (const g of openGroupBals) {
+              breakdown.push({ label: groupTitleMap[g.gid] || 'Circle', balance: g.bal });
+            }
+          }
+          setScopeBreakdown(breakdown);
 
           const cacheKey = `friendDetail.${friendId}`;
           let nextFriend: FriendData | null = null;
@@ -594,6 +639,28 @@ export default function FriendDetailScreen() {
 
   const filteredTxs = getFilteredTransactions();
 
+  // Caption under the big header amount: only when the figure is made of more
+  // than one scope. Hidden if it no longer adds up to the header (e.g. after
+  // a void changes the balance until the next reload), so it can never
+  // contradict the number above it.
+  const headerSignedTotal =
+    friend.status === 'owed' ? friend.balance : friend.status === 'owes' ? -friend.balance : 0;
+  const breakdownSum = scopeBreakdown.reduce((sum, s) => sum + s.balance, 0);
+  const showBreakdown =
+    hasData &&
+    friend.status !== 'settled' &&
+    scopeBreakdown.length > 1 &&
+    Math.abs(breakdownSum - headerSignedTotal) < 0.02;
+  const breakdownMixed =
+    scopeBreakdown.some(s => s.balance > 0) && scopeBreakdown.some(s => s.balance < 0);
+  const breakdownText = scopeBreakdown
+    .map(s => `${s.label} ${breakdownMixed ? formatINR(s.balance, { signed: true }) : formatINR(Math.abs(s.balance))}`)
+    .join(' · ');
+
+  // Button emphasis follows the balance: while money is owed either way, Settle
+  // Up is the filled primary action. Zero or not-yet-loaded keeps today's styling.
+  const emphasiseSettle = hasData && friend.status !== 'settled' && friend.balance > 0.01;
+
   return (
     <View className="flex-1 bg-background">
       {/* Top App Bar */}
@@ -672,6 +739,9 @@ export default function FriendDetailScreen() {
                   <Text className="text-primary font-semibold text-xs uppercase tracking-wider">You are owed</Text>
                 </View>
                 <Text className="text-4xl font-bold text-primary" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatINR(friend.balance, { signed: true })}</Text>
+                {showBreakdown && (
+                  <Text className="text-xs text-on-surface-variant text-center mt-1 max-w-full" style={tabularNums} numberOfLines={2}>{breakdownText}</Text>
+                )}
                 <AnimatedPressable
                   onPress={handleSendReminder}
                   disabled={nudgeSending}
@@ -683,6 +753,15 @@ export default function FriendDetailScreen() {
                     {nudgeSending ? 'Sending…' : 'Send Reminder'}
                   </Text>
                 </AnimatedPressable>
+                {friend.balance > 0.01 && (
+                  <Text className="text-xs text-on-surface-variant text-center mt-2 max-w-full" numberOfLines={1}>
+                    {(() => {
+                      const first = (friend.name || '').trim().split(/\s+/)[0];
+                      const who = !first || first === 'Unknown' ? 'this friend' : first;
+                      return `Reminds ${who} of ${formatINR(friend.balance)}`;
+                    })()}
+                  </Text>
+                )}
               </View>
             )}
 
@@ -693,6 +772,9 @@ export default function FriendDetailScreen() {
                   <Text className="text-error font-semibold text-xs uppercase tracking-wider">You owe</Text>
                 </View>
                 <Text className="text-4xl font-bold text-error" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatINR(-Math.abs(friend.balance))}</Text>
+                {showBreakdown && (
+                  <Text className="text-xs text-on-surface-variant text-center mt-1 max-w-full" style={tabularNums} numberOfLines={2}>{breakdownText}</Text>
+                )}
               </View>
             )}
 
@@ -711,19 +793,23 @@ export default function FriendDetailScreen() {
           <View className="flex-row gap-3 w-full mb-8">
             <AnimatedPressable 
               onPress={handleAddExpense}
-              className="flex-1 bg-primary py-3.5 rounded-2xl items-center shadow-md shadow-primary/20 active:scale-95 duration-100"
+              className={emphasiseSettle
+                ? 'flex-1 py-3.5 rounded-2xl items-center border border-outline-variant bg-white/40 active:scale-95 duration-100'
+                : 'flex-1 bg-primary py-3.5 rounded-2xl items-center shadow-md shadow-primary/20 active:scale-95 duration-100'}
             >
-              <Text className="text-white font-semibold text-base">Add Expense</Text>
+              <Text className={emphasiseSettle ? 'text-on-surface font-semibold text-base' : 'text-white font-semibold text-base'}>Add Expense</Text>
             </AnimatedPressable>
             <AnimatedPressable 
               onPress={handleSettleUp}
-              className="flex-1 py-3.5 rounded-2xl items-center border active:scale-95 duration-100"
-              style={{
+              className={emphasiseSettle
+                ? 'flex-1 bg-primary py-3.5 rounded-2xl items-center shadow-md shadow-primary/20 active:scale-95 duration-100'
+                : 'flex-1 py-3.5 rounded-2xl items-center border active:scale-95 duration-100'}
+              style={emphasiseSettle ? undefined : {
                 backgroundColor: 'rgba(255, 255, 255, 0.72)',
                 borderColor: 'rgba(255, 255, 255, 0.35)',
               }}
             >
-              <Text className="text-primary font-semibold text-base">Settle Up</Text>
+              <Text className={emphasiseSettle ? 'text-white font-semibold text-base' : 'text-primary font-semibold text-base'}>Settle Up</Text>
             </AnimatedPressable>
           </View>
 
@@ -797,6 +883,11 @@ export default function FriendDetailScreen() {
                 <View className="py-12 items-center justify-center bg-white/40 border border-dashed border-outline-variant/60 rounded-3xl">
                   <MaterialIcons name="event-busy" size={32} color="#707a6f" className="mb-2" />
                   <Text className="text-on-surface-variant font-medium text-sm">No transactions in selected timeline</Text>
+                  {hasData && friend.status !== 'settled' && timeline !== 'all' && friend.transactions.length > 0 && (
+                    <Text className="text-on-surface-variant text-center text-xs mt-2 px-6">
+                      Your balance includes older activity — change the timeline to see it.
+                    </Text>
+                  )}
                 </View>
               ) : (
                 filteredTxs.map((tx, txIndex) => {

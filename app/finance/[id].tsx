@@ -7,15 +7,13 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { useToast } from '../../components/Toast';
 import { useAlert } from '../../components/AppAlert';
 import { categoryMeta } from '../../lib/categories';
+import { formatINR } from '../../lib/format';
 import {
   getPersonalTransaction,
   voidPersonalTransaction,
   signedReceiptUrl,
   PersonalTransaction,
 } from '../../lib/personalTransactions';
-
-const money = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function FinanceDetailScreen() {
   const router = useRouter();
@@ -29,16 +27,35 @@ export default function FinanceDetailScreen() {
   const [rawOpen, setRawOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const row = await getPersonalTransaction(id);
-      setTx(row);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const load = async () => {
+    setLoadFailed(false);
+    setLoading(true);
+    let row: PersonalTransaction | null = null;
+    try {
+      row = await getPersonalTransaction(id);
+    } catch (e) {
+      console.error('Failed to load personal transaction:', e);
+      setLoadFailed(true);
       setLoading(false);
-      if (row?.sourceImagePath) {
+      return;
+    }
+    setTx(row);
+    setLoading(false);
+    if (row?.sourceImagePath) {
+      try {
         const url = await signedReceiptUrl(row.sourceImagePath);
         if (url) setImageUri(url);
+      } catch (e) {
+        console.error('Failed to sign receipt url:', e);
       }
-    })();
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleVoid = () => {
@@ -73,6 +90,23 @@ export default function FinanceDetailScreen() {
     );
   }
 
+  if (loadFailed) {
+    return (
+      <SafeAreaView className="flex-1 bg-background items-center justify-center px-8">
+        <MaterialIcons name="cloud-off" size={40} color="#bfc9bd" />
+        <Text className="text-base font-semibold text-on-surface text-center mt-3">Couldn't load this expense</Text>
+        <Text className="text-sm text-on-surface-variant text-center mt-1 mb-5">Check your connection and try again.</Text>
+        <AnimatedPressable
+          onPress={load}
+          accessibilityLabel="Retry"
+          className="bg-primary px-6 py-3 rounded-xl"
+        >
+          <Text className="text-on-primary font-bold text-sm">Retry</Text>
+        </AnimatedPressable>
+      </SafeAreaView>
+    );
+  }
+
   if (!tx) {
     return (
       <SafeAreaView className="flex-1 bg-background items-center justify-center px-8">
@@ -86,12 +120,19 @@ export default function FinanceDetailScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       <View className="flex-row items-center justify-between px-5 h-16">
-        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 items-center justify-center rounded-full">
+        <AnimatedPressable
+          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          className="w-10 h-10 items-center justify-center rounded-full"
+        >
           <MaterialIcons name="arrow-back" size={22} color="#1c1c19" />
         </AnimatedPressable>
-        <Text className="font-headline-md text-lg font-semibold text-on-surface">Details</Text>
+        <Text className="flex-1 mx-2 text-center font-headline-md text-lg font-semibold text-on-surface" numberOfLines={1}>
+          {tx.merchant || tx.description || 'Expense'}
+        </Text>
         <AnimatedPressable
           onPress={() => router.push({ pathname: '/finance/entry', params: { editId: tx.id } })}
+          accessibilityLabel="Edit expense"
           className="w-10 h-10 items-center justify-center rounded-full"
         >
           <MaterialIcons name="edit" size={20} color="#004c22" />
@@ -114,7 +155,7 @@ export default function FinanceDetailScreen() {
               <MaterialIcons name={meta.icon as any} size={20} color={meta.color} />
             </View>
             <View className="flex-1">
-              <Text className="font-headline-md text-xl font-bold text-on-surface">{money(tx.amount)}</Text>
+              <Text className="font-headline-md text-xl font-bold text-on-surface">{formatINR(tx.amount)}</Text>
               <Text className="text-xs text-on-surface-variant">{meta.name}</Text>
             </View>
           </View>

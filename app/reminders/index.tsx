@@ -54,9 +54,29 @@ function parseDateTime(dateText: string, timeText: string): Date | null {
   return d;
 }
 
-function dueLabel(iso: string): { text: string; overdue: boolean } {
+function dueLabel(iso: string): { text: string; relative: string; overdue: boolean } {
   const d = new Date(iso);
-  return { text: `${formatDate(d)} · ${formatTime(d)}`, overdue: d.getTime() < Date.now() };
+  if (isNaN(d.getTime())) return { text: '', relative: 'No due date', overdue: false };
+  const now = new Date();
+  const overdue = d.getTime() < now.getTime();
+  // Whole local calendar days between today and the due day (negative = past).
+  const dayDiff = Math.round(
+    (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() -
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) /
+      86400000,
+  );
+  let relative: string;
+  if (overdue) {
+    const late = Math.abs(dayDiff);
+    relative = late === 0 ? 'Overdue today' : `Overdue ${late} ${late === 1 ? 'day' : 'days'}`;
+  } else if (dayDiff <= 0) {
+    relative = 'Due today';
+  } else if (dayDiff === 1) {
+    relative = 'Due tomorrow';
+  } else {
+    relative = `Due in ${dayDiff} days`;
+  }
+  return { text: `${formatDate(d)} · ${formatTime(d)}`, relative, overdue };
 }
 
 export default function RemindersScreen() {
@@ -132,7 +152,7 @@ export default function RemindersScreen() {
       if (plan && plan.plan !== 'gold') {
         showAlert(
           'Reminder limit reached',
-          `The free plan includes ${FREE_ACTIVE_REMINDERS} active reminders. Kinlo Gold removes the limit.`,
+          `The free plan includes ${FREE_ACTIVE_REMINDERS} active reminders. Kinlo Gold removes the limit, and is available with a coupon code while subscriptions aren't on sale yet.`,
           [
             { text: 'Not now', style: 'cancel' },
             { text: 'See Gold', onPress: () => router.push('/gold' as any) },
@@ -197,6 +217,58 @@ export default function RemindersScreen() {
         },
       },
     ]);
+  }
+
+  const byDue = (a: PersonalReminder, b: PersonalReminder) =>
+    new Date(a.nextDueAt).getTime() - new Date(b.nextDueAt).getTime();
+  const nowMs = Date.now();
+  const overdueRows = rows.filter((r) => new Date(r.nextDueAt).getTime() < nowMs).sort(byDue);
+  const upcomingRows = rows.filter((r) => new Date(r.nextDueAt).getTime() >= nowMs).sort(byDue);
+  const showGroupLabels = overdueRows.length > 0 && upcomingRows.length > 0;
+
+  function renderCard(r: PersonalReminder) {
+    const due = dueLabel(r.nextDueAt);
+    const busy = busyId === r.id;
+    return (
+      <View key={r.id} className="mb-3 p-4 rounded-2xl bg-surface-container border border-outline-variant/30">
+        <AnimatedPressable onPress={() => openForm(r)} disabled={busy}>
+          <View className="flex-row items-start justify-between">
+            <View className="flex-1 mr-3">
+              <Text className="text-base font-bold text-on-surface" numberOfLines={2}>{r.title}</Text>
+              <Text className={`text-sm mt-1 ${due.overdue ? 'text-error font-bold' : 'text-on-surface font-semibold'}`}>
+                {due.relative}
+              </Text>
+              <Text className="text-xs text-on-surface-variant mt-0.5">
+                {due.text}
+                {r.recurrence !== 'once' ? ` · ${r.recurrence}` : ''}
+              </Text>
+            </View>
+            {r.amount !== null && (
+              <Text className="text-base font-bold text-primary" style={tabularNums}>{formatINR(r.amount)}</Text>
+            )}
+          </View>
+        </AnimatedPressable>
+        <View className="flex-row gap-2 mt-3">
+          <AnimatedPressable
+            onPress={() => handleDone(r)}
+            disabled={busy}
+            className="flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-xl bg-primary"
+          >
+            <MaterialIcons name="check" size={16} color="#ffffff" />
+            <Text className="text-white font-bold text-xs">Mark done</Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={() => handleDelete(r)}
+            disabled={busy}
+            className="px-4 flex-row items-center justify-center gap-1.5 py-2 rounded-xl bg-surface-container-highest"
+            accessibilityLabel="Delete reminder"
+          >
+            <MaterialIcons name="delete-outline" size={16} color="#b91c1c" />
+            <Text className="text-xs font-bold text-red-700">Delete</Text>
+          </AnimatedPressable>
+        </View>
+      </View>
+    );
   }
 
   function handleBack() {
@@ -362,48 +434,18 @@ export default function RemindersScreen() {
               </View>
             )}
 
-            {loadState === 'ready' &&
-              rows.map((r) => {
-                const due = dueLabel(r.nextDueAt);
-                const busy = busyId === r.id;
-                return (
-                  <View key={r.id} className="mb-3 p-4 rounded-2xl bg-surface-container border border-outline-variant/30">
-                    <AnimatedPressable onPress={() => openForm(r)} disabled={busy}>
-                      <View className="flex-row items-start justify-between">
-                        <View className="flex-1 mr-3">
-                          <Text className="text-base font-bold text-on-surface" numberOfLines={2}>{r.title}</Text>
-                          <Text className={`text-xs mt-1 ${due.overdue ? 'text-red-700 font-bold' : 'text-on-surface-variant'}`}>
-                            {due.overdue ? 'Overdue · ' : ''}{due.text}
-                            {r.recurrence !== 'once' ? ` · ${r.recurrence}` : ''}
-                          </Text>
-                        </View>
-                        {r.amount !== null && (
-                          <Text className="text-sm font-bold text-primary" style={tabularNums}>{formatINR(r.amount)}</Text>
-                        )}
-                      </View>
-                    </AnimatedPressable>
-                    <View className="flex-row gap-2 mt-3">
-                      <AnimatedPressable
-                        onPress={() => handleDone(r)}
-                        disabled={busy}
-                        className="flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-xl bg-primary"
-                      >
-                        <MaterialIcons name="check" size={16} color="#ffffff" />
-                        <Text className="text-white font-bold text-xs">Mark done</Text>
-                      </AnimatedPressable>
-                      <AnimatedPressable
-                        onPress={() => handleDelete(r)}
-                        disabled={busy}
-                        className="px-4 flex-row items-center justify-center gap-1.5 py-2 rounded-xl bg-surface-container-highest"
-                        accessibilityLabel="Delete reminder"
-                      >
-                        <MaterialIcons name="delete-outline" size={16} color="#b91c1c" />
-                        <Text className="text-xs font-bold text-red-700">Delete</Text>
-                      </AnimatedPressable>
-                    </View>
-                  </View>
-                );
-              })}
+            {loadState === 'ready' && (
+              <>
+                {showGroupLabels && (
+                  <Text className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold mb-2">Overdue</Text>
+                )}
+                {overdueRows.map(renderCard)}
+                {showGroupLabels && (
+                  <Text className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold mb-2 mt-2">Coming up</Text>
+                )}
+                {upcomingRows.map(renderCard)}
+              </>
+            )}
           </ScrollView>
         </>
       )}

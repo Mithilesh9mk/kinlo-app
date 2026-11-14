@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAlert } from '../../components/AppAlert';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { formatINR } from '../../lib/format';
 
 interface Friend {
   id: string;
@@ -276,6 +277,9 @@ export default function ExpenseDetailsScreen() {
       <View className="flex-row items-center justify-between px-5 h-16 w-full z-50 border-b border-outline-variant/30" style={{ backgroundColor: 'rgba(252, 249, 244, 0.72)' }}>
         <AnimatedPressable
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="arrow-back" size={24} color="#1c1c19" />
@@ -315,7 +319,7 @@ export default function ExpenseDetailsScreen() {
             </View>
             <View className="items-end">
               <Text className="text-xs text-on-surface-variant uppercase tracking-wider font-semibold">Amount</Text>
-              <Text className="text-2xl font-bold text-primary">₹{parseFloat(amount).toFixed(2)}</Text>
+              <Text className="text-2xl font-bold text-primary">{formatINR(parseFloat(amount))}</Text>
               {!!description && (
                 <Text className="text-xs text-on-surface-variant mt-0.5 max-w-[140px]" numberOfLines={1}>
                   {description}
@@ -428,6 +432,8 @@ export default function ExpenseDetailsScreen() {
                     <AnimatedListItem key={p.id} index={index}>
                       <AnimatedPressable
                         onPress={() => choosePayer(p)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: active, checked: active }}
                         className="flex-row items-center py-3 px-3 rounded-2xl mb-1"
                         style={{
                           backgroundColor: active ? '#caead6' : 'transparent',

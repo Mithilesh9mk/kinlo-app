@@ -11,12 +11,16 @@ export default function ResetPasswordScreen() {
   const { showAlert } = useAlert();
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const MIN_PASSWORD_LENGTH_ERROR = 'Password must be at least 6 characters long.';
 
   const handleUpdatePassword = async () => {
     if (password.length < 6) {
-      showAlert('Invalid Password', 'Password must be at least 6 characters long.');
+      setPasswordError(MIN_PASSWORD_LENGTH_ERROR);
       return;
     }
+    setPasswordError(null);
 
     setIsSubmitting(true);
     try {
@@ -59,15 +63,31 @@ export default function ResetPasswordScreen() {
               <MaterialIcons name="lock-outline" size={20} color="#707a6f" />
               <TextInput
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(t) => {
+                  setPassword(t);
+                  if (passwordError && t.length >= 6) setPasswordError(null);
+                }}
+                onBlur={() => {
+                  if (password.length > 0 && password.length < 6) setPasswordError(MIN_PASSWORD_LENGTH_ERROR);
+                }}
+                accessibilityLabel="New password"
                 placeholder="Enter new password (min 6 chars)"
                 placeholderTextColor="rgba(64, 73, 64, 0.4)"
                 secureTextEntry={true}
+                autoComplete="new-password"
+                textContentType="newPassword"
                 autoCapitalize="none"
                 className="flex-1 font-semibold text-base text-on-surface p-0 h-8"
                 style={{ marginLeft: 6 }}
               />
             </View>
+            {passwordError ? (
+              <Text className="text-xs text-error mt-1" accessibilityLiveRegion="polite">
+                {passwordError}
+              </Text>
+            ) : (
+              <Text className="text-xs text-on-surface-variant mt-1">At least 6 characters</Text>
+            )}
           </View>
 
           <AnimatedPressable
@@ -92,6 +112,8 @@ export default function ResetPasswordScreen() {
 
         <AnimatedPressable
           onPress={() => router.replace('/onboarding/login')}
+          accessibilityRole="button"
+          accessibilityLabel="Back to login"
           className="items-center mt-6 py-2"
         >
           <Text className="text-sm text-primary font-bold">Back to Login</Text>

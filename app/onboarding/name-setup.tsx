@@ -59,6 +59,19 @@ export default function NameSetupScreen() {
         if (active && sessionEmail) {
           setEmailText((prev) => prev || sessionEmail);
         }
+        // Same rule for the name: only fills an empty field, from the
+        // provider's profile (e.g. Google) when it supplied one.
+        const meta = data.session?.user?.user_metadata;
+        const sessionName =
+          (typeof meta?.full_name === 'string' && meta.full_name.trim()) ||
+          (typeof meta?.name === 'string' && meta.name.trim()) ||
+          '';
+        // Email sign-up stores the email's local part as a placeholder
+        // full_name (login.tsx), which is not a real name — don't prefill it.
+        const isEmailHandle = !!sessionEmail && sessionName.trim().toLowerCase() === sessionEmail.split('@')[0].trim().toLowerCase();
+        if (active && sessionName && !isEmailHandle) {
+          setNameText((prev) => prev || sessionName);
+        }
       })
       .catch(() => {});
     return () => {
@@ -171,7 +184,7 @@ export default function NameSetupScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 60 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
         <Animated.View 
           style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
           className="px-6 pt-16 max-w-xl mx-auto w-full space-y-8"
@@ -200,7 +213,7 @@ export default function NameSetupScreen() {
           <View className="space-y-2 mt-4">
             <Text className="font-display-lg text-3xl font-bold text-primary">Tell us about you</Text>
             <Text className="text-sm text-on-surface-variant/80 font-medium leading-relaxed max-w-sm mt-1">
-              Pick a display name and an email so your friends can split bills with you.
+              Pick a display name so your friends can split bills with you. Email is optional.
             </Text>
           </View>
 
@@ -212,7 +225,7 @@ export default function NameSetupScreen() {
 
             {/* Name Input */}
             <View className="space-y-2">
-              <Text className="text-xs font-semibold text-on-surface-variant pl-1">Full Name</Text>
+              <Text className="text-xs font-semibold text-on-surface-variant pl-1">Your name</Text>
               <View className="p-3.5 bg-white border border-outline-variant/35 rounded-2xl flex-row items-center space-x-3">
                 <MaterialIcons name="person" size={20} color="#004c22" />
                 <TextInput
@@ -225,6 +238,7 @@ export default function NameSetupScreen() {
                   style={{ marginLeft: 6 }}
                 />
               </View>
+              <Text className="text-xs text-on-surface-variant mt-1">This is how friends see you in splits.</Text>
               {!isValidName && nameText.length > 0 && (
                 <Text className="text-[10px] text-error font-medium pl-1">
                   Name must be at least 2 characters to proceed.
@@ -267,8 +281,8 @@ export default function NameSetupScreen() {
                   style={{ marginLeft: 6 }}
                 />
               </View>
-              <Text className="text-[10px] text-on-surface-variant/60 pl-1 font-medium">
-                Add your number so friends can find you in Kinlo
+              <Text className="text-xs text-on-surface-variant pl-1 font-medium">
+                Optional. If a friend already added this number, they'll get a request to confirm it's you, and you'll see what they've recorded once it's confirmed.
               </Text>
             </View>
           </View>

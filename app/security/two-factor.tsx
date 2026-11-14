@@ -20,6 +20,17 @@ type Mode = 'loading' | 'error' | 'off' | 'setup' | 'done' | 'on';
 
 const digitsOnly = (s: string) => s.replace(/\D/g, '').slice(0, 6);
 
+// Factor names are generated as `Kinlo ${Date.now()}` (see startSetup). Show the
+// enrol date parsed from that numeric suffix; any other name shows only the app
+// label, never the raw number and never "Invalid Date".
+const factorSubtitle = (friendlyName: string | null | undefined): string => {
+  const m = typeof friendlyName === 'string' ? friendlyName.match(/(\d{10,})$/) : null;
+  const d = m ? new Date(Number(m[1])) : null;
+  // The 2020 floor stops a short numeric name from reading as a 1970 date.
+  if (!d || Number.isNaN(d.getTime()) || d.getFullYear() < 2020 || d.getFullYear() > new Date().getFullYear() + 1) return 'Authenticator app';
+  return `Authenticator app · Added ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+};
+
 export default function TwoFactorScreen() {
   const router = useRouter();
   const { showAlert } = useAlert();
@@ -257,6 +268,12 @@ export default function TwoFactorScreen() {
             <Text className="font-headline-md text-base font-bold text-on-surface mb-2">
               Add Kinlo to your authenticator app
             </Text>
+            <View className="flex-row bg-error-container border border-error/30 rounded-2xl p-3 mb-3">
+              <MaterialIcons name="warning" size={18} color="#93000a" style={{ marginTop: 1 }} />
+              <Text className="flex-1 text-sm font-semibold text-on-error-container leading-relaxed" style={{ marginLeft: 8 }}>
+                Save this key now. If you lose your authenticator app and the key, you will not be able to sign in.
+              </Text>
+            </View>
             <Text className="text-sm text-on-surface-variant leading-relaxed mb-3">
               In an app like Google Authenticator, Authy or 1Password, choose "enter a setup key" and type this key
               (long-press to select and copy it):
@@ -300,7 +317,7 @@ export default function TwoFactorScreen() {
             </View>
             <Text className="font-headline-md text-xl font-bold text-on-surface mt-4">Two-factor is on</Text>
             <Text className="text-sm text-on-surface-variant mt-3 text-center leading-relaxed">
-              If you lose your authenticator app you can't sign in. Keep the key somewhere safe.
+              If you lose your authenticator app and your setup key, you can't sign in. Keep the key somewhere safe.
             </Text>
           </View>
           <View className="mt-8">{primaryBtn('Done', finishDone)}</View>
@@ -317,7 +334,7 @@ export default function TwoFactorScreen() {
               </Text>
             </View>
             <Text className="text-sm text-on-surface-variant mt-2">
-              Authenticator app{factor.friendlyName ? ` · ${factor.friendlyName}` : ''}
+              {factorSubtitle(factor.friendlyName)}
             </Text>
           </View>
 

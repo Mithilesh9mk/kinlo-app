@@ -1,13 +1,13 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 27/10/2026, 3:46:20 pm
+> **Last Generated:** 14/11/2026, 4:53:14 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 178
-- **UI Screens (`app/`):** 52
-- **Components (`components/`):** 13
-- **Business Logic (`lib/` & `context/`):** 39
-- **SQL Migrations (`supabase/migrations/`):** 69
-- **Edge Functions (`supabase/functions/`):** 5
+- **Total Tracked System Nodes:** 187
+- **UI Screens (`app/`):** 54
+- **Components (`components/`):** 14
+- **Business Logic (`lib/` & `context/`):** 43
+- **SQL Migrations (`supabase/migrations/`):** 70
+- **Edge Functions (`supabase/functions/`):** 6
 
 ---
 
@@ -40,6 +40,8 @@
 - `app/group/create.tsx`
 - `app/group/[id].tsx`
 - `app/group/_layout.tsx`
+- `app/invite/[token].tsx`
+- `app/invite/_layout.tsx`
 - `app/legal/[doc].tsx`
 - `app/legal/_layout.tsx`
 - `app/mfa-challenge.tsx`
@@ -84,6 +86,7 @@
 - `lib/featureFlags.ts`
 - `lib/format.ts`
 - `lib/friendFetcher.ts`
+- `lib/friendInvites.ts`
 - `lib/groups.ts`
 - `lib/idempotency.ts`
 - `lib/imagePrep.ts`
@@ -96,6 +99,9 @@
 - `lib/personalTransactions.ts`
 - `lib/plan.ts`
 - `lib/pushDispatcher.ts`
+- `lib/qrCodec.ts`
+- `lib/qrImage.ts`
+- `lib/qrMatrix.ts`
 - `lib/recalculateSettlements.ts`
 - `lib/receiptDrafts.ts`
 - `lib/recurrence.ts`
@@ -178,3 +184,4 @@
 - `supabase/migrations/0068_close_relationship_gaps.sql`
 - `supabase/migrations/0069_record_expense_participant_check.sql`
 - `supabase/migrations/0070_connection_request_preview_consent.sql`
+- `supabase/migrations/0072_friend_invites.sql`

@@ -9,7 +9,8 @@ import { useAlert } from '../components/AppAlert';
 import { dispatchPushNotification } from '../lib/pushDispatcher';
 import { recordSettlement } from '../lib/recalculateSettlements';
 import { newTransactionId } from '../lib/idempotency';
-import { fetchBalances } from '../lib/balances';
+import { fetchBalances, fetchBalanceRows, balanceMapForScope } from '../lib/balances';
+import { formatINR } from '../lib/format';
 import { Skeleton, SkeletonListRow } from '../components/Skeleton';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { AnimatedListItem } from '../components/AnimatedListItem';
@@ -48,6 +49,10 @@ export default function SettleUpScreen() {
   const [selectedFriendName, setSelectedFriendName] = useState<string>(friendName);
   const [currentBalance, setCurrentBalance] = useState<number>(initialBalance);
   const [currentStatus, setCurrentStatus] = useState<string>(status);
+  // Which ledger scope this settlement clears: null = direct (1-on-1), else a
+  // circle's id. Seeded from the route param; the friend picker below sets it
+  // once the chosen friend's scope has been resolved.
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(groupId);
 
   const [amount, setAmount] = useState(initialBalance);
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>(METHODS[0]);
@@ -75,7 +80,7 @@ export default function SettleUpScreen() {
       return;
     }
     if (val > currentBalance) {
-      showAlert('Amount too high', `You cannot settle more than the outstanding balance of ₹${currentBalance.toFixed(2)}`);
+      showAlert('Amount too high', `You cannot settle more than the outstanding balance of ${formatINR(currentBalance)}`);
       return;
     }
     setAmount(val);
@@ -123,13 +128,66 @@ export default function SettleUpScreen() {
     }
   };
 
-  const selectFriend = (friend: any) => {
-    setSelectedFriendId(friend.id);
-    setSelectedFriendName(friend.name);
-    setCurrentBalance(friend.balance);
-    setCurrentStatus(friend.status);
-    setAmount(friend.balance);
-    setTempAmount(friend.balance.toFixed(2));
+  // The list above shows each friend's COMBINED balance (direct + every
+  // circle), but a settlement clears exactly one scope — the ledgers are never
+  // netted against each other (see friend/[id].tsx handleSettleUp). So after a
+  // pick we resolve that friend's scopes with the same helpers it uses: one
+  // open scope is settled here; several are handed to the friend screen, which
+  // already has the "Settle which balance?" chooser.
+  const resolvingScope = React.useRef(false);
+
+  const selectFriend = async (friend: any) => {
+    if (resolvingScope.current) return;
+    resolvingScope.current = true;
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data: authData } = await supabase.auth.getUser();
+      const myId = authData?.user?.id;
+      if (!myId) {
+        showAlert('Not signed in', 'Please sign in again.');
+        return;
+      }
+
+      const rows = await fetchBalanceRows(myId);
+      const scopes: { groupId: string | null; balance: number }[] = [];
+
+      const directBal = balanceMapForScope(rows, myId, null)[friend.id] || 0;
+      if (Math.abs(directBal) > 0.005) {
+        scopes.push({ groupId: null, balance: directBal });
+      }
+      const groupIds = Array.from(
+        new Set(rows.filter(r => r.group_id).map(r => r.group_id as string))
+      );
+      for (const gid of groupIds) {
+        const bal = balanceMapForScope(rows, myId, gid)[friend.id] || 0;
+        if (Math.abs(bal) > 0.005) scopes.push({ groupId: gid, balance: bal });
+      }
+
+      if (scopes.length === 0) {
+        showAlert('All settled up', `You have no outstanding balance with ${friend.name}.`);
+        return;
+      }
+
+      if (scopes.length > 1) {
+        router.replace({ pathname: `/friend/${friend.id}`, params: { friendName: friend.name } });
+        return;
+      }
+
+      const scope = scopes[0];
+      const scopeAmount = Math.abs(scope.balance);
+      setSelectedGroupId(scope.groupId);
+      setSelectedFriendId(friend.id);
+      setSelectedFriendName(friend.name);
+      setCurrentBalance(scopeAmount);
+      setCurrentStatus(scope.balance > 0 ? 'owed' : 'owes');
+      setAmount(scopeAmount);
+      setTempAmount(scopeAmount.toFixed(2));
+    } catch (err) {
+      console.warn('Could not resolve settle-up scope:', err);
+      showAlert('Could not check this balance', 'Please try again.');
+    } finally {
+      resolvingScope.current = false;
+    }
   };
 
   useEffect(() => {
@@ -153,6 +211,10 @@ export default function SettleUpScreen() {
     if (submitInFlight.current) return;
     submitInFlight.current = true;
     setIsSubmitting(true);
+    // Total still open with this friend across ALL scopes after this payment
+    // lands. null = could not be determined, in which case the success screen
+    // behaves exactly as it did before.
+    let overallRemaining: number | null = null;
     try {
       const { supabase } = await import('../lib/supabase');
       const { data: authData } = await supabase.auth.getUser();
@@ -228,7 +290,7 @@ export default function SettleUpScreen() {
           amount,
           payerIsMe,
           description: fullDescription,
-          groupId: groupId ?? null,
+          groupId: selectedGroupId ?? null,
           // Which expense this pays down, when we arrived from one. The
           // expense detail screen subtracts linked settlements per participant
           // to decide whose Settle button to keep showing.
@@ -276,12 +338,31 @@ export default function SettleUpScreen() {
           console.warn('Failed to refresh balances globally:', balErr);
         }
 
+        // What is still open with this friend in EVERY scope. Scopes are never
+        // netted, so this is the sum of each scope's absolute balance — a
+        // direct debt and a circle debt in opposite directions must not read
+        // as "square". Best effort: on failure the success screen falls back
+        // to its per-scope wording.
+        try {
+          const rows = await fetchBalanceRows(authData.user.id);
+          const scopeIds = new Set<string | null>(rows.map(r => r.group_id ?? null));
+          scopeIds.add(null);
+          let open = 0;
+          scopeIds.forEach(gid => {
+            const bal = balanceMapForScope(rows, authData.user!.id, gid)[finalFriendId] || 0;
+            if (Math.abs(bal) > 0.005) open += Math.abs(bal);
+          });
+          overallRemaining = open;
+        } catch (remErr) {
+          console.warn('Could not compute overall remaining balance:', remErr);
+        }
+
         if (txId) {
            const userName = authData.user.user_metadata?.full_name || 'A friend';
            dispatchPushNotification(
              [finalFriendId],
              'Payment Received 💸',
-             `${userName} recorded a payment of ₹${amount.toFixed(2)} to you.`,
+             `${userName} recorded a payment of ${formatINR(amount)} to you.`,
              { action: 'settlement_recorded' }
            );
          }
@@ -317,8 +398,9 @@ export default function SettleUpScreen() {
         friendName: selectedFriendName,
         youPaid: currentStatus !== 'owed' ? 'true' : 'false',
         remaining: Math.max(0, currentBalance - amount).toFixed(2),
-        groupId: groupId || '',
+        groupId: selectedGroupId || '',
         friendId: selectedFriendId || '',
+        ...(overallRemaining !== null ? { overallRemaining: overallRemaining.toFixed(2) } : {}),
       },
     });
     // Note: No need to setIsSubmitting(false) on success since we are navigating away.
@@ -328,7 +410,11 @@ export default function SettleUpScreen() {
     // Ref, not state: isSubmitting lags a fast double-tap by a render.
     if (submitInFlight.current) return;
 
-    if (activeMethod.id === 'upi') {
+    // Only launch the UPI pay intent when the USER is the payer. When status is
+    // 'owed' the friend is paying me, so opening a UPI app aimed at the
+    // friend's address would send money the wrong way — fall through and just
+    // record it, like every other method.
+    if (activeMethod.id === 'upi' && currentStatus !== 'owed') {
       try {
         const { supabase } = await import('../lib/supabase');
 
@@ -378,6 +464,20 @@ export default function SettleUpScreen() {
   };
 
   const isPartial = amount < currentBalance;
+
+  // Scope caption for the hero. The circle name is only trusted while the
+  // selected scope is still the one the route arrived with — after the friend
+  // picker changes selectedGroupId, groupName would be stale, and no name is
+  // available without a new query, so show nothing rather than guess. The
+  // expense description likewise belongs to the original route's friend only.
+  const scopeLabel = selectedGroupId
+    ? (selectedGroupId === groupId ? groupName : null)
+    : 'Direct balance';
+  const expenseLabel =
+    transactionDescription && selectedFriendId === friendId
+      ? `For: ${transactionDescription}`
+      : null;
+  const scopeCaption = [scopeLabel, expenseLabel].filter(Boolean).join(' · ');
 
   // Selector View for unspecified friend
   if (selectedFriendId === 'unknown') {
@@ -473,7 +573,7 @@ export default function SettleUpScreen() {
                   </View>
                   <View className="items-end">
                     <Text className={`font-bold text-base ${friend.status === 'owed' ? 'text-primary' : 'text-error'}`}>
-                      {friend.status === 'owed' ? '+' : '-'}₹{friend.balance.toFixed(2)}
+                      {friend.status === 'owed' ? formatINR(friend.balance, { signed: true }) : formatINR(-friend.balance)}
                     </Text>
                     <Text className="text-xs text-on-surface-variant">
                       {friend.status === 'owed' ? 'owes you' : 'you owe'}
@@ -606,12 +706,15 @@ export default function SettleUpScreen() {
 
             {/* Display recorded sum */}
             <View className="flex-row items-center justify-center space-x-2">
-              <Text className="font-display-lg text-4xl font-bold text-primary">₹{amount.toFixed(2)}</Text>
+              <Text className="font-display-lg text-4xl font-bold text-primary">{formatINR(amount)}</Text>
               <AnimatedPressable 
                 onPress={() => {
                   setTempAmount(amount.toFixed(2));
                   setIsEditOpen(true);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Edit amount"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 className="w-8 h-8 rounded-full bg-surface-container-high items-center justify-center active:scale-90"
               >
                 <MaterialIcons name="edit" size={16} color="#404940" />
@@ -626,12 +729,26 @@ export default function SettleUpScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* Which balance / expense this settles. Display only. Renders
+                nothing when there is nothing to say, so the hero does not gain
+                an empty gap. */}
+            {scopeCaption ? (
+              <Text className="text-xs text-on-surface-variant text-center mt-3" numberOfLines={2}>
+                {scopeCaption}
+              </Text>
+            ) : null}
+            {isPartial ? (
+              <Text className="text-xs text-on-surface-variant text-center mt-1">
+                {formatINR(Math.max(0, currentBalance - amount))} will remain
+              </Text>
+            ) : null}
           </View>
 
           {/* Matrix of payment method matrix options */}
           <View className="space-y-3">
             <Text className="font-label-md text-xs font-bold text-on-surface-variant uppercase tracking-wider pl-1">
-              How did you pay?
+              {currentStatus === 'owed' ? `How did ${(selectedFriendName || '').trim().split(' ')[0] || 'they'} pay you?` : 'How did you pay?'}
             </Text>
             <View className="flex-row flex-wrap justify-between">
               {METHODS.map(method => {
@@ -696,7 +813,7 @@ export default function SettleUpScreen() {
         >
           <MaterialIcons name="check-circle" size={20} color="white" className="mr-2" />
           <Text className="text-white font-semibold text-base" style={{ marginLeft: 6 }}>
-            Record Payment
+            {activeMethod.id === 'upi' && currentStatus !== 'owed' ? `Pay ${formatINR(amount)} via UPI` : 'Record Payment'}
           </Text>
         </AnimatedPressable>
         <Text className="text-xs text-on-surface-variant text-center leading-relaxed">

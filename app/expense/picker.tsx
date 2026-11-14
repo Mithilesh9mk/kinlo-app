@@ -269,8 +269,7 @@ export default function FriendGroupPickerScreen() {
 
   // Filters
   const filteredFriends = friendsList.filter(f => 
-    f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (f.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+    f.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredGroups = groupsList.filter(g =>
@@ -291,6 +290,8 @@ export default function FriendGroupPickerScreen() {
         <Text className="font-headline text-2xl font-bold text-on-surface">Split with</Text>
         <AnimatedPressable
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
           className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
         >
           <MaterialIcons name="close" size={24} color="#1c1c19" />
@@ -318,6 +319,8 @@ export default function FriendGroupPickerScreen() {
         <View className="flex-row p-1 bg-surface-container rounded-xl">
           <AnimatedPressable
             onPress={() => setActiveTab('friends')}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === 'friends' }}
             className={`flex-1 py-2.5 rounded-lg items-center ${activeTab === 'friends' ? 'bg-white shadow-sm' : ''}`}
           >
             <Text className={`font-semibold text-sm ${activeTab === 'friends' ? 'text-primary' : 'text-on-surface-variant'}`}>
@@ -326,6 +329,8 @@ export default function FriendGroupPickerScreen() {
           </AnimatedPressable>
           <AnimatedPressable
             onPress={() => setActiveTab('groups')}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === 'groups' }}
             className={`flex-1 py-2.5 rounded-lg items-center ${activeTab === 'groups' ? 'bg-white shadow-sm' : ''}`}
           >
             <Text className={`font-semibold text-sm ${activeTab === 'groups' ? 'text-primary' : 'text-on-surface-variant'}`}>
@@ -350,7 +355,12 @@ export default function FriendGroupPickerScreen() {
                   className="flex-row items-center bg-secondary-container px-3 py-1.5 rounded-full"
                 >
                   <Text className="text-primary font-semibold text-xs mr-1">{friend.name.split(' ')[0]}</Text>
-                  <AnimatedPressable onPress={() => handleRemoveFriendChip(friend.id)}>
+                  <AnimatedPressable
+                    onPress={() => handleRemoveFriendChip(friend.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${friend.name}`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
                     <MaterialIcons name="close" size={14} color="#004c22" />
                   </AnimatedPressable>
                 </View>
@@ -364,7 +374,12 @@ export default function FriendGroupPickerScreen() {
         <View className="px-5 mb-3">
           <View className="flex-row items-center bg-primary self-start px-4 py-1.5 rounded-full">
             <Text className="text-white font-semibold text-xs mr-2">{selectedGroup.title}</Text>
-            <AnimatedPressable onPress={() => setSelectedGroup(null)}>
+            <AnimatedPressable
+              onPress={() => setSelectedGroup(null)}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${selectedGroup.title}`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <MaterialIcons name="close" size={14} color="white" />
             </AnimatedPressable>
           </View>
@@ -445,6 +460,8 @@ export default function FriendGroupPickerScreen() {
                     <AnimatedListItem key={`freq-${friend.id}`} index={index}>
                       <AnimatedPressable
                         onPress={() => handleToggleFriend(friend)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isChecked, selected: isChecked }}
                         className="p-3 rounded-2xl flex-row items-center justify-between"
                         style={{
                           backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
@@ -452,16 +469,15 @@ export default function FriendGroupPickerScreen() {
                           borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
                         }}
                       >
-                        <View className="flex-row items-center space-x-3">
+                        <View className="flex-1 flex-row items-center space-x-3 mr-2">
                           <Avatar
                             uri={friend.image}
                             initials={friend.initials}
                             size={40}
                             textClassName="text-primary font-bold text-sm"
                           />
-                          <View>
-                            <Text className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
-                            <Text className="text-xs text-on-surface-variant mt-0.5">{friend.email}</Text>
+                          <View className="flex-1">
+                            <Text numberOfLines={1} className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
                           </View>
                         </View>
                         <MaterialIcons
@@ -488,6 +504,8 @@ export default function FriendGroupPickerScreen() {
                     <AnimatedListItem key={`all-${friend.id}`} index={index}>
                       <AnimatedPressable
                         onPress={() => handleToggleFriend(friend)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isChecked, selected: isChecked }}
                         className="p-3 rounded-2xl flex-row items-center justify-between"
                         style={{
                           backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
@@ -495,16 +513,15 @@ export default function FriendGroupPickerScreen() {
                           borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
                         }}
                       >
-                        <View className="flex-row items-center space-x-3">
+                        <View className="flex-1 flex-row items-center space-x-3 mr-2">
                           <Avatar
                             uri={friend.image}
                             initials={friend.initials}
                             size={40}
                             textClassName="text-primary font-bold text-sm"
                           />
-                          <View>
-                            <Text className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
-                            <Text className="text-xs text-on-surface-variant mt-0.5">{friend.email}</Text>
+                          <View className="flex-1">
+                            <Text numberOfLines={1} className="font-semibold text-on-surface leading-tight">{friend.name}</Text>
                           </View>
                         </View>
                         <MaterialIcons
@@ -544,6 +561,8 @@ export default function FriendGroupPickerScreen() {
                 <AnimatedListItem key={group.id} index={index}>
                   <AnimatedPressable
                     onPress={() => handleSelectGroup(group)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isChecked, checked: isChecked }}
                     className="p-3 rounded-2xl flex-row items-center justify-between"
                     style={{
                       backgroundColor: isChecked ? 'rgba(202, 234, 214, 0.2)' : 'rgba(255, 255, 255, 0.72)',
@@ -551,13 +570,13 @@ export default function FriendGroupPickerScreen() {
                       borderColor: isChecked ? '#004c22' : 'rgba(255, 255, 255, 0.35)',
                     }}
                   >
-                    <View className="flex-row items-center space-x-4">
+                    <View className="flex-1 flex-row items-center space-x-4 mr-2">
                       <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center">
                         <MaterialIcons name={group.icon as any} size={24} color="#004c22" />
                       </View>
-                      <View>
-                        <Text className="font-semibold text-on-surface text-lg leading-tight">{group.title}</Text>
-                        <Text className="text-sm text-on-surface-variant mt-0.5">{group.memberCount} members</Text>
+                      <View className="flex-1">
+                        <Text numberOfLines={1} className="font-semibold text-on-surface text-lg leading-tight">{group.title}</Text>
+                        <Text className="text-sm text-on-surface-variant mt-0.5">{group.memberCount} {group.memberCount === 1 ? 'member' : 'members'}</Text>
                       </View>
                     </View>
                     <MaterialIcons

@@ -158,6 +158,11 @@ export default function GoldScreen() {
               )}
             </View>
           ) : null}
+          {!!plan && !isGold && (
+            <Text className="text-xs text-on-surface-variant -mt-3 mb-6">
+              Gold subscriptions aren't on sale yet. For now, Gold is available with a coupon code — enter one below.
+            </Text>
+          )}
 
           {/* What Gold includes */}
           <Text className="font-headline-md text-base font-bold text-on-surface mb-3">What Gold includes</Text>
@@ -228,12 +233,6 @@ export default function GoldScreen() {
             </AnimatedPressable>
           </View>
           {!!redeemError && <Text className="text-sm text-error mt-2">{redeemError}</Text>}
-
-          {!isGold && (
-            <Text className="text-xs text-on-surface-variant mt-5">
-              Gold subscriptions are coming soon. Until then, Gold is available with a coupon code.
-            </Text>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
