@@ -17,6 +17,7 @@ import { personalMonthSummary } from '../../lib/personalTransactions';
 import { withOfflineFallback } from '../../lib/offlineCache';
 import { Avatar } from '../../components/Avatar';
 import AddFriendModal from '../../components/AddFriendModal';
+import { AddNumberCard } from '../../components/AddNumberCard';
 import { Skeleton, SkeletonListRow } from '../../components/Skeleton';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { FirstRunHintCard } from '../../components/FirstRunHintCard';
@@ -721,6 +722,7 @@ export default function HomeScreen() {
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ paddingBottom: 120 }}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#004c22" />
         }
@@ -759,6 +761,11 @@ export default function HomeScreen() {
             </AnimatedPressable>
           </View>
         )}
+
+        {/* Own-number nudge: renders nothing unless the number is missing. */}
+        <View className="px-6">
+          <AddNumberCard className="mt-1 mb-3" />
+        </View>
 
         {/* Friends row: a horizontally-scrolling strip plus a fixed "View
             All" button outside it. View All used to be the last item INSIDE

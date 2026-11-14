@@ -1,12 +1,12 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 14/11/2026, 4:58:50 pm
+> **Last Generated:** 14/11/2026, 5:10:46 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 188
+- **Total Tracked System Nodes:** 192
 - **UI Screens (`app/`):** 54
-- **Components (`components/`):** 14
-- **Business Logic (`lib/` & `context/`):** 44
-- **SQL Migrations (`supabase/migrations/`):** 70
+- **Components (`components/`):** 16
+- **Business Logic (`lib/` & `context/`):** 45
+- **SQL Migrations (`supabase/migrations/`):** 71
 - **Edge Functions (`supabase/functions/`):** 6
 
 ---
@@ -88,6 +88,7 @@
 - `lib/format.ts`
 - `lib/friendFetcher.ts`
 - `lib/friendInvites.ts`
+- `lib/groupInvites.ts`
 - `lib/groups.ts`
 - `lib/idempotency.ts`
 - `lib/imagePrep.ts`
@@ -186,3 +187,4 @@
 - `supabase/migrations/0069_record_expense_participant_check.sql`
 - `supabase/migrations/0070_connection_request_preview_consent.sql`
 - `supabase/migrations/0072_friend_invites.sql`
+- `supabase/migrations/0073_group_invites.sql`

@@ -16,11 +16,17 @@ import {
   clearPendingInvite,
   InvitePreview,
 } from '../../lib/friendInvites';
+import {
+  previewGroupInvite,
+  acceptGroupInvite,
+  GroupInvitePreview,
+} from '../../lib/groupInvites';
 
 type ViewState =
   | { kind: 'loading' }
   | { kind: 'signed_out' }
   | { kind: 'ok'; preview: InvitePreview }
+  | { kind: 'group'; preview: GroupInvitePreview }
   | { kind: 'invalid' }
   | { kind: 'rate_limited' }
   | { kind: 'error' };
@@ -61,8 +67,18 @@ export default function InviteScreen() {
       return;
     }
     const res = await previewInvite(token);
-    if (res.status === 'ok') setState({ kind: 'ok', preview: res.preview });
-    else setState({ kind: res.status });
+    if (res.status === 'ok') {
+      setState({ kind: 'ok', preview: res.preview });
+      return;
+    }
+    if (res.status !== 'invalid') {
+      setState({ kind: res.status });
+      return;
+    }
+    // Not a friend invite: the same link shape is also used for circles.
+    const gres = await previewGroupInvite(token);
+    if (gres.status === 'ok') setState({ kind: 'group', preview: gres.preview });
+    else setState({ kind: gres.status });
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
@@ -101,6 +117,30 @@ export default function InviteScreen() {
     }
   };
 
+  const openGroup = (g: { groupId: string; title: string }) => {
+    router.replace({
+      pathname: `/group/${g.groupId}`,
+      params: { title: g.title },
+    });
+  };
+
+  const joinGroup = async () => {
+    if (!token || connecting) return;
+    setConnecting(true);
+    const res = await acceptGroupInvite(token);
+    if (res.ok) {
+      await clearPendingInvite();
+      if (!res.alreadyMember) showToast(`Joined ${res.title || 'the circle'}`);
+      openGroup({ groupId: res.groupId, title: res.title });
+      return;
+    }
+    setConnecting(false);
+    if (res.reason === 'invalid') setState({ kind: 'invalid' });
+    else if (res.reason === 'rate_limited') setState({ kind: 'rate_limited' });
+    else if (res.reason === 'not_allowed') showToast("This invite can't be used right now");
+    else showToast("Couldn't join. Please try again");
+  };
+
   const Header = (
     <View className="flex-row items-center px-5 h-16 w-full border-b border-outline-variant/30">
       <AnimatedPressable
@@ -110,7 +150,7 @@ export default function InviteScreen() {
         <MaterialIcons name="arrow-back" size={24} color="#004c22" />
       </AnimatedPressable>
       <Text className="font-headline-md text-xl text-primary font-semibold" style={{ marginLeft: 6 }}>
-        Friend invite
+        Invite
       </Text>
     </View>
   );
@@ -134,12 +174,82 @@ export default function InviteScreen() {
     );
   }
 
+  if (state.kind === 'group') {
+    const g = state.preview;
+    return (
+      <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+        {Header}
+        <View className="flex-1 px-5 pt-8 items-center">
+          <View
+            className="w-full items-center rounded-2xl px-5 py-8"
+            style={{ backgroundColor: '#fefdfc', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}
+          >
+            <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
+              <MaterialIcons name="groups" size={40} color="#004c22" />
+            </View>
+            <Text className="font-bold text-xl text-on-surface mt-4 text-center">{g.title}</Text>
+            {g.alreadyMember ? (
+              <Text className="text-sm text-on-surface-variant mt-2 text-center leading-relaxed">
+                You are already a member of this circle.
+              </Text>
+            ) : (
+              <>
+                <Text className="text-sm text-on-surface-variant mt-2 text-center">
+                  {g.inviterName ? `${g.inviterName} invited you to this circle` : 'You have been invited to this circle'}
+                </Text>
+                <Text className="text-xs text-on-surface-variant mt-2 text-center">
+                  {g.memberCount} {g.memberCount === 1 ? 'member' : 'members'}
+                </Text>
+                <Text className="text-xs text-on-surface-variant mt-3 text-center leading-relaxed">
+                  Members can add you to expenses in this circle.
+                </Text>
+              </>
+            )}
+          </View>
+
+          <View className="w-full mt-6">
+            {g.alreadyMember ? (
+              <AnimatedPressable
+                onPress={() => openGroup({ groupId: g.groupId, title: g.title })}
+                className="w-full py-4 rounded-2xl items-center justify-center bg-primary"
+              >
+                <Text className="font-semibold text-sm text-white">Open circle</Text>
+              </AnimatedPressable>
+            ) : (
+              <View className="gap-3">
+                <AnimatedPressable
+                  onPress={joinGroup}
+                  disabled={connecting}
+                  className="w-full py-4 rounded-2xl items-center justify-center bg-primary"
+                >
+                  {connecting ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text className="font-semibold text-sm text-white">Join circle</Text>
+                  )}
+                </AnimatedPressable>
+                <AnimatedPressable
+                  onPress={leave}
+                  disabled={connecting}
+                  className="w-full py-4 rounded-2xl items-center justify-center"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}
+                >
+                  <Text className="font-semibold text-sm text-on-surface">Not now</Text>
+                </AnimatedPressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (state.kind !== 'ok') {
     const copy = {
       invalid: {
         icon: 'link-off' as const,
         title: 'Invite not valid',
-        body: 'This invite link has expired or was reset. Ask your friend for a new one.',
+        body: 'This invite has expired or was reset. Ask for a new one.',
         retry: false,
       },
       rate_limited: {

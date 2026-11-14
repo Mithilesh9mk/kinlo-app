@@ -23,6 +23,7 @@ import { getRelatedUsers } from '../../lib/friendFetcher';
 import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { formatINR, tabularNums } from '../../lib/format';
+import GroupInviteModal from '../../components/GroupInviteModal';
 
 // DB-native category ids, matching the `category` column values this screen
 // already maps to labels below — not create.tsx's own UI ids (which get
@@ -149,6 +150,7 @@ export default function GroupDetailScreen() {
   >([]);
   const [selectedNewMemberIds, setSelectedNewMemberIds] = useState<string[]>([]);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
 
   // Own effect rather than folded into fetchLiveGroupData below — this also
   // needs to be callable on its own after an add/remove, without re-running
@@ -1810,6 +1812,19 @@ export default function GroupDetailScreen() {
                 </AnimatedPressable>
               </View>
 
+              <AnimatedPressable
+                onPress={() => {
+                  // Close this sheet first; a second Modal opened on top of it
+                  // can misbehave on Android.
+                  setIsSettingsSheetOpen(false);
+                  setTimeout(() => setIsInviteOpen(true), 350);
+                }}
+                className="flex-row items-center p-3 mb-3 bg-white/50 border border-outline-variant/20 rounded-2xl"
+              >
+                <MaterialIcons name="qr-code-2" size={20} color="#004c22" />
+                <Text className="text-primary font-semibold text-sm ml-3">Invite with QR or link</Text>
+              </AnimatedPressable>
+
               <View className="gap-2 mb-6">
                 {members.map((m, index) => (
                   <AnimatedListItem key={m.userId} index={index}>
@@ -1858,6 +1873,13 @@ export default function GroupDetailScreen() {
           </View>
         </AnimatedPressable>
       </Modal>
+
+      <GroupInviteModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+        groupId={groupId}
+        groupTitle={group.title || 'Circle'}
+      />
 
       {/* Add Members — filtered to people not already in this group. */}
       <Modal

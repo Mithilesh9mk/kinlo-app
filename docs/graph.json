@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-14T11:28:50.544Z",
-  "totalFiles": 188,
+  "timestamp": "2026-11-14T11:40:46.003Z",
+  "totalFiles": 192,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -60,6 +60,7 @@
     ],
     "components": [
       "components/AddFriendModal.tsx",
+      "components/AddNumberCard.tsx",
       "components/AnimatedListItem.tsx",
       "components/AnimatedPressable.tsx",
       "components/AppAlert.tsx",
@@ -67,6 +68,7 @@
       "components/CrashReportBanner.tsx",
       "components/ErrorBoundary.tsx",
       "components/FirstRunHintCard.tsx",
+      "components/GroupInviteModal.tsx",
       "components/OfflineBanner.tsx",
       "components/ParetoChart.tsx",
       "components/QrCodeView.tsx",
@@ -93,6 +95,7 @@
       "lib/format.ts",
       "lib/friendFetcher.ts",
       "lib/friendInvites.ts",
+      "lib/groupInvites.ts",
       "lib/groups.ts",
       "lib/idempotency.ts",
       "lib/imagePrep.ts",
@@ -192,7 +195,8 @@
       "supabase/migrations/0068_close_relationship_gaps.sql",
       "supabase/migrations/0069_record_expense_participant_check.sql",
       "supabase/migrations/0070_connection_request_preview_consent.sql",
-      "supabase/migrations/0072_friend_invites.sql"
+      "supabase/migrations/0072_friend_invites.sql",
+      "supabase/migrations/0073_group_invites.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",

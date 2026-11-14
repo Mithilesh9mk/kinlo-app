@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, Image, Modal, TextInput, Animated, A
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
+import { AddNumberCard } from '../../components/AddNumberCard';
 import { AVATAR_PRESETS, presetValue, parsePreset } from '../../lib/avatarPresets';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Skeleton } from '../../components/Skeleton';
@@ -671,6 +672,7 @@ export default function ProfileScreen() {
 
       <ScrollView
         className="flex-1"
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#004c22" />
@@ -748,6 +750,8 @@ export default function ProfileScreen() {
               ) : null}
             </View>
           </View>
+
+          <AddNumberCard onSaved={(phone) => { setUserPhone(phone); setTempPhone(phone); }} />
 
           {/* Net Settlements Summary Dashboard */}
           <View 
