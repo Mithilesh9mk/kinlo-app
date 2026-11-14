@@ -1,11 +1,11 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 14/11/2026, 4:53:14 pm
+> **Last Generated:** 14/11/2026, 4:58:50 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 187
+- **Total Tracked System Nodes:** 188
 - **UI Screens (`app/`):** 54
 - **Components (`components/`):** 14
-- **Business Logic (`lib/` & `context/`):** 43
+- **Business Logic (`lib/` & `context/`):** 44
 - **SQL Migrations (`supabase/migrations/`):** 70
 - **Edge Functions (`supabase/functions/`):** 6
 
@@ -73,6 +73,7 @@
 - `lib/accountDeletion.ts`
 - `lib/activity.ts`
 - `lib/analytics.ts`
+- `lib/appUpdates.ts`
 - `lib/authThrottle.ts`
 - `lib/avatarPresets.ts`
 - `lib/balances.ts`

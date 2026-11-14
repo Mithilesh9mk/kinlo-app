@@ -27,6 +27,7 @@ import { fetchConnectionRequests } from '../../lib/connections';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
 import { formatINR } from '../../lib/format';
 import * as Device from 'expo-device';
+import { checkAndDownloadUpdate, restartToApplyUpdate, openStoreListing, STORE_LISTING_URL } from '../../lib/appUpdates';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -358,6 +359,36 @@ export default function ProfileScreen() {
       Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const handleCheckForUpdates = async () => {
+    if (isCheckingUpdate) return;
+    setIsCheckingUpdate(true);
+    try {
+      const result = await checkAndDownloadUpdate();
+      if (result.status === 'ready') {
+        showAlert('Update ready', 'A new version of Kinlo has been downloaded. Restart now to use it.', [
+          { text: 'Later' },
+          { text: 'Restart', onPress: () => { restartToApplyUpdate(); } },
+        ]);
+      } else if (result.status === 'up_to_date') {
+        if (STORE_LISTING_URL) {
+          showAlert('You are up to date', 'This is the latest update for your installed version. Newer versions of the app, when released, come from the store.', [
+            { text: 'OK' },
+            { text: 'Open store', onPress: openStoreListing },
+          ]);
+        } else {
+          showAlert('You are up to date', 'Kinlo is running the latest update.');
+        }
+      } else if (result.status === 'unavailable') {
+        showAlert('Updates unavailable', 'This build of Kinlo does not download updates.');
+      } else {
+        showAlert('Could not check', 'Check your internet connection and try again.');
+      }
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!tempName.trim()) {
@@ -1075,7 +1106,7 @@ export default function ProfileScreen() {
               <AnimatedPressable
                 onPress={handleToggleAutoScan}
                 activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3"
+                className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
               >
                 <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
@@ -1091,6 +1122,33 @@ export default function ProfileScreen() {
                 }`}>
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>
+              </AnimatedPressable>
+
+              {/* Downloads a newer over-the-air update if one exists for this
+                  build. Store builds cannot be installed from here; see
+                  lib/appUpdates.ts. */}
+              <AnimatedPressable
+                onPress={handleCheckForUpdates}
+                disabled={isCheckingUpdate}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    {isCheckingUpdate ? (
+                      <ActivityIndicator size="small" color="#004c22" />
+                    ) : (
+                      <MaterialIcons name="system-update" size={20} color="#004c22" />
+                    )}
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Check for updates</Text>
+                    <Text className="text-xs text-on-surface-variant">
+                      {isCheckingUpdate ? 'Checking...' : 'Get the latest fixes and features'}
+                    </Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
               </AnimatedPressable>
             </View>
           </View>

@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-14T11:23:14.709Z",
-  "totalFiles": 187,
+  "timestamp": "2026-11-14T11:28:50.544Z",
+  "totalFiles": 188,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -78,6 +78,7 @@
       "lib/accountDeletion.ts",
       "lib/activity.ts",
       "lib/analytics.ts",
+      "lib/appUpdates.ts",
       "lib/authThrottle.ts",
       "lib/avatarPresets.ts",
       "lib/balances.ts",
