@@ -422,3 +422,9 @@ entrypoint = "./functions/simplify_debts/index.ts"
 [functions.revenuecat-webhook]
 enabled = true
 verify_jwt = false
+
+# Public redirect so invite links are tappable in WhatsApp; only ever redirects
+# to kinlo://invite/<24 hex>, reads no data, uses no secrets.
+[functions.invite]
+enabled = true
+verify_jwt = false

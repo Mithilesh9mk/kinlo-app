@@ -1,4 +1,4 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useRef } from 'react';
 import { useIncomingShare } from 'expo-sharing';
@@ -13,6 +13,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { CrashReportBanner } from '../components/CrashReportBanner';
 import { installCrashLogger } from '../lib/crashLog';
 import { checkUsersRowOnboarded, SEEN_INTRO_KEY } from '../lib/onboardingState';
+import { clearPendingInvite, getPendingInvite, parseInviteToken, setPendingInvite } from '../lib/friendInvites';
 
 // Module scope, before any component mounts — a crash during the very first
 // render would otherwise happen before a hook could install the handler.
@@ -187,6 +188,53 @@ export default function RootLayout() {
     router.push('/finance/share');
   }, [sharedPayloads, isReady, session, isOnboarded, router, mfaChecked, segments]);
 
+  // Friend invite links (kinlo://invite/<token>).
+  //
+  // Park: a cold-start link opens the invite screen first, but the gate effect
+  // above immediately replaces it with login/onboarding for a signed-out or
+  // not-yet-onboarded user, which can unmount the screen before its own async
+  // session check finishes. So the token is stored here, synchronously with
+  // the gate, rather than relying on the screen. (useSegments only yields the
+  // route pattern '[token]', so the real value comes from the global params.)
+  const globalParams = useGlobalSearchParams<{ token?: string | string[] }>();
+  const inviteSegment = segments[0] === 'invite';
+  const rawInviteToken = Array.isArray(globalParams.token) ? globalParams.token[0] : globalParams.token;
+  useEffect(() => {
+    if (!isReady || !inviteSegment) return;
+    // Also parked until the 2FA check has finished: that check may replace
+    // this screen with /mfa-challenge, and the invite must survive it. The
+    // invite screen clears the parked token once the user acts on it.
+    if (session && isOnboarded && mfaChecked) return;
+    const token = parseInviteToken(rawInviteToken ?? '');
+    if (token) setPendingInvite(token).catch(() => {});
+  }, [isReady, inviteSegment, session, isOnboarded, mfaChecked, rawInviteToken]);
+
+  // Open: once signed in, onboarded and past the 2FA check, show a parked
+  // invite exactly once (cleared before navigating). Same gating as the share
+  // effect; also holds off while the onboarding->tabs redirect is in flight,
+  // since that router.replace('/') would otherwise swallow this push.
+  const inviteChecking = useRef(false);
+  const onMfaScreen = segments[0] === 'mfa-challenge';
+  const inOnboardingNow = segments[0] === 'onboarding';
+  useEffect(() => {
+    if (inviteChecking.current) return;
+    if (!isReady || !session || !isOnboarded || !mfaChecked) return;
+    // Already looking at an invite: pushing the parked one would stack a
+    // second copy of the same screen.
+    if (onMfaScreen || inOnboardingNow || inviteSegment) return;
+    inviteChecking.current = true;
+    getPendingInvite()
+      .then(async (token) => {
+        if (!token) return;
+        await clearPendingInvite();
+        router.push(`/invite/${token}`);
+      })
+      .catch(() => {})
+      .finally(() => {
+        inviteChecking.current = false;
+      });
+  }, [isReady, session, isOnboarded, mfaChecked, onMfaScreen, inOnboardingNow, inviteSegment, router]);
+
   // Two-factor step-up gate. Honest scope: this is enforced in the app only —
   // it does NOT make the database reject aal1 tokens (that would need RLS
   // changes, deliberately not done here). Users with no verified factor have
@@ -290,6 +338,7 @@ export default function RootLayout() {
                 <Stack.Screen name="friend" options={{ headerShown: false }} />
                 <Stack.Screen name="transaction" options={{ headerShown: false }} />
                 <Stack.Screen name="finance" options={{ headerShown: false }} />
+                <Stack.Screen name="invite" options={{ headerShown: false }} />
                 <Stack.Screen name="reminders" options={{ headerShown: false }} />
                 <Stack.Screen name="settle-up" options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false, animation: 'slide_from_bottom' }} />
