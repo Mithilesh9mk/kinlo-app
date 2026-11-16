@@ -101,7 +101,7 @@ export default function FriendDetailScreen() {
   // Settle Up chooser lists (direct + each shared circle), with the same
   // zero filter and labels. Filled by the load below from the ledger rows it
   // already reads; never used to settle anything.
-  const [scopeBreakdown, setScopeBreakdown] = useState<{ label: string; balance: number }[]>([]);
+  const [scopeBreakdown, setScopeBreakdown] = useState<{ label: string; balance: number; groupId?: string }[]>([]);
 
   // Collaborative Permission Sheets
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -282,7 +282,7 @@ export default function FriendDetailScreen() {
 
           // Same scopes, order and zero filter as handleSettleUp's chooser.
           const openGroupBals = ledgerGroupBals.filter(g => Math.abs(g.bal) > 0.005);
-          const breakdown: { label: string; balance: number }[] = [];
+          const breakdown: { label: string; balance: number; groupId?: string }[] = [];
           if (Math.abs(directBal) > 0.005) breakdown.push({ label: 'Direct', balance: directBal });
           if (openGroupBals.length > 0) {
             // Titles already resolved above cover most circles; only look up
@@ -301,7 +301,7 @@ export default function FriendDetailScreen() {
               }
             }
             for (const g of openGroupBals) {
-              breakdown.push({ label: groupTitleMap[g.gid] || 'Circle', balance: g.bal });
+              breakdown.push({ label: groupTitleMap[g.gid] || 'Circle', balance: g.bal, groupId: g.gid });
             }
           }
           setScopeBreakdown(breakdown);
@@ -639,23 +639,59 @@ export default function FriendDetailScreen() {
 
   const filteredTxs = getFilteredTransactions();
 
-  // Caption under the big header amount: only when the figure is made of more
-  // than one scope. Hidden if it no longer adds up to the header (e.g. after
-  // a void changes the balance until the next reload), so it can never
-  // contradict the number above it.
+  // "How this adds up" block under the big header amount: the header is the
+  // total across every scope, so list each scope. Hidden if the parts no longer
+  // sum to the header (e.g. after a void changes the balance until the next
+  // reload), so it can never contradict the number above it.
   const headerSignedTotal =
     friend.status === 'owed' ? friend.balance : friend.status === 'owes' ? -friend.balance : 0;
   const breakdownSum = scopeBreakdown.reduce((sum, s) => sum + s.balance, 0);
   const showBreakdown =
     hasData &&
     friend.status !== 'settled' &&
-    scopeBreakdown.length > 1 &&
-    Math.abs(breakdownSum - headerSignedTotal) < 0.02;
-  const breakdownMixed =
-    scopeBreakdown.some(s => s.balance > 0) && scopeBreakdown.some(s => s.balance < 0);
-  const breakdownText = scopeBreakdown
-    .map(s => `${s.label} ${breakdownMixed ? formatINR(s.balance, { signed: true }) : formatINR(Math.abs(s.balance))}`)
-    .join(' · ');
+    scopeBreakdown.length > 0 &&
+    Math.abs(breakdownSum - headerSignedTotal) <= 1;
+  const phraseINR = (n: number) => `${n > 0 ? 'owes you' : 'you owe'} ${formatINR(Math.abs(n))}`;
+  const renderBreakdown = () => {
+    if (!showBreakdown) return null;
+    if (scopeBreakdown.length === 1) {
+      const only = scopeBreakdown[0];
+      return (
+        <Text className="text-xs text-on-surface-variant text-center mt-1 max-w-full" numberOfLines={1}>
+          {only.groupId ? `All of this is in ${only.label}` : 'All of this is direct, outside circles'}
+        </Text>
+      );
+    }
+    const rowCls = 'flex-row items-center justify-between gap-3 py-1.5';
+    return (
+      <View className="w-full mt-3 px-4 py-3 rounded-xl bg-surface-container-low">
+        <Text className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">How this adds up</Text>
+        {scopeBreakdown.map((s, i) => {
+          const inner = (
+            <>
+              <Text className="flex-1 text-sm text-on-surface" numberOfLines={1}>{s.groupId ? s.label : 'Outside circles'}</Text>
+              <Text className={`text-sm font-semibold ${s.balance > 0 ? 'text-primary' : 'text-error'}`} style={tabularNums} numberOfLines={1}>{phraseINR(s.balance)}</Text>
+            </>
+          );
+          return s.groupId ? (
+            <AnimatedPressable
+              key={`${s.groupId}-${i}`}
+              onPress={() => router.push({ pathname: `/group/${s.groupId}`, params: { title: s.label } })}
+              className={rowCls}
+            >
+              {inner}
+            </AnimatedPressable>
+          ) : (
+            <View key={`direct-${i}`} className={rowCls}>{inner}</View>
+          );
+        })}
+        <View className={`${rowCls} border-t border-outline-variant mt-1 pt-2`}>
+          <Text className="flex-1 text-sm font-bold text-on-surface">Total</Text>
+          <Text className={`text-sm font-bold ${headerSignedTotal > 0 ? 'text-primary' : 'text-error'}`} style={tabularNums} numberOfLines={1}>{phraseINR(headerSignedTotal)}</Text>
+        </View>
+      </View>
+    );
+  };
 
   // Button emphasis follows the balance: while money is owed either way, Settle
   // Up is the filled primary action. Zero or not-yet-loaded keeps today's styling.
@@ -739,9 +775,7 @@ export default function FriendDetailScreen() {
                   <Text className="text-primary font-semibold text-xs uppercase tracking-wider">You are owed</Text>
                 </View>
                 <Text className="text-4xl font-bold text-primary" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatINR(friend.balance, { signed: true })}</Text>
-                {showBreakdown && (
-                  <Text className="text-xs text-on-surface-variant text-center mt-1 max-w-full" style={tabularNums} numberOfLines={2}>{breakdownText}</Text>
-                )}
+                {renderBreakdown()}
                 <AnimatedPressable
                   onPress={handleSendReminder}
                   disabled={nudgeSending}
@@ -772,9 +806,7 @@ export default function FriendDetailScreen() {
                   <Text className="text-error font-semibold text-xs uppercase tracking-wider">You owe</Text>
                 </View>
                 <Text className="text-4xl font-bold text-error" style={tabularNums} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatINR(-Math.abs(friend.balance))}</Text>
-                {showBreakdown && (
-                  <Text className="text-xs text-on-surface-variant text-center mt-1 max-w-full" style={tabularNums} numberOfLines={2}>{breakdownText}</Text>
-                )}
+                {renderBreakdown()}
               </View>
             )}
 

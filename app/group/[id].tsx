@@ -20,6 +20,7 @@ import {
   GroupMember,
 } from '../../lib/groups';
 import { getRelatedUsers } from '../../lib/friendFetcher';
+import { fetchBalanceMap } from '../../lib/balances';
 import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { formatINR, tabularNums } from '../../lib/format';
@@ -130,6 +131,9 @@ export default function GroupDetailScreen() {
   const [simplifyDebts, setSimplifyDebts] = useState(true);
   const [switchingMode, setSwitchingMode] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  // Overall (all scopes) net per other user, from the shared engine. null until
+  // loaded or if it failed: the "Overall ..." notes then simply do not render.
+  const [overallMap, setOverallMap] = useState<Record<string, number> | null>(null);
 
   // Collaborative Permission state machines
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -416,6 +420,14 @@ export default function GroupDetailScreen() {
 
             setSettlements(dynamicSettlements);
 
+            // Display-only: the total with each person across every scope, so a
+            // circle row can say when it differs from the friend page. Fails soft.
+            try {
+              setOverallMap(await fetchBalanceMap(currentUserId));
+            } catch {
+              setOverallMap(null);
+            }
+
             // Your position in this group comes from the ledger, and only from
             // the ledger.
             //
@@ -489,6 +501,20 @@ export default function GroupDetailScreen() {
       loadMembers();
     }, [groupId, loadMembers, reloadTick])
   );
+
+  // Secondary line under a circle row that involves the viewer. circleSigned is
+  // positive when they owe you in this circle, negative when you owe them.
+  // Returns null when the overall figure matches this circle's (within Rs 1).
+  const overallNote = (otherId: string, otherName: string, circleSigned: number): string | null => {
+    if (!overallMap) return null;
+    const overall = overallMap[otherId] ?? 0;
+    if (Math.abs(overall - circleSigned) < 1) return null;
+    const first = (otherName || '').split(' ')[0] || 'them';
+    if (Math.abs(overall) < 1) return 'Overall you two are settled';
+    return overall > 0
+      ? `Overall ${first} owes you ${formatINR(overall)}`
+      : `Overall you owe ${first} ${formatINR(Math.abs(overall))}`;
+  };
 
   const { showToast: triggerToast } = useToast();
   const { showAlert } = useAlert();
@@ -1002,6 +1028,9 @@ export default function GroupDetailScreen() {
                 }`}>
                   {dataUnknown ? '—' : group.userBalance > 0 || group.userBalance < 0 ? formatINR(group.userBalance, { signed: true }) : 'Settled'}
                 </Text>
+                {!dataUnknown && (
+                  <Text className="text-xs text-on-surface-variant -mt-3 mb-3">In this circle only</Text>
+                )}
                 {dataUnknown ? (
                   <Text className="text-sm text-on-surface-variant">
                     {txLoading ? 'Loading balance…' : "Couldn't load your balance"}
@@ -1105,9 +1134,15 @@ export default function GroupDetailScreen() {
                         initials={(otherName || '?').charAt(0).toUpperCase()}
                         size={36}
                       />
-                      <Text numberOfLines={1} className="font-semibold text-on-surface text-base flex-1">
-                        {isYouPaying ? `Pay ${otherName}` : `${otherName} pays you`}
-                      </Text>
+                      <View className="flex-1">
+                        <Text numberOfLines={1} className="font-semibold text-on-surface text-base">
+                          {isYouPaying ? `Pay ${otherName}` : `${otherName} pays you`}
+                        </Text>
+                        {(() => {
+                          const note = overallNote(isYouPaying ? s.toId : s.fromId, otherName, isYouPaying ? -s.amount : s.amount);
+                          return note ? <Text className="text-xs text-on-surface-variant">{note}</Text> : null;
+                        })()}
+                      </View>
                     </View>
                     <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
                       {formatINR(s.amount)}
@@ -1643,6 +1678,10 @@ export default function GroupDetailScreen() {
                           <Text className="text-xs text-on-surface-variant">
                             {isYouPaying ? 'Record your payment' : 'Record payment received'}
                           </Text>
+                          {(() => {
+                            const note = overallNote(isYouPaying ? s.toId : s.fromId, isYouPaying ? s.toName : s.fromName, isYouPaying ? -s.amount : s.amount);
+                            return note ? <Text className="text-xs text-on-surface-variant">{note}</Text> : null;
+                          })()}
                         </View>
                       </View>
                       <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
