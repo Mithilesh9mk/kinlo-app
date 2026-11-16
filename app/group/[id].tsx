@@ -578,6 +578,22 @@ export default function GroupDetailScreen() {
     ? settlements.filter(s => s.fromId === userId || s.toId === userId)
     : [];
 
+  // Headline: the sum of what the rows below actually ask for (each capped at
+  // the overall amount with that person, see payView). null when it matches
+  // the circle's own figure or the overall map is not loaded.
+  const headlineAdjusted = (() => {
+    if (!overallMap || myTransfers.length === 0) return null;
+    let sum = 0;
+    for (const s of myTransfers) {
+      const paying = s.fromId === userId;
+      const pv = payView(paying ? s.toId : s.fromId, paying ? -s.amount : s.amount);
+      sum += paying ? -pv.amount : pv.amount;
+    }
+    if (Math.abs(sum - group.userBalance) < 1 || Math.abs(sum) < 0.005) return null;
+    return sum;
+  })();
+  const shownBalance = headlineAdjusted ?? group.userBalance;
+
   const handleAddExpense = () => {
     // Navigate to expense amount setting pass selected group info
     router.push({
@@ -1047,12 +1063,16 @@ export default function GroupDetailScreen() {
               <View className="items-center md:items-start">
                 <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Your Balance</Text>
                 <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={tabularNums} className={`font-display-lg text-5xl font-bold mb-4 ${
-                  dataUnknown ? 'text-on-surface-variant' : group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
+                  dataUnknown ? 'text-on-surface-variant' : shownBalance > 0 ? 'text-primary' : shownBalance < 0 ? 'text-error' : 'text-on-surface-variant'
                 }`}>
-                  {dataUnknown ? '—' : group.userBalance > 0 || group.userBalance < 0 ? formatINR(group.userBalance, { signed: true }) : 'Settled'}
+                  {dataUnknown ? '—' : shownBalance > 0 || shownBalance < 0 ? formatINR(shownBalance, { signed: true }) : 'Settled'}
                 </Text>
                 {!dataUnknown && (
-                  <Text className="text-xs text-on-surface-variant -mt-3 mb-3">In this circle only</Text>
+                  <Text className="text-xs text-on-surface-variant -mt-3 mb-3">
+                    {headlineAdjusted !== null
+                      ? `Overall. ${formatINR(group.userBalance, { signed: true })} in this circle alone`
+                      : 'In this circle only'}
+                  </Text>
                 )}
                 {dataUnknown ? (
                   <Text className="text-sm text-on-surface-variant">

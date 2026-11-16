@@ -6,7 +6,7 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { fetchBalanceRows, groupBalanceMap } from '../../lib/balances';
+import { fetchBalanceRows, groupBalanceMap, groupOverallAdjustedMap } from '../../lib/balances';
 import { formatINR, tabularNums } from '../../lib/format';
 import { withOfflineFallback } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
@@ -70,6 +70,10 @@ export default function GroupsScreen() {
     if (!memberships) return [];
 
     const balances = groupBalanceMap(rows, userId);
+    // What is really left to pay or receive in each circle once balances with
+    // the same people outside it are counted, so the card matches the amount
+    // the circle screen and the friend page tell the user to pay.
+    const adjusted = groupOverallAdjustedMap(rows, userId);
 
     const groupsFormatted: Group[] = [];
     for (const m of memberships) {
@@ -87,7 +91,7 @@ export default function GroupsScreen() {
       };
       const cat = categoryMap[g.category] || { label: 'Other', icon: 'group' };
 
-      const balance = balances[g.id] || 0;
+      const balance = adjusted[g.id] ?? balances[g.id] ?? 0;
 
       groupsFormatted.push({
         id: g.id,
