@@ -20,9 +20,11 @@ import {
   GroupMember,
 } from '../../lib/groups';
 import { getRelatedUsers } from '../../lib/friendFetcher';
+import { fetchBalanceMap } from '../../lib/balances';
 import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { formatINR, tabularNums } from '../../lib/format';
+import GroupInviteModal from '../../components/GroupInviteModal';
 
 // DB-native category ids, matching the `category` column values this screen
 // already maps to labels below — not create.tsx's own UI ids (which get
@@ -59,6 +61,8 @@ interface Transaction {
   status?: string;
   /** 'expense' or 'settlement' — settlements are payments, not new charges. */
   type?: string;
+  /** The current user's own share_amount on this row (0 if not in the split). */
+  myShare?: number;
 }
 
 interface GroupData {
@@ -127,6 +131,9 @@ export default function GroupDetailScreen() {
   const [simplifyDebts, setSimplifyDebts] = useState(true);
   const [switchingMode, setSwitchingMode] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  // Overall (all scopes) net per other user, from the shared engine. null until
+  // loaded or if it failed: the "Overall ..." notes then simply do not render.
+  const [overallMap, setOverallMap] = useState<Record<string, number> | null>(null);
 
   // Collaborative Permission state machines
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -147,6 +154,7 @@ export default function GroupDetailScreen() {
   >([]);
   const [selectedNewMemberIds, setSelectedNewMemberIds] = useState<string[]>([]);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
 
   // Own effect rather than folded into fetchLiveGroupData below — this also
   // needs to be callable on its own after an add/remove, without re-running
@@ -292,6 +300,7 @@ export default function GroupDetailScreen() {
                 description: t.description,
                 totalAmount: Number(t.amount),
                 share: shareAmt,
+                myShare: myShareAmount,
                 paidBy: payerDisplayName,
                 paidByUserId: t.paid_by,
                 addedBy: payerDisplayName,
@@ -314,7 +323,7 @@ export default function GroupDetailScreen() {
               //
               // The query above has no status filter, and this loop used to
               // have none either: every voided expense stayed in the totals.
-              let totalGroupSpend = 0, spentByYou = 0;
+              let totalGroupSpend = 0, spentByYou = 0, yourShare = 0;
               // Newest first — same omission as the friend screen had.
               const allTxs = [...formatted].sort((a, b) => b.timestamp - a.timestamp);
 
@@ -322,6 +331,8 @@ export default function GroupDetailScreen() {
                 if (t.status === 'voided' || t.type === 'settlement') continue;
                 totalGroupSpend += t.totalAmount;
                 if (t.paidBy === 'You') spentByYou += t.totalAmount;
+                // Your own portion of each live expense, from transaction_splits.
+                yourShare += t.myShare ?? 0;
               }
 
               return {
@@ -331,9 +342,11 @@ export default function GroupDetailScreen() {
                   transactions: allTxs,
                   totalSpend: totalGroupSpend,
                   spentByYou: spentByYou,
-                  // userBalance and yourShare are set from the ledger below.
-                  // They are deliberately not computed here — see the comment
-                  // at the ledger read.
+                  yourShare: yourShare,
+                  cachedAt: null,
+                  // userBalance is set from the ledger below. It is
+                  // deliberately not computed here — see the comment at the
+                  // ledger read.
                 }
               };
             });
@@ -407,6 +420,14 @@ export default function GroupDetailScreen() {
 
             setSettlements(dynamicSettlements);
 
+            // Display-only: the total with each person across every scope, so a
+            // circle row can say when it differs from the friend page. Fails soft.
+            try {
+              setOverallMap(await fetchBalanceMap(currentUserId));
+            } catch {
+              setOverallMap(null);
+            }
+
             // Your position in this group comes from the ledger, and only from
             // the ledger.
             //
@@ -435,8 +456,7 @@ export default function GroupDetailScreen() {
                 ...prev,
                 [groupId]: {
                   ...baseGroup,
-                  userBalance: myGroupBalance,
-                  yourShare: Math.abs(myGroupBalance),
+                  userBalance: myGroupBalance, cachedAt: null,
                 }
               };
             });
@@ -482,6 +502,43 @@ export default function GroupDetailScreen() {
     }, [groupId, loadMembers, reloadTick])
   );
 
+  // Secondary line under a circle row that involves the viewer. circleSigned is
+  // positive when they owe you in this circle, negative when you owe them.
+  // Returns null when the overall figure matches this circle's (within Rs 1).
+  const overallNote = (otherId: string, otherName: string, circleSigned: number): string | null => {
+    if (!overallMap) return null;
+    const overall = overallMap[otherId] ?? 0;
+    if (Math.abs(overall - circleSigned) < 1) return null;
+    const first = (otherName || '').split(' ')[0] || 'them';
+    if (Math.abs(overall) < 1) return 'Overall you two are settled';
+    return overall > 0
+      ? `Overall ${first} owes you ${formatINR(overall)}`
+      : `Overall you owe ${first} ${formatINR(Math.abs(overall))}`;
+  };
+
+  // What to show as the amount on a viewer row, so nobody pays the circle
+  // figure when they owe that person less overall (the rest is offset by what
+  // is owed the other way outside this circle). circleSigned as above.
+  //  - overall smaller, same direction: show the overall amount, circle amount
+  //    as a caption, and prefill settle-up with the overall amount.
+  //  - overall larger, same direction: circle amount stays (only this much can
+  //    be settled here), overall as a caption.
+  //  - otherwise (unknown, equal, settled or opposite): circle amount only.
+  const payView = (otherId: string, circleSigned: number): { amount: number; caption: string | null; suggested: number } => {
+    const circleAmt = Math.abs(circleSigned);
+    const plain = { amount: circleAmt, caption: null, suggested: circleAmt };
+    if (!overallMap) return plain;
+    const overall = overallMap[otherId] ?? 0;
+    if (Math.abs(overall - circleSigned) < 1) return plain;
+    const sameDirection = Math.abs(overall) >= 1 && (overall > 0) === (circleSigned > 0);
+    if (!sameDirection) return plain;
+    const overallAmt = Math.abs(overall);
+    if (overallAmt < circleAmt) {
+      return { amount: overallAmt, caption: `${formatINR(circleAmt)} in this circle`, suggested: overallAmt };
+    }
+    return { amount: circleAmt, caption: `${formatINR(overallAmt)} overall`, suggested: circleAmt };
+  };
+
   const { showToast: triggerToast } = useToast();
   const { showAlert } = useAlert();
 
@@ -514,6 +571,28 @@ export default function GroupDetailScreen() {
   // Balance/totals are unknown until a load succeeds; the fallback group object
   // holds zeros that would otherwise read as "Circle settled" / ₹0.00.
   const dataUnknown = !loadedOnce && (txLoading || !!txError);
+
+  // GRP-01: transfers that involve the viewer, for the balance card's
+  // "who do I pay / who pays me" rows. Same predicate as the settle sheet.
+  const myTransfers = !dataUnknown && userId
+    ? settlements.filter(s => s.fromId === userId || s.toId === userId)
+    : [];
+
+  // Headline: the sum of what the rows below actually ask for (each capped at
+  // the overall amount with that person, see payView). null when it matches
+  // the circle's own figure or the overall map is not loaded.
+  const headlineAdjusted = (() => {
+    if (!overallMap || myTransfers.length === 0) return null;
+    let sum = 0;
+    for (const s of myTransfers) {
+      const paying = s.fromId === userId;
+      const pv = payView(paying ? s.toId : s.fromId, paying ? -s.amount : s.amount);
+      sum += paying ? -pv.amount : pv.amount;
+    }
+    if (Math.abs(sum - group.userBalance) < 1 || Math.abs(sum) < 0.005) return null;
+    return sum;
+  })();
+  const shownBalance = headlineAdjusted ?? group.userBalance;
 
   const handleAddExpense = () => {
     // Navigate to expense amount setting pass selected group info
@@ -562,6 +641,28 @@ export default function GroupDetailScreen() {
     }
     return net;
   };
+
+  // GRP-09: per-member net balance for the People strip on the main screen.
+  // Uses getMemberNetBalance above (the same ledger-based helper the settings
+  // remove guard uses) and formats with formatINR's default decimals, so these
+  // figures match the balance card exactly.
+  // Empty while balance data is unknown, when served from cache (the cache
+  // holds no ledger rows, so per-member figures would wrongly read "Settled"),
+  // or when the circle has fewer than two members.
+  const peopleRows = !dataUnknown && !group.cachedAt && members.length >= 2
+    ? members
+        .map(m => {
+          const firstName = (m.fullName || '').trim().split(/\s+/)[0] || 'Friend';
+          return {
+            userId: m.userId,
+            name: m.userId === userId ? 'You' : firstName,
+            initial: (m.fullName || '?').trim().charAt(0).toUpperCase() || '?',
+            avatarUrl: m.avatarUrl,
+            net: getMemberNetBalance(m.userId),
+          };
+        })
+        .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    : [];
 
   // The database already refuses this (0029's trigger, on the DELETE itself,
   // no matter who asks) — but finding that out only after tapping Remove or
@@ -761,11 +862,12 @@ export default function GroupDetailScreen() {
         );
 
         // Spend totals, live rows only.
-        let totalGroupSpend = 0, spentByYou = 0;
+        let totalGroupSpend = 0, spentByYou = 0, yourShare = 0;
         for (const t of updatedTxs) {
           if (t.status === 'voided' || t.type === 'settlement') continue;
           totalGroupSpend += t.totalAmount;
           if (t.paidBy === 'You') spentByYou += t.totalAmount;
+          yourShare += t.myShare ?? 0;
         }
 
         // Re-read the position from the ledger that void_transaction just
@@ -800,7 +902,7 @@ export default function GroupDetailScreen() {
             totalSpend: totalGroupSpend,
             userBalance: myGroupBalance,
             spentByYou: spentByYou,
-            yourShare: Math.abs(myGroupBalance)
+            yourShare: yourShare
           }
         }));
 
@@ -862,20 +964,22 @@ export default function GroupDetailScreen() {
           backgroundColor: 'rgba(252, 249, 244, 0.72)' 
         }}
       >
-        <View className="flex-row items-center gap-4">
+        <View className="flex-1 flex-row items-center gap-4 min-w-0">
           <AnimatedPressable 
             onPress={() => router.back()}
+            accessibilityLabel="Back"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
           >
             <MaterialIcons name="arrow-back" size={24} color="#004c22" />
           </AnimatedPressable>
-          <Text className="font-headline-md font-bold text-primary text-xl">Kinlo</Text>
+          <View className="flex-1 min-w-0 mx-2 justify-center">
+            {titleReady
+              ? <Text numberOfLines={1} className="font-headline-md font-bold text-primary text-xl" accessibilityRole="header">{group.title || 'Circle'}</Text>
+              : <Skeleton width={140} height={20} radius={6} />}
+          </View>
         </View>
         <View className="flex-row items-center gap-4">
-          {titleReady
-            ? <Text className="hidden md:flex font-label-md text-on-surface-variant">{group.title}</Text>
-            : <View className="hidden md:flex"><Skeleton width={90} height={13} /></View>}
           <AnimatedPressable
             onPress={() => {
               setEditTitle(group.title);
@@ -937,7 +1041,7 @@ export default function GroupDetailScreen() {
 
           {/* Balance Card - Liquid Glass */}
           <View 
-            className="p-8 rounded-3xl mb-8 overflow-hidden"
+            className={`p-8 rounded-3xl overflow-hidden ${myTransfers.length > 0 ? 'mb-3' : 'mb-8'}`}
             style={{
               // Opaque, not translucent — a semi-transparent background
               // paired with Android's `elevation` is a known rendering bug
@@ -959,10 +1063,17 @@ export default function GroupDetailScreen() {
               <View className="items-center md:items-start">
                 <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Your Balance</Text>
                 <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={tabularNums} className={`font-display-lg text-5xl font-bold mb-4 ${
-                  dataUnknown ? 'text-on-surface-variant' : group.userBalance > 0 ? 'text-primary' : group.userBalance < 0 ? 'text-error' : 'text-on-surface-variant'
+                  dataUnknown ? 'text-on-surface-variant' : shownBalance > 0 ? 'text-primary' : shownBalance < 0 ? 'text-error' : 'text-on-surface-variant'
                 }`}>
-                  {dataUnknown ? '—' : group.userBalance > 0 || group.userBalance < 0 ? formatINR(group.userBalance, { signed: true }) : 'Settled'}
+                  {dataUnknown ? '—' : shownBalance > 0 || shownBalance < 0 ? formatINR(shownBalance, { signed: true }) : 'Settled'}
                 </Text>
+                {!dataUnknown && (
+                  <Text className="text-xs text-on-surface-variant -mt-3 mb-3">
+                    {headlineAdjusted !== null
+                      ? `Overall. ${formatINR(group.userBalance, { signed: true })} in this circle alone`
+                      : 'In this circle only'}
+                  </Text>
+                )}
                 {dataUnknown ? (
                   <Text className="text-sm text-on-surface-variant">
                     {txLoading ? 'Loading balance…' : "Couldn't load your balance"}
@@ -1026,6 +1137,142 @@ export default function GroupDetailScreen() {
               </View>
             </View>
           </View>
+
+          {/* GRP-01: who to pay / who pays you, straight from the balance card.
+              Same rows and navigation as the Settle Up sheet; renders nothing
+              when no transfer involves the viewer. */}
+          {myTransfers.length > 0 && (
+            <View className="mb-5">
+              {myTransfers.slice(0, 3).map((s, index) => {
+                const isYouPaying = s.fromId === userId;
+                const otherName = isYouPaying ? s.toName : s.fromName;
+                return (
+                  <AnimatedPressable
+                    key={`balance-settle-${index}`}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/settle-up',
+                        params: {
+                          friendId: isYouPaying ? s.toId : s.fromId,
+                          friendName: otherName,
+                          balance: s.amount.toFixed(2),
+                          suggested: payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount).suggested.toFixed(2),
+                          status: isYouPaying ? 'owes' : 'owed',
+                          groupId: groupId,
+                          groupName: group.title
+                        }
+                      });
+                    }}
+                    className="p-4 rounded-2xl flex-row justify-between items-center bg-white border border-outline-variant/20 mb-3"
+                    style={{
+                      shadowColor: '#1c1917',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.04,
+                      shadowRadius: 8,
+                      elevation: 1,
+                    }}
+                  >
+                    <View className="flex-row items-center gap-3 flex-1 mr-3">
+                      <Avatar
+                        uri={isYouPaying ? s.toAvatarUrl : s.fromAvatarUrl}
+                        initials={(otherName || '?').charAt(0).toUpperCase()}
+                        size={36}
+                      />
+                      <View className="flex-1">
+                        <Text numberOfLines={1} className="font-semibold text-on-surface text-base">
+                          {isYouPaying ? `Pay ${otherName}` : `${otherName} pays you`}
+                        </Text>
+                        {(() => {
+                          const note = overallNote(isYouPaying ? s.toId : s.fromId, otherName, isYouPaying ? -s.amount : s.amount);
+                          return note ? <Text className="text-xs text-on-surface-variant">{note}</Text> : null;
+                        })()}
+                      </View>
+                    </View>
+                    {(() => {
+                      const pv = payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount);
+                      return (
+                        <View className="items-end">
+                          <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
+                            {formatINR(pv.amount)}
+                          </Text>
+                          {pv.caption ? (
+                            <Text style={tabularNums} className="text-xs text-on-surface-variant">{pv.caption}</Text>
+                          ) : null}
+                        </View>
+                      );
+                    })()}
+                  </AnimatedPressable>
+                );
+              })}
+              {myTransfers.length > 3 && (
+                <AnimatedPressable
+                  onPress={() => setIsSettleSheetOpen(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  className="self-start"
+                >
+                  <Text className="text-primary text-sm font-semibold">{`See all ${myTransfers.length} payments`}</Text>
+                </AnimatedPressable>
+              )}
+            </View>
+          )}
+
+          {/* GRP-09: read-only People strip. Each member's net balance in this
+              circle, same sign as the balance card. Chips are not tappable;
+              add and remove stay in Circle Settings. */}
+          {peopleRows.length > 0 && (
+            <View className="mb-8">
+              <Text className="font-headline-md text-2xl font-semibold mb-4">People</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingRight: 20 }}
+              >
+                {peopleRows.map(p => {
+                  const settled = Math.abs(p.net) <= 0.005;
+                  const amountText = settled
+                    ? 'Settled'
+                    : formatINR(p.net, { signed: true });
+                  const owed = p.net > 0;
+                  const a11yLabel = `${p.name}, ${
+                    settled
+                      ? 'settled'
+                      : owed
+                        ? 'is owed ' + formatINR(Math.abs(p.net))
+                        : 'owes ' + formatINR(Math.abs(p.net))
+                  }`;
+                  return (
+                    <View
+                      key={p.userId}
+                      accessible
+                      accessibilityLabel={a11yLabel}
+                      className="flex-row items-center gap-2 pl-2 pr-3 py-2 mr-3 rounded-2xl bg-white/50 border border-outline-variant/20"
+                    >
+                      <Avatar
+                        uri={p.avatarUrl}
+                        initials={p.initial}
+                        size={32}
+                        textClassName="text-primary font-bold text-xs"
+                      />
+                      <View className="max-w-[96px]">
+                        <Text numberOfLines={1} className="font-semibold text-on-surface text-sm">
+                          {p.name}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={tabularNums}
+                          className={`text-xs font-semibold ${
+                            settled ? 'text-on-surface-variant' : p.net > 0 ? 'text-primary' : 'text-error'
+                          }`}
+                        >
+                          {amountText}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Transactions List */}
           <View>
@@ -1374,21 +1621,36 @@ export default function GroupDetailScreen() {
                   <AnimatedPressable
                     key={String(mode.simplify)}
                     disabled={switchingMode || isActive}
-                    onPress={async () => {
-                      setSwitchingMode(true);
-                      const { setGroupSimplification } = await import('../../lib/recalculateSettlements');
-                      const err = await setGroupSimplification(groupId, mode.simplify);
-                      setSwitchingMode(false);
-                      if (err) {
-                        triggerToast(err.message || 'Could not change how this circle settles up.');
-                        return;
-                      }
-                      setSimplifyDebts(mode.simplify);
-                      await refreshBalances();
-                      setIsSettleSheetOpen(false);
-                      triggerToast(mode.simplify
-                        ? 'Now settling with the fewest payments.'
-                        : 'Now settling directly with each person.');
+                    onPress={() => {
+                      // GRP-03: group-wide, ledger-rewriting switch — confirm first.
+                      showAlert(
+                        'Change how this circle settles?',
+                        mode.simplify
+                          ? 'This changes the circle for everyone, not just you. Debts will be combined so the circle settles in as few payments as possible, and who pays whom will be recalculated for all members. You may be asked to pay someone you did not buy anything from.'
+                          : 'This changes the circle for everyone, not just you. Each debt will stay with the person it came from, so who pays whom will be recalculated for all members. There may be more payments, but each one matches an actual expense.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Switch',
+                            onPress: async () => {
+                              setSwitchingMode(true);
+                              const { setGroupSimplification } = await import('../../lib/recalculateSettlements');
+                              const err = await setGroupSimplification(groupId, mode.simplify);
+                              setSwitchingMode(false);
+                              if (err) {
+                                triggerToast(err.message || 'Could not change how this circle settles up.');
+                                return;
+                              }
+                              setSimplifyDebts(mode.simplify);
+                              await refreshBalances();
+                              setIsSettleSheetOpen(false);
+                              triggerToast(mode.simplify
+                                ? 'Now settling with the fewest payments.'
+                                : 'Now settling directly with each person.');
+                            },
+                          },
+                        ]
+                      );
                     }}
                     style={{
                       flex: 1,
@@ -1423,9 +1685,14 @@ export default function GroupDetailScreen() {
               {settlements.length === 0 ? (
                 <Text className="text-on-surface-variant text-center py-6">No pending settlements found in this circle.</Text>
               ) : (
-                settlements.map((s, index) => {
-                  const isYouPaying = s.fromName === 'You';
-                  
+                <>
+                {/* Only transfers that involve the viewer are actionable. RLS lets
+                    any group member read the whole group ledger, so a transfer
+                    between two other members (e.g. Raj -> Priya) is also loaded
+                    here; it must never be shown as money paid to You. */}
+                {settlements.filter(s => s.fromId === userId || s.toId === userId).map((s, index) => {
+                  const isYouPaying = s.fromId === userId;
+
                   return (
                     <AnimatedListItem key={`settle-${index}`} index={index}>
                     <AnimatedPressable
@@ -1437,6 +1704,7 @@ export default function GroupDetailScreen() {
                             friendId: isYouPaying ? s.toId : s.fromId,
                             friendName: isYouPaying ? s.toName : s.fromName,
                             balance: s.amount.toFixed(2),
+                            suggested: payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount).suggested.toFixed(2),
                             status: isYouPaying ? 'owes' : 'owed',
                             groupId: groupId,
                             groupName: group.title
@@ -1465,15 +1733,55 @@ export default function GroupDetailScreen() {
                           <Text className="text-xs text-on-surface-variant">
                             {isYouPaying ? 'Record your payment' : 'Record payment received'}
                           </Text>
+                          {(() => {
+                            const note = overallNote(isYouPaying ? s.toId : s.fromId, isYouPaying ? s.toName : s.fromName, isYouPaying ? -s.amount : s.amount);
+                            return note ? <Text className="text-xs text-on-surface-variant">{note}</Text> : null;
+                          })()}
                         </View>
                       </View>
-                      <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
-                        {formatINR(s.amount)}
-                      </Text>
+                      {(() => {
+                        const pv = payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount);
+                        return (
+                          <View className="items-end">
+                            <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
+                              {formatINR(pv.amount)}
+                            </Text>
+                            {pv.caption ? (
+                              <Text style={tabularNums} className="text-xs text-on-surface-variant">{pv.caption}</Text>
+                            ) : null}
+                          </View>
+                        );
+                      })()}
                     </AnimatedPressable>
                     </AnimatedListItem>
                   );
-                })
+                })}
+                {userId !== null && settlements.some(s => s.fromId !== userId && s.toId !== userId) && (
+                  <>
+                    <Text className="text-xs text-on-surface-variant mb-3">Between others</Text>
+                    {settlements.filter(s => s.fromId !== userId && s.toId !== userId).map((s, index) => (
+                      <View
+                        key={`settle-other-${index}`}
+                        className="p-4 rounded-2xl flex-row justify-between items-center bg-white border border-outline-variant/20 mb-3"
+                        style={{
+                          shadowColor: '#1c1917',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.04,
+                          shadowRadius: 8,
+                          elevation: 1,
+                        }}
+                      >
+                        <Text className="font-semibold text-on-surface-variant text-base">
+                          {`${s.fromName} pays ${s.toName}`}
+                        </Text>
+                        <Text style={tabularNums} className="font-bold text-lg text-on-surface-variant">
+                          {formatINR(s.amount)}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+                </>
               )}
             </ScrollView>
           </View>
@@ -1608,6 +1916,19 @@ export default function GroupDetailScreen() {
                 </AnimatedPressable>
               </View>
 
+              <AnimatedPressable
+                onPress={() => {
+                  // Close this sheet first; a second Modal opened on top of it
+                  // can misbehave on Android.
+                  setIsSettingsSheetOpen(false);
+                  setTimeout(() => setIsInviteOpen(true), 350);
+                }}
+                className="flex-row items-center p-3 mb-3 bg-white/50 border border-outline-variant/20 rounded-2xl"
+              >
+                <MaterialIcons name="qr-code-2" size={20} color="#004c22" />
+                <Text className="text-primary font-semibold text-sm ml-3">Invite with QR or link</Text>
+              </AnimatedPressable>
+
               <View className="gap-2 mb-6">
                 {members.map((m, index) => (
                   <AnimatedListItem key={m.userId} index={index}>
@@ -1656,6 +1977,13 @@ export default function GroupDetailScreen() {
           </View>
         </AnimatedPressable>
       </Modal>
+
+      <GroupInviteModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+        groupId={groupId}
+        groupTitle={group.title || 'Circle'}
+      />
 
       {/* Add Members — filtered to people not already in this group. */}
       <Modal

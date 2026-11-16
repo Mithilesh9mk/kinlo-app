@@ -111,7 +111,7 @@ export default function AvatarSelectionScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 60 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
         <Animated.View 
           style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
           className="px-6 pt-16 max-w-xl mx-auto w-full space-y-8"
@@ -138,9 +138,9 @@ export default function AvatarSelectionScreen() {
 
           {/* Editorial Title */}
           <View className="space-y-1 mt-4">
-            <Text className="font-display-lg text-3xl font-bold text-primary">Express your aura</Text>
+            <Text className="font-display-lg text-3xl font-bold text-primary">Pick an avatar</Text>
             <Text className="text-sm text-on-surface-variant/80 font-medium leading-relaxed">
-              Pick your digital representation and color gradient.
+              Friends see this next to your name. You can change it later.
             </Text>
           </View>
 
@@ -175,7 +175,7 @@ export default function AvatarSelectionScreen() {
             </Animated.View>
 
             <Text className="font-headline text-xs font-bold text-primary tracking-wide uppercase mt-4">
-              {selectedAura.label} Aura Preview
+              Preview
             </Text>
           </View>
 
@@ -262,7 +262,7 @@ export default function AvatarSelectionScreen() {
             accessibilityLabel="Save and continue"
             disabled={isSubmitting}
             scaleTo={0.9}
-            className="w-full h-13 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm"
+            className="w-full h-14 bg-primary rounded-2xl flex-row items-center justify-center shadow-sm"
             style={{ height: 52, marginTop: 12 }}
           >
             {isSubmitting ? (

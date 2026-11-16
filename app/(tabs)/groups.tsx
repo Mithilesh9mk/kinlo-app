@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Image, TextInput, Platform, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Skeleton, SkeletonCircle } from '../../components/Skeleton';
@@ -6,7 +6,7 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { fetchBalanceRows, groupBalanceMap } from '../../lib/balances';
+import { fetchBalanceRows, groupBalanceMap, groupOverallAdjustedMap } from '../../lib/balances';
 import { formatINR, tabularNums } from '../../lib/format';
 import { withOfflineFallback } from '../../lib/offlineCache';
 import { OfflineBanner } from '../../components/OfflineBanner';
@@ -22,7 +22,25 @@ interface Group {
   subText?: string;
   balanceText: string;
   isDebt?: boolean;
+  // Signed net balance (negative = you owe). Absent on lists cached before
+  // this field existed; see effectiveBalance().
+  balance?: number;
 }
+
+const SETTLED_EPS = 0.005;
+
+// Numeric balance for a circle. Older offline-cache entries only carry
+// balanceText ("-₹500" / "+₹500" / "Settled") + isDebt, so recover it from those.
+function effectiveBalance(g: Group): number {
+  if (typeof g.balance === 'number') return g.balance;
+  if (g.balanceText === 'Settled') return 0;
+  const magnitude = parseFloat(g.balanceText.replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(magnitude)) return 0;
+  return g.isDebt ? -magnitude : magnitude;
+}
+
+// Whole rupees, except under ₹1 where rounding would show a coloured ₹0.
+const formatAbs = (n: number) => formatINR(Math.abs(n), { decimals: Math.abs(n) < 1 ? 2 : 0 });
 
 export default function GroupsScreen() {
   const insets = useSafeAreaInsets();
@@ -52,6 +70,10 @@ export default function GroupsScreen() {
     if (!memberships) return [];
 
     const balances = groupBalanceMap(rows, userId);
+    // What is really left to pay or receive in each circle once balances with
+    // the same people outside it are counted, so the card matches the amount
+    // the circle screen and the friend page tell the user to pay.
+    const adjusted = groupOverallAdjustedMap(rows, userId);
 
     const groupsFormatted: Group[] = [];
     for (const m of memberships) {
@@ -69,7 +91,7 @@ export default function GroupsScreen() {
       };
       const cat = categoryMap[g.category] || { label: 'Other', icon: 'group' };
 
-      const balance = balances[g.id] || 0;
+      const balance = adjusted[g.id] ?? balances[g.id] ?? 0;
 
       groupsFormatted.push({
         id: g.id,
@@ -84,6 +106,7 @@ export default function GroupsScreen() {
           ? formatINR(balance, { decimals: Math.abs(balance) < 1 ? 2 : 0, signed: true })
           : 'Settled',
         isDebt: balance < -0.005,
+        balance,
       });
     }
     return groupsFormatted;
@@ -143,7 +166,8 @@ export default function GroupsScreen() {
           
           const formattedGroup: Group = {
             ...parsed,
-            balanceText: 'Settled'
+            balanceText: 'Settled',
+            balance: 0,
           };
           return [formattedGroup, ...prev];
         });
@@ -156,6 +180,32 @@ export default function GroupsScreen() {
   const handleCreateGroupPress = () => {
     router.push('/group/create');
   };
+
+  // Circles with an outstanding balance first (largest absolute first), then
+  // settled ones in their existing order. Sorts a copy; Array.sort is stable.
+  const sortedGroups = useMemo(() => {
+    return [...groups].sort((a, b) => {
+      const ba = Math.abs(effectiveBalance(a));
+      const bb = Math.abs(effectiveBalance(b));
+      const aOpen = ba > SETTLED_EPS;
+      const bOpen = bb > SETTLED_EPS;
+      if (aOpen && bOpen) return bb - ba;
+      if (aOpen !== bOpen) return aOpen ? -1 : 1;
+      return 0;
+    });
+  }, [groups]);
+
+  // Totals across all circles (not just the search-filtered ones).
+  const { totalOwe, totalOwed } = useMemo(() => {
+    let owe = 0;
+    let owed = 0;
+    for (const g of groups) {
+      const b = effectiveBalance(g);
+      if (b < -SETTLED_EPS) owe += -b;
+      else if (b > SETTLED_EPS) owed += b;
+    }
+    return { totalOwe: owe, totalOwed: owed };
+  }, [groups]);
 
   const getAccentBg = (group: Group) => {
     if (group.categoryId === 'travel') return 'bg-primary/10';
@@ -240,6 +290,16 @@ export default function GroupsScreen() {
             </View>
           )}
 
+          {/* Totals across all circles */}
+          {(totalOwe > SETTLED_EPS || totalOwed > SETTLED_EPS) && (
+            <Text className="text-sm text-on-surface-variant mb-3" style={tabularNums}>
+              {[
+                totalOwe > SETTLED_EPS ? `You owe ${formatAbs(totalOwe)}` : null,
+                totalOwed > SETTLED_EPS ? `You're owed ${formatAbs(totalOwed)}` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          )}
+
           {/* Groups Grid */}
           <View className="flex-col gap-6">
             {groupsLoading && groups.length === 0 && [0, 1, 2].map(i => (
@@ -300,7 +360,7 @@ export default function GroupsScreen() {
               </View>
             )}
 
-            {groups
+            {sortedGroups
               .filter(group => group.title.toLowerCase().includes(searchQuery.toLowerCase()))
               .map((group, groupIndex) => (
               <AnimatedListItem key={group.id} index={groupIndex}>
@@ -351,10 +411,24 @@ export default function GroupsScreen() {
                 </Text>
                 
                 <View className="pt-4 border-t border-white/35 flex-row justify-between items-center">
-                  <Text className="font-label-md text-sm text-on-surface-variant">Balance</Text>
-                  <Text className={`font-bold text-lg ${group.isDebt ? 'text-error' : 'text-primary'}`} style={tabularNums}>
-                    {group.balanceText}
-                  </Text>
+                  {(() => {
+                    const bal = effectiveBalance(group);
+                    const label = bal < -SETTLED_EPS
+                      ? `You owe ${formatAbs(bal)}`
+                      : bal > SETTLED_EPS
+                        ? `You're owed ${formatAbs(bal)}`
+                        : 'Settled';
+                    const tone = bal < -SETTLED_EPS
+                      ? 'text-error'
+                      : bal > SETTLED_EPS
+                        ? 'text-primary'
+                        : 'text-on-surface-variant';
+                    return (
+                      <Text className={`font-bold text-lg ${tone}`} style={tabularNums}>
+                        {label}
+                      </Text>
+                    );
+                  })()}
                 </View>
               </AnimatedPressable>
               </AnimatedListItem>

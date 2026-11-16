@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { fetchBalances, FriendBalance } from '../lib/balances';
 import { listPersonalTransactions, PersonalTransaction } from '../lib/personalTransactions';
 import { categoryMeta } from '../lib/categories';
+import { formatINR, tabularNums } from '../lib/format';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { AnimatedListItem } from '../components/AnimatedListItem';
 import { SkeletonListRow } from '../components/Skeleton';
@@ -23,9 +24,6 @@ import { Avatar } from '../components/Avatar';
  * screen whose only job is search shouldn't cost a network round trip just
  * to open.
  */
-
-const money = (n: number) =>
-  `₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const GROUP_CATEGORY_META: Record<string, { label: string; icon: string; bg: string; color: string }> = {
   trip: { label: 'Travel', icon: 'flight', bg: 'bg-primary/10', color: '#004c22' },
@@ -66,6 +64,9 @@ type SearchRow =
 // older than this window won't find it; accepted for now, not solved.
 const PERSONAL_SEARCH_MONTHS_BACK = 24;
 
+// Max rows shown per result section.
+const SECTION_CAP = 20;
+
 function matches(query: string, ...fields: (string | null | undefined)[]): boolean {
   return fields.some((f) => !!f && f.toLowerCase().includes(query));
 }
@@ -81,6 +82,9 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [hasFetched, setHasFetched] = useState(false);
   const [loading, setLoading] = useState(false);
+  // True when the last load failed. Kept separate from "no matches" so a
+  // failed load never reads as 'No results for ...'.
+  const [fetchError, setFetchError] = useState(false);
 
   const [friends, setFriends] = useState<FriendBalance[]>([]);
   const [groups, setGroups] = useState<GroupResult[]>([]);
@@ -89,6 +93,7 @@ export default function SearchScreen() {
 
   const loadAllSources = async () => {
     setLoading(true);
+    setFetchError(false);
     try {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id;
@@ -119,6 +124,12 @@ export default function SearchScreen() {
         listPersonalTransactions({ since }),
       ]);
 
+      // Supabase resolves with { data: null, error } instead of throwing, so a
+      // failed query must be rethrown here to reach the catch below.
+      if (membershipsRes.error) throw membershipsRes.error;
+      if (paidByMeRes.error) throw paidByMeRes.error;
+      if (splitWithMeRes.error) throw splitWithMeRes.error;
+
       setFriends(balances.friends);
 
       const groupRows: GroupResult[] = (membershipsRes.data ?? [])
@@ -131,13 +142,17 @@ export default function SearchScreen() {
       for (const row of [...(paidByMeRes.data ?? []), ...(splitWithMeRes.data ?? [])] as any[]) {
         if (byId.has(row.id)) continue;
         const mine = (row.transaction_splits || []).find((s: any) => s.user_id === userId);
+        const myShare = mine ? Number(mine.share_amount) : 0;
+        const paidByMe = row.paid_by === userId;
         byId.set(row.id, {
           id: row.id,
           description: row.description || 'Expense',
           category: row.category || 'other',
-          amount: mine ? Number(mine.share_amount) : Number(row.amount),
+          // Same rule as Home's Recent Activity: if I paid, show what others owe
+          // me (total - my share); if someone else paid, show my own share.
+          amount: paidByMe ? Number(row.amount) - myShare : myShare,
           createdAt: row.created_at,
-          owedToYou: row.paid_by === userId,
+          owedToYou: paidByMe,
         });
       }
       setSplitTx(Array.from(byId.values()));
@@ -145,9 +160,18 @@ export default function SearchScreen() {
       setPersonalTx(personalRows);
     } catch (e) {
       console.error('Universal search fetch failed:', e);
+      // Not "fetched" after a failure, so the next keystroke tries again and
+      // an empty result list is never mistaken for "no matches".
+      setHasFetched(false);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryFetch = () => {
+    setHasFetched(true);
+    loadAllSources();
   };
 
   const onChangeQuery = (text: string) => {
@@ -160,23 +184,21 @@ export default function SearchScreen() {
 
   const q = query.trim().toLowerCase();
 
-  const friendResults = useMemo(() => {
+  const friendMatches = useMemo(() => {
     if (!q) return [];
     return friends
       .filter((f) => matches(q, f.fullName, f.phoneNumber))
-      .sort((a, b) => rank(q, a.fullName) - rank(q, b.fullName) || a.fullName.localeCompare(b.fullName))
-      .slice(0, 20);
+      .sort((a, b) => rank(q, a.fullName) - rank(q, b.fullName) || a.fullName.localeCompare(b.fullName));
   }, [q, friends]);
 
-  const groupResults = useMemo(() => {
+  const groupMatches = useMemo(() => {
     if (!q) return [];
     return groups
       .filter((g) => matches(q, g.title))
-      .sort((a, b) => rank(q, a.title) - rank(q, b.title) || a.title.localeCompare(b.title))
-      .slice(0, 20);
+      .sort((a, b) => rank(q, a.title) - rank(q, b.title) || a.title.localeCompare(b.title));
   }, [q, groups]);
 
-  const splitResults = useMemo(() => {
+  const splitMatches = useMemo(() => {
     if (!q) return [];
     return splitTx
       .filter((t) => matches(q, t.description, t.category))
@@ -184,11 +206,10 @@ export default function SearchScreen() {
         (a, b) =>
           rank(q, a.description, a.category) - rank(q, b.description, b.category) ||
           b.createdAt.localeCompare(a.createdAt)
-      )
-      .slice(0, 20);
+      );
   }, [q, splitTx]);
 
-  const personalResults = useMemo(() => {
+  const personalMatches = useMemo(() => {
     if (!q) return [];
     return personalTx
       .filter((t) => matches(q, t.merchant, t.description, t.category))
@@ -196,20 +217,27 @@ export default function SearchScreen() {
         (a, b) =>
           rank(q, a.merchant, a.description, a.category) - rank(q, b.merchant, b.description, b.category) ||
           b.occurredAt.localeCompare(a.occurredAt)
-      )
-      .slice(0, 20);
+      );
   }, [q, personalTx]);
 
-  const sections: { key: string; title: string; data: SearchRow[] }[] = [
-    { key: 'friends', title: 'Friends', data: friendResults.map((item): SearchRow => ({ type: 'friend', item })) },
-    { key: 'groups', title: 'Circles', data: groupResults.map((item): SearchRow => ({ type: 'group', item })) },
-    { key: 'split', title: 'Split Expenses', data: splitResults.map((item): SearchRow => ({ type: 'split', item })) },
-    { key: 'personal', title: 'Personal Expenses', data: personalResults.map((item): SearchRow => ({ type: 'personal', item })) },
+  // Each section shows at most this many rows; `total` is how many matched,
+  // so the footer can say when the list was cut short.
+  const friendResults = friendMatches.slice(0, SECTION_CAP);
+  const groupResults = groupMatches.slice(0, SECTION_CAP);
+  const splitResults = splitMatches.slice(0, SECTION_CAP);
+  const personalResults = personalMatches.slice(0, SECTION_CAP);
+
+  const sections: { key: string; title: string; total: number; data: SearchRow[] }[] = [
+    { key: 'friends', title: 'Friends', total: friendMatches.length, data: friendResults.map((item): SearchRow => ({ type: 'friend', item })) },
+    { key: 'groups', title: 'Circles', total: groupMatches.length, data: groupResults.map((item): SearchRow => ({ type: 'group', item })) },
+    { key: 'split', title: 'Split Expenses', total: splitMatches.length, data: splitResults.map((item): SearchRow => ({ type: 'split', item })) },
+    { key: 'personal', title: 'Personal Expenses', total: personalMatches.length, data: personalResults.map((item): SearchRow => ({ type: 'personal', item })) },
   ].filter((s) => s.data.length > 0);
 
   const showPlaceholder = q.length === 0;
   const showLoading = !showPlaceholder && loading && sections.length === 0;
-  const showNoResults = !showPlaceholder && !loading && hasFetched && sections.length === 0;
+  const showNoResults = !showPlaceholder && !loading && hasFetched && !fetchError && sections.length === 0;
+  const showError = !showPlaceholder && !loading && fetchError;
 
   return (
     <View className="flex-1 bg-background">
@@ -255,6 +283,21 @@ export default function SearchScreen() {
         </View>
       )}
 
+      {showError && (
+        <View className="flex-1 items-center justify-center px-8">
+          <Text className="text-base font-semibold text-on-surface text-center">Couldn't load your data</Text>
+          <Text className="text-sm text-on-surface-variant mt-1 text-center">Check your connection and try again.</Text>
+          <AnimatedPressable
+            onPress={retryFetch}
+            className="bg-primary px-6 py-3 rounded-xl mt-4"
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+          >
+            <Text className="text-on-primary font-bold text-sm">Retry</Text>
+          </AnimatedPressable>
+        </View>
+      )}
+
       {showNoResults && (
         <View className="flex-1 items-center justify-center px-8">
           <MaterialIcons name="search-off" size={56} color="#bfc9bd" />
@@ -275,6 +318,13 @@ export default function SearchScreen() {
               {section.title}
             </Text>
           )}
+          renderSectionFooter={({ section }) =>
+            section.total > section.data.length ? (
+              <Text className="text-xs text-on-surface-variant mt-2">
+                Showing {section.data.length} of {section.total} — refine your search
+              </Text>
+            ) : null
+          }
           renderItem={({ item: row, index }) => (
             <AnimatedListItem index={index}>
               {row.type === 'friend' ? (
@@ -295,6 +345,16 @@ export default function SearchScreen() {
 }
 
 function FriendRow({ friend, router }: { friend: FriendBalance; router: ReturnType<typeof useRouter> }) {
+  // Balance in the trailing slot: 'Settled' when even. balance is signed
+  // (positive = they owe you). Whole rupees unless there are paise.
+  const absBalance = Math.abs(friend.balance);
+  const balanceDecimals = Number.isInteger(absBalance) ? 0 : 2;
+  const balanceLabel =
+    friend.status === 'owed'
+      ? `Owes you ${formatINR(absBalance, { decimals: balanceDecimals })}`
+      : friend.status === 'owes'
+        ? `You owe ${formatINR(absBalance, { decimals: balanceDecimals })}`
+        : 'Settled';
   return (
     <AnimatedPressable
       onPress={() =>
@@ -312,6 +372,12 @@ function FriendRow({ friend, router }: { friend: FriendBalance; router: ReturnTy
         <Text className="text-base font-semibold text-on-surface">{friend.fullName}</Text>
         <Text className="text-xs text-on-surface-variant mt-0.5">{friend.phoneNumber || 'No phone added'}</Text>
       </View>
+      <Text
+        className={`text-sm font-bold ${friend.status === 'owed' ? 'text-primary' : friend.status === 'owes' ? 'text-error' : 'text-on-surface-variant'}`}
+        style={tabularNums}
+      >
+        {balanceLabel}
+      </Text>
     </AnimatedPressable>
   );
 }
@@ -337,6 +403,10 @@ function GroupRow({ group, router }: { group: GroupResult; router: ReturnType<ty
 function SplitRow({ tx, router }: { tx: SplitResult; router: ReturnType<typeof useRouter> }) {
   const meta = categoryMeta(tx.category);
   const color = tx.owedToYou ? '#004c22' : '#ba1a1a';
+  const splitDateValue = new Date(tx.createdAt);
+  const splitDate = Number.isNaN(splitDateValue.getTime())
+    ? ''
+    : splitDateValue.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return (
     <AnimatedPressable
       onPress={() => router.push(`/transaction/${tx.id}`)}
@@ -351,10 +421,11 @@ function SplitRow({ tx, router }: { tx: SplitResult; router: ReturnType<typeof u
           <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: '#DCFCE7' }}>
             <Text className="font-bold" style={{ fontSize: 9, color: '#004c22' }}>SPLIT</Text>
           </View>
+          {splitDate ? <Text className="text-xs text-on-surface-variant">{splitDate}</Text> : null}
         </View>
       </View>
       <Text className="text-sm font-bold" style={{ color }}>
-        {tx.owedToYou ? '+' : '-'}{money(tx.amount)}
+        {formatINR(tx.owedToYou ? tx.amount : -tx.amount, { signed: true })}
       </Text>
     </AnimatedPressable>
   );
@@ -380,7 +451,7 @@ function PersonalRow({ tx, router }: { tx: PersonalTransaction; router: ReturnTy
           </View>
         </View>
       </View>
-      <Text className="text-sm font-bold text-on-surface">{money(tx.amount)}</Text>
+      <Text className="text-sm font-bold text-on-surface">{formatINR(Math.abs(tx.amount))}</Text>
     </AnimatedPressable>
   );
 }

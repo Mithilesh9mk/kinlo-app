@@ -1,13 +1,13 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 22/10/2026, 7:41:23 pm
+> **Last Generated:** 14/11/2026, 5:10:46 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 176
-- **UI Screens (`app/`):** 52
-- **Components (`components/`):** 13
-- **Business Logic (`lib/` & `context/`):** 39
-- **SQL Migrations (`supabase/migrations/`):** 67
-- **Edge Functions (`supabase/functions/`):** 5
+- **Total Tracked System Nodes:** 192
+- **UI Screens (`app/`):** 54
+- **Components (`components/`):** 16
+- **Business Logic (`lib/` & `context/`):** 45
+- **SQL Migrations (`supabase/migrations/`):** 71
+- **Edge Functions (`supabase/functions/`):** 6
 
 ---
 
@@ -40,6 +40,8 @@
 - `app/group/create.tsx`
 - `app/group/[id].tsx`
 - `app/group/_layout.tsx`
+- `app/invite/[token].tsx`
+- `app/invite/_layout.tsx`
 - `app/legal/[doc].tsx`
 - `app/legal/_layout.tsx`
 - `app/mfa-challenge.tsx`
@@ -71,6 +73,7 @@
 - `lib/accountDeletion.ts`
 - `lib/activity.ts`
 - `lib/analytics.ts`
+- `lib/appUpdates.ts`
 - `lib/authThrottle.ts`
 - `lib/avatarPresets.ts`
 - `lib/balances.ts`
@@ -84,6 +87,8 @@
 - `lib/featureFlags.ts`
 - `lib/format.ts`
 - `lib/friendFetcher.ts`
+- `lib/friendInvites.ts`
+- `lib/groupInvites.ts`
 - `lib/groups.ts`
 - `lib/idempotency.ts`
 - `lib/imagePrep.ts`
@@ -96,6 +101,9 @@
 - `lib/personalTransactions.ts`
 - `lib/plan.ts`
 - `lib/pushDispatcher.ts`
+- `lib/qrCodec.ts`
+- `lib/qrImage.ts`
+- `lib/qrMatrix.ts`
 - `lib/recalculateSettlements.ts`
 - `lib/receiptDrafts.ts`
 - `lib/recurrence.ts`
@@ -176,3 +184,7 @@
 - `supabase/migrations/0066_recurring_expenses.sql`
 - `supabase/migrations/0067_tighten_recurring_expenses_grants.sql`
 - `supabase/migrations/0068_close_relationship_gaps.sql`
+- `supabase/migrations/0069_record_expense_participant_check.sql`
+- `supabase/migrations/0070_connection_request_preview_consent.sql`
+- `supabase/migrations/0072_friend_invites.sql`
+- `supabase/migrations/0073_group_invites.sql`

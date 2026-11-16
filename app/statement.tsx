@@ -28,6 +28,35 @@ type FilterType = 'All' | 'Personal' | 'Split' | 'You Paid' | 'You Owe';
 
 const STATEMENT_CACHE_KEY = 'statement.transactions';
 
+// Period selector: the current month (default), the five months before it, and
+// "All time". Boundaries are local-time calendar months; end is exclusive.
+interface PeriodOption {
+  key: string;
+  label: string;
+  /** Lower-case form for sentences ("Nothing in this month"). */
+  phrase: string;
+  /** Summary caption ("Spent this month", "Spent in Oct 2026", "Spent, all time"). */
+  caption: string;
+  start: Date | null;
+  end: Date | null;
+}
+const PERIOD_MONTHS_BACK = 5;
+const DEFAULT_PERIOD_KEY = 'm0';
+
+function buildPeriodOptions(now: Date): PeriodOption[] {
+  const opts: PeriodOption[] = [];
+  for (let i = 0; i <= PERIOD_MONTHS_BACK; i++) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    const label = i === 0
+      ? 'This month'
+      : start.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+    opts.push({ key: `m${i}`, label, phrase: i === 0 ? 'this month' : label, caption: i === 0 ? 'Spent this month' : `Spent in ${label}`, start, end });
+  }
+  opts.push({ key: 'all', label: 'All time', phrase: 'all time', caption: 'Spent, all time', start: null, end: null });
+  return opts;
+}
+
 /**
  * JSON.stringify turns `date: Date` into a plain ISO string, and JSON.parse
  * (inside readCache) does not revive it back — a cached row's `date` field
@@ -71,6 +100,9 @@ export default function StatementScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('All');
+  // Selection is kept across focus/refresh; it is only a client-side view over
+  // the already-fetched rows, so it never affects loading or the balance.
+  const [periodKey, setPeriodKey] = useState<string>(DEFAULT_PERIOD_KEY);
   // null = not known yet (loading) or failed. 0 is a real answer ("settled"),
   // so it must not double as the placeholder — that showed ₹0.00 while
   // loading, and after a failed fetch.
@@ -87,6 +119,7 @@ export default function StatementScreen() {
   const fetchStatement = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       // getSession() reads locally (no network) so a degraded connection
       // can't be mistaken for "signed out" and silently return empty — see
       // the same fix in lib/balances.ts for why that's worse than an error.
@@ -358,22 +391,53 @@ export default function StatementScreen() {
   //
   // Migration 0026 removes the columns and statuses that backed this.
 
+  const periodOptions = buildPeriodOptions(new Date());
+  const period = periodOptions.find(o => o.key === periodKey) ?? periodOptions[0];
+
+  // Rows inside the selected period, by the same `date` the list displays.
+  // Cache-restored rows are re-hydrated to Dates, but new Date() keeps this
+  // safe regardless.
+  const inPeriod = period.start && period.end
+    ? transactions.filter(t => {
+        const ms = new Date(t.date).getTime();
+        return ms >= period.start!.getTime() && ms < period.end!.getTime();
+      })
+    : transactions;
+
+  // Period summary. Voided/rejected/disputed rows (rendered dimmed in the
+  // list) and settlement payments are not spending, so they are left out.
+  // Split rows only carry the *other* side of the debt in `userShare`, so the
+  // user's own share is derived: as payer, total minus what others owe; as a
+  // participant, the share they owe.
+  let periodPersonal = 0;
+  let periodSplitShare = 0;
+  for (const t of inPeriod) {
+    if (t.status === 'voided' || t.status === 'rejected' || t.status === 'disputed') continue;
+    if (t.entryType === 'personal') {
+      periodPersonal += t.totalAmount;
+    } else if (t.type !== 'settlement') {
+      periodSplitShare += t.isPayer ? Math.max(0, t.totalAmount - t.userShare) : -t.userShare;
+    }
+  }
+
   const getFilteredTransactions = () => {
     if (filter === 'Personal') {
-      return transactions.filter(t => t.entryType === 'personal');
+      return inPeriod.filter(t => t.entryType === 'personal');
     }
     if (filter === 'Split') {
-      return transactions.filter(t => t.entryType === 'split');
+      return inPeriod.filter(t => t.entryType === 'split');
     }
     // Both of these describe who owes whom, which only split rows can answer
-    // — a personal expense creates no debt in either direction.
+    // — a personal expense creates no debt in either direction. A settlement
+    // is a payment that already reduced a debt, not a new one, so it is left
+    // out of both as well.
     if (filter === 'You Paid') {
-      return transactions.filter(t => t.entryType === 'split' && t.userShare > 0);
+      return inPeriod.filter(t => t.entryType === 'split' && t.type !== 'settlement' && t.userShare > 0);
     }
     if (filter === 'You Owe') {
-      return transactions.filter(t => t.entryType === 'split' && t.userShare < 0);
+      return inPeriod.filter(t => t.entryType === 'split' && t.type !== 'settlement' && t.userShare < 0);
     }
-    return transactions;
+    return inPeriod;
   };
 
   const filtered = getFilteredTransactions();
@@ -389,6 +453,9 @@ export default function StatementScreen() {
       setRefreshing(false);
     }
   };
+
+  // Split-ledger settlement rows (a payment, not a shared expense).
+  const isPaymentRow = (t: StatementTx) => t.entryType === 'split' && t.type === 'settlement';
 
   const getCategoryIcon = (category: string) => {
     const map: Record<string, any> = {
@@ -470,7 +537,7 @@ export default function StatementScreen() {
       >
         {/* Net Balance Header */}
         <View className="items-center justify-center pt-8 pb-6 px-6">
-          <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Net Balance</Text>
+          <Text className="font-label-md text-sm text-on-surface-variant uppercase tracking-wider mb-2">Net balance (all time)</Text>
           {!netKnown && loading ? (
             // Same height as the figure (text-5xl), so nothing shifts on load.
             <View style={{ height: 48, justifyContent: 'center' }}>
@@ -513,6 +580,43 @@ export default function StatementScreen() {
           </View>
         )}
 
+        {/* Period selector + summary. The hero above is all-time and does not
+            move with this; the summary line is the period-scoped figure. */}
+        <View className="mb-3">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+          >
+            {periodOptions.map((opt) => (
+              <AnimatedPressable
+                key={opt.key}
+                onPress={() => setPeriodKey(opt.key)}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Period: ${opt.label}`}
+                accessibilityState={{ selected: period.key === opt.key }}
+                className={`px-4 py-2.5 rounded-xl items-center justify-center ${period.key === opt.key ? 'bg-white shadow-sm border border-outline-variant/20' : 'bg-surface-container-high'}`}
+              >
+                <Text className={`font-label-md font-semibold text-sm ${period.key === opt.key ? 'text-primary' : 'text-on-surface-variant'}`}>
+                  {opt.label}
+                </Text>
+              </AnimatedPressable>
+            ))}
+          </ScrollView>
+        </View>
+
+        {!loadError && !(loading && transactions.length === 0) && (
+          <View className="px-5 mb-4 items-center">
+            <Text style={tabularNums} className="font-label-md text-sm text-on-surface-variant text-center">
+              Personal {formatINR(periodPersonal)} · Your share of split {formatINR(periodSplitShare)}
+            </Text>
+            <Text className="font-label-sm text-xs text-on-surface-variant/70 text-center mt-0.5">
+              {period.caption}
+            </Text>
+          </View>
+        )}
+
         {/* Filter Tabs — horizontally scrollable rather than five equal
             flex-1 columns. At five options, equal columns squeeze "You Paid"
             and "You Owe" until they wrap or clip on narrower phones; natural
@@ -542,7 +646,10 @@ export default function StatementScreen() {
         <View className="px-5">
           <Text className="font-headline text-lg font-bold text-on-surface mb-4">Transaction History</Text>
           
-          {loading ? (
+          {/* Skeleton only on first load (nothing to show yet). A refresh or
+              refocus with rows already on screen keeps the list visible; the
+              RefreshControl carries the progress. */}
+          {loading && transactions.length === 0 ? (
             <View className="py-2">
               {[0, 1, 2, 3, 4].map(i => (
                 <View
@@ -574,9 +681,11 @@ export default function StatementScreen() {
               <View className="w-12 h-12 rounded-full bg-secondary-container items-center justify-center mb-3">
                 <MaterialIcons name="receipt-long" size={24} color="#004c22" />
               </View>
-              <Text className="font-semibold text-on-surface text-base mb-1">No transactions</Text>
+              <Text className="font-semibold text-on-surface text-base mb-1">
+                {period.start ? `Nothing in ${period.phrase}` : 'No transactions'}
+              </Text>
               <Text className="text-sm text-on-surface-variant/80 text-center">
-                Nothing matches this filter yet.
+                {period.start ? 'Try another period or filter.' : 'Nothing matches this filter yet.'}
               </Text>
             </View>
           ) : (
@@ -631,27 +740,32 @@ export default function StatementScreen() {
                         style={{
                           backgroundColor: tx.entryType === 'personal'
                             ? 'rgba(217,119,6,0.14)'
+                            : isPaymentRow(tx) ? 'rgba(0,0,0,0.05)'
                             : tx.userShare > 0 ? '#DCFCE7' : 'rgba(255,218,214,0.5)',
                         }}
                       >
                         <MaterialIcons
                           name={getCategoryIcon(tx.category)}
                           size={24}
-                          color={tx.entryType === 'personal' ? '#d97706' : tx.userShare > 0 ? '#004c22' : '#ba1a1a'}
+                          color={tx.entryType === 'personal' ? '#d97706' : isPaymentRow(tx) ? '#1c1c19' : tx.userShare > 0 ? '#004c22' : '#ba1a1a'}
                         />
                       </View>
                       <View className="flex-1 mr-2">
                         <Text className="font-body-md font-semibold text-on-background text-base" numberOfLines={1}>{tx.description}</Text>
                         <View className="flex-row items-center gap-1.5 mt-1">
+                          {/* A settlement is a payment between two people, not a
+                              shared expense, so it gets a neutral PAYMENT badge
+                              rather than the green SPLIT one. Gated on split rows
+                              so a personal row can never become PAYMENT. */}
                           <View
-                            className="px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: tx.entryType === 'personal' ? 'rgba(217,119,6,0.14)' : '#DCFCE7' }}
+                            className={`px-1.5 py-0.5 rounded ${isPaymentRow(tx) ? 'bg-surface-container' : ''}`}
+                            style={isPaymentRow(tx) ? undefined : { backgroundColor: tx.entryType === 'personal' ? 'rgba(217,119,6,0.14)' : '#DCFCE7' }}
                           >
                             <Text
-                              className="font-bold"
-                              style={{ fontSize: 9, color: tx.entryType === 'personal' ? '#d97706' : '#004c22' }}
+                              className={`font-bold ${isPaymentRow(tx) ? 'text-on-surface-variant' : ''}`}
+                              style={isPaymentRow(tx) ? { fontSize: 9 } : { fontSize: 9, color: tx.entryType === 'personal' ? '#d97706' : '#004c22' }}
                             >
-                              {tx.entryType === 'personal' ? 'PERSONAL' : 'SPLIT'}
+                              {tx.entryType === 'personal' ? 'PERSONAL' : isPaymentRow(tx) ? 'PAYMENT' : 'SPLIT'}
                             </Text>
                           </View>
                           <Text className="font-label-sm text-xs text-on-surface-variant flex-1" numberOfLines={1}>
@@ -670,6 +784,7 @@ export default function StatementScreen() {
                         style={[tabularNums, {
                           color: tx.entryType === 'personal'
                             ? '#1c1c19'
+                            : isPaymentRow(tx) ? '#1c1c19'
                             : tx.userShare > 0 ? '#004c22' : '#ba1a1a',
                         }]}
                       >

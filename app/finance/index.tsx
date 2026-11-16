@@ -132,6 +132,18 @@ function buildSeries(rows: PersonalTransaction[], period: Period): SeriesPoint[]
   return points;
 }
 
+// Relative age for an unsaved scan; falls back to the absolute date if
+// createdAt can't be parsed.
+function scanAgeLabel(createdAt: string | number): string {
+  const created = new Date(createdAt);
+  if (isNaN(created.getTime())) return 'Unsaved scan';
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(created)) / 86400000);
+  if (days <= 0) return 'Scanned today';
+  if (days === 1) return 'Scanned yesterday';
+  return `Scanned ${days} days ago`;
+}
+
 export default function FinanceHomeScreen() {
   const router = useRouter();
   const { action } = useLocalSearchParams<{ action?: string }>();
@@ -585,6 +597,58 @@ export default function FinanceHomeScreen() {
           </AnimatedPressable>
         </View>
 
+        {drafts.length > 0 && (
+          <View className="mb-5 rounded-2xl bg-surface-container border border-outline-variant/30 p-4">
+            <Text className="text-sm font-semibold text-on-surface mb-1">Unsaved scans</Text>
+            <Text className="text-xs text-on-surface-variant mb-3">
+              Saved on this device only. Open one to scan or finish it.
+            </Text>
+            {drafts.map((d) => (
+              <View key={d.id} className="flex-row items-center gap-2 mb-2">
+                <AnimatedPressable
+                  className="flex-1 flex-row items-center gap-2 min-h-[44px] py-1.5 px-3 rounded-xl bg-surface-container-highest"
+                  accessibilityRole="button"
+                  accessibilityLabel="Finish scan"
+                  onPress={() =>
+                    router.push({ pathname: '/finance/entry', params: { id: d.id, path: d.path, autoScan: '0' } })
+                  }
+                >
+                  <MaterialIcons name="receipt-long" size={18} color="#004c22" />
+                  <View className="flex-1">
+                    <Text className="text-sm text-on-surface" numberOfLines={1}>
+                      {scanAgeLabel(d.createdAt)}
+                    </Text>
+                    <Text className="text-xs text-on-surface-variant" numberOfLines={1}>
+                      Tap to finish
+                    </Text>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={18} color="#404940" />
+                </AnimatedPressable>
+                <AnimatedPressable
+                  className="w-11 h-11 rounded-xl items-center justify-center bg-surface-container-highest"
+                  accessibilityRole="button"
+                  accessibilityLabel="Discard scan"
+                  onPress={() =>
+                    showAlert('Discard this scan?', "It is saved only on this device and can't be recovered.", [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Discard',
+                        style: 'destructive',
+                        onPress: async () => {
+                          await deleteReceiptDraft(d.id).catch(() => {});
+                          setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                        },
+                      },
+                    ])
+                  }
+                >
+                  <MaterialIcons name="delete-outline" size={18} color="#404940" />
+                </AnimatedPressable>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Category analytics — scoped to the same Week/Month window as the
             trend chart above, so the two never describe different periods. */}
         {loadState === 'ready' && categoryBreakdown.length > 0 && (
@@ -646,41 +710,6 @@ export default function FinanceHomeScreen() {
                 </AnimatedListItem>
               ))}
             </View>
-          </View>
-        )}
-
-        {drafts.length > 0 && (
-          <View className="mb-5 rounded-2xl bg-surface-container border border-outline-variant/30 p-4">
-            <Text className="text-sm font-semibold text-on-surface mb-1">Unsaved scans</Text>
-            <Text className="text-xs text-on-surface-variant mb-3">
-              Saved on this device only. Open one to scan or finish it.
-            </Text>
-            {drafts.map((d) => (
-              <View key={d.id} className="flex-row items-center gap-2 mb-2">
-                <AnimatedPressable
-                  className="flex-1 flex-row items-center gap-2 h-11 px-3 rounded-xl bg-surface-container-highest"
-                  onPress={() =>
-                    router.push({ pathname: '/finance/entry', params: { id: d.id, path: d.path, autoScan: '0' } })
-                  }
-                >
-                  <MaterialIcons name="receipt-long" size={18} color="#004c22" />
-                  <Text className="flex-1 text-sm text-on-surface" numberOfLines={1}>
-                    Screenshot from {new Date(d.createdAt).toLocaleString()}
-                  </Text>
-                  <MaterialIcons name="chevron-right" size={18} color="#404940" />
-                </AnimatedPressable>
-                <AnimatedPressable
-                  className="w-11 h-11 rounded-xl items-center justify-center bg-surface-container-highest"
-                  accessibilityLabel="Discard unsaved scan"
-                  onPress={async () => {
-                    await deleteReceiptDraft(d.id).catch(() => {});
-                    setDrafts((prev) => prev.filter((x) => x.id !== d.id));
-                  }}
-                >
-                  <MaterialIcons name="delete-outline" size={18} color="#404940" />
-                </AnimatedPressable>
-              </View>
-            ))}
           </View>
         )}
 

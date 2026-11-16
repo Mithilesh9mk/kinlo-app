@@ -89,8 +89,13 @@ export default function FirstActionScreen() {
     // Land on Home first so back from Friends/Finance returns to Home
     // instead of exiting the app (onboarding is the only stack entry).
     router.replace('/');
-    if (choice === 'friend') router.push('/friends');
-    else if (choice === 'scan') router.push('/finance');
+    // The extra push is best-effort: if it throws, the user is already on Home.
+    try {
+      if (choice === 'friend') router.push('/friends');
+      else if (choice === 'scan') router.push('/finance');
+    } catch (e) {
+      console.warn('First-action navigation failed:', e);
+    }
   };
 
   return (

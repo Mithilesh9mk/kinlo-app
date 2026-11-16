@@ -10,6 +10,7 @@ import {
   relativeTime,
   ActivityEvent,
 } from '../lib/activity';
+import { supabase } from '../lib/supabase';
 import { fetchConnectionRequests, ConnectionRequest } from '../lib/connections';
 import { SkeletonListRow } from '../components/Skeleton';
 import { AnimatedPressable } from '../components/AnimatedPressable';
@@ -38,6 +39,9 @@ const TONE_BG: Record<string, string> = {
   warning: '#f8ebdc',
 };
 
+const ACTIVITY_LIMIT = 40;
+const LOAD_ERROR_COPY = "Couldn't load your activity. Check your connection and try again.";
+
 export default function ActivityScreen() {
   const router = useRouter();
 
@@ -48,15 +52,18 @@ export default function ActivityScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [requests, setRequests] = useState<ConnectionRequest[]>([]);
+  // When the user last opened this screen, captured before markActivityRead
+  // overwrites it. null = unknown, in which case no row is flagged as new.
+  const [lastReadAt, setLastReadAt] = useState<number | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
     try {
-      setEvents(await fetchActivity(40));
+      setEvents(await fetchActivity(ACTIVITY_LIMIT));
       setError(null);
     } catch (e: any) {
       console.warn('Activity load failed:', e);
-      setError(e?.message || 'Could not load your activity.');
+      setError(LOAD_ERROR_COPY);
     } finally {
       setLoading(false);
     }
@@ -78,8 +85,31 @@ export default function ActivityScreen() {
   // bottom of the list. Failures are swallowed on purpose: a badge that
   // fails to clear is an annoyance, not something worth surfacing an error
   // over on a screen the user just opened successfully.
+  //
+  // The previous last-read time is read first so rows that arrived since can
+  // be flagged as new; it is read-only and never blocks marking read.
   useFocusEffect(useCallback(() => {
-    markActivityRead().catch(e => console.warn('Could not mark activity read:', e));
+    (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const me = sessionData?.session?.user?.id ?? null;
+        if (me) {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('activity_last_read_at')
+            .eq('id', me)
+            .maybeSingle();
+          // null / missing / unparseable stays null (no row flagged as new).
+          const t = userRow?.activity_last_read_at
+            ? Date.parse(userRow.activity_last_read_at)
+            : NaN;
+          setLastReadAt(Number.isFinite(t) ? t : null);
+        }
+      } catch (e) {
+        console.warn('Could not read previous activity read time:', e);
+      }
+      markActivityRead().catch(e => console.warn('Could not mark activity read:', e));
+    })();
   }, []));
 
   const onRefresh = async () => {
@@ -124,7 +154,11 @@ export default function ActivityScreen() {
               Connection requests
             </Text>
             {requests.map((req, index) => {
-              const needsYou = req.myResponse === 'pending';
+              // A claimant can't accept until the owner has (0070), so a
+              // claimant waiting on the owner isn't highlighted as needing them.
+              const needsYou =
+                req.myResponse === 'pending' &&
+                !(req.role === 'claimant' && req.theirResponse !== 'accepted');
               return (
                 <AnimatedListItem key={req.id} index={index}>
                   <AnimatedPressable
@@ -149,7 +183,9 @@ export default function ActivityScreen() {
                       </Text>
                       <Text className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
                         {req.role === 'claimant'
-                          ? 'Added you before you joined — review what carries over'
+                          ? req.theirResponse === 'accepted'
+                            ? 'Added you before you joined — review what carries over'
+                            : 'Added you before you joined — waiting for them to confirm'
                           : `Says they're ${req.placeholderName || 'a contact you added'}`}
                       </Text>
                     </View>
@@ -186,7 +222,7 @@ export default function ActivityScreen() {
               Could not load your activity
             </Text>
             <Text className="text-sm text-on-surface-variant mt-2 text-center leading-relaxed">
-              {error}
+              {LOAD_ERROR_COPY}
             </Text>
             <AnimatedPressable onPress={() => load()} className="mt-5 bg-primary px-6 py-3 rounded-xl">
               <Text className="text-white font-semibold">Try Again</Text>
@@ -203,9 +239,15 @@ export default function ActivityScreen() {
             </Text>
           </View>
         ) : (
-          events.map((event, index) => {
+          <>
+          {events.map((event, index) => {
             const d = describeEvent(event);
             const tappable = !!event.transactionId;
+            // Your own actions never count as new (same rule as the badge).
+            const isNew =
+              lastReadAt !== null &&
+              event.actorLabel !== 'You' &&
+              Date.parse(event.createdAt) > lastReadAt;
 
             const Row = (
               <View className="flex-row items-start">
@@ -217,9 +259,22 @@ export default function ActivityScreen() {
                 </View>
 
                 <View style={{ flex: 1, marginLeft: 13 }}>
-                  <Text className="font-semibold text-on-surface text-sm leading-relaxed">
-                    {d.title}
-                  </Text>
+                  {isNew ? (
+                    <View className="flex-row items-start">
+                      <Text className="flex-1 font-semibold text-on-surface text-sm leading-relaxed">
+                        {d.title}
+                      </Text>
+                      <View
+                        accessible={false}
+                        importantForAccessibility="no"
+                        className="w-2 h-2 rounded-full bg-primary ml-2 mt-2"
+                      />
+                    </View>
+                  ) : (
+                    <Text className="font-semibold text-on-surface text-sm leading-relaxed">
+                      {d.title}
+                    </Text>
+                  )}
                   {d.detail && (
                     <Text
                       className="text-xs font-semibold mt-0.5"
@@ -245,6 +300,10 @@ export default function ActivityScreen() {
               borderColor: 'rgba(255,255,255,0.4)',
             } as const;
 
+            // The unread dot is decorative; unread state is spoken on the row.
+            const rowText = d.detail ? `${d.title}. ${d.detail}` : d.title;
+            const rowLabel = isNew ? `New. ${rowText}` : rowText;
+
             // Only rows that lead somewhere are touchable. A membership event
             // has nothing to open, and a chevron on it would be the same lie
             // the dead controls on Home were.
@@ -255,17 +314,29 @@ export default function ActivityScreen() {
                     onPress={() => router.push({ pathname: `/transaction/${event.transactionId}` })}
                     className="rounded-2xl p-4 mb-3"
                     style={style}
+                    accessibilityLabel={rowLabel}
                   >
                     {Row}
                   </AnimatedPressable>
                 ) : (
-                  <View className="rounded-2xl p-4 mb-3" style={style}>
+                  <View
+                    className="rounded-2xl p-4 mb-3"
+                    style={style}
+                    accessible
+                    accessibilityLabel={rowLabel}
+                  >
                     {Row}
                   </View>
                 )}
               </AnimatedListItem>
             );
-          })
+          })}
+          {events.length === ACTIVITY_LIMIT && (
+            <Text className="text-xs text-on-surface-variant text-center py-4">
+              Showing the latest {ACTIVITY_LIMIT}
+            </Text>
+          )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>

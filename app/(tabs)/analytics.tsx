@@ -31,10 +31,14 @@ const money = (n: number) => formatINR(n, { decimals: 2 });
  *  "no expenses ___" phrase, and the drill-down clear-pill can never disagree with each other. */
 const WINDOW_TEXT: Record<WindowPreset, { pill: string; label: string; phrase: string; short: string }> = {
   '1w': { pill: '1 Week', label: 'Last 7 days', phrase: 'in the last 7 days', short: '7d' },
-  '1m': { pill: '1 Month', label: 'Last 4 weeks', phrase: 'in the last 4 weeks', short: '4wk' },
+  '1m': { pill: '4 Weeks', label: 'Last 4 weeks', phrase: 'in the last 4 weeks', short: '4wk' },
   '6m': { pill: '6 Months', label: 'Last 6 months', phrase: 'in the last 6 months', short: '6 mo' },
   '12m': { pill: '12 Months', label: 'Last 12 months', phrase: 'in the last 12 months', short: '12 mo' },
 };
+
+/** What one trend-chart bar covers in each window: 1w bars are days, 1m bars are
+ *  trailing 7-day weeks, 6m/12m bars are calendar months (see buildWindowBreakdown). */
+const BAR_GRAIN: Record<WindowPreset, string> = { '1w': 'day', '1m': 'week', '6m': 'month', '12m': 'month' };
 
 export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
@@ -154,40 +158,140 @@ export default function AnalyticsScreen() {
     </View>
   );
 
+  const SCOPE_TABS: { id: SpendScope; label: string }[] = [
+    { id: 'overall', label: 'Overall' },
+    { id: 'split', label: 'Split' },
+    { id: 'personal', label: 'Personal' },
+  ];
+
+  // Scope + window controls. Defined once and rendered by both the loading
+  // branch (when a window change refetches) and the ready branch, so they
+  // stay on screen instead of vanishing until the data lands.
+  const Toggles = (
+    <>
+    {/* Scope segmented control — switching is pure client-side (all
+        three breakdowns already arrived in one fetchAnalytics() call),
+        so there is no refetch and no loading flash. Own row from the
+        window toggle below rather than crammed onto one row — Home's
+        header taught this app that a tight row of pills has no slack
+        for a second control before it overflows on narrower phones. */}
+    <View className="flex-row p-1 rounded-2xl self-start" style={{ backgroundColor: 'rgba(255,255,255,0.65)' }}>
+      {SCOPE_TABS.map((tab) => {
+        const active = scope === tab.id;
+        return (
+          <AnimatedPressable
+            key={tab.id}
+            onPress={() => changeScope(tab.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 14,
+              backgroundColor: active ? '#caead6' : 'transparent',
+              borderWidth: active ? 1 : 0,
+              borderColor: '#004c22',
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#004c22' : '#707a6f' }}>
+              {tab.label}
+            </Text>
+          </AnimatedPressable>
+        );
+      })}
+    </View>
+
+    {/* Window toggle — this changes the fetched data (unlike the scope
+        tabs above), so switching refetches with the new preset (the
+        controls stay mounted while the content below shows skeletons). Custom range is
+        deliberately not here yet — needs a date-picker dependency this
+        project doesn't have, queued for a later build.
+        Tighter padding/font than the scope tabs above (10/7/12 vs
+        16/8/13) — 4 pills at the original sizing overflow a narrow
+        phone's content width, the same crowding bug already found and
+        fixed on the personal-finance screen's toggle. */}
+    <View className="flex-row p-1 rounded-2xl self-start" style={{ backgroundColor: 'rgba(255,255,255,0.65)' }}>
+      {(['1w', '1m', '6m', '12m'] as WindowPreset[]).map((p) => {
+        const active = windowPreset === p;
+        return (
+          <AnimatedPressable
+            key={p}
+            onPress={() => { setWindowPreset(p); setSelectedMonthKey(null); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              borderRadius: 14,
+              backgroundColor: active ? '#caead6' : 'transparent',
+              borderWidth: active ? 1 : 0,
+              borderColor: '#004c22',
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#004c22' : '#707a6f' }}>
+              {WINDOW_TEXT[p].pill}
+            </Text>
+          </AnimatedPressable>
+        );
+      })}
+    </View>
+    </>
+  );
+
+  // Shaped like the insights that are coming — a headline figure, then the
+  // breakdown rows — so the page does not reflow when they arrive.
+  const LoadingSkeleton = (
+    <>
+    <SkeletonCard height={132} />
+
+    <View className="flex-row mt-4">
+      <SkeletonCard height={104} style={{ flex: 1, marginRight: 12 }} />
+      <SkeletonCard height={104} style={{ flex: 1 }} />
+    </View>
+
+    <Skeleton width="40%" height={12} style={{ marginTop: 28, marginBottom: 6 }} />
+    <View
+      className="rounded-3xl p-5 mt-2"
+      style={{
+        backgroundColor: 'rgba(255,255,255,0.6)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.05)',
+      }}
+    >
+      {[0, 1, 2, 3].map(i => (
+        <View key={i} style={{ marginBottom: i === 3 ? 0 : 18 }}>
+          <View className="flex-row items-center justify-between mb-2">
+            <Skeleton width="34%" height={12} />
+            <Skeleton width={62} height={12} />
+          </View>
+          {/* The bar each category row draws. */}
+          <Skeleton width={`${88 - i * 18}%`} height={9} radius={5} />
+        </View>
+      ))}
+    </View>
+    </>
+  );
+
   if (loadState === 'loading') {
-    // Shaped like the insights that are coming — a headline figure, then the
-    // breakdown rows — so the page does not reflow when they arrive.
+    // A window change (or re-focus) refetches while the previous data is still
+    // in hand: keep Header + toggles mounted and skeleton only the content
+    // below them. Full-screen skeleton is only for the very first load.
+    if (data && data.hasAnyData) {
+      return (
+        <View className="flex-1 bg-background">
+          {Header}
+          <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 }} scrollEnabled={false}>
+            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }], gap: 18 }} className="px-5 pt-6 max-w-xl mx-auto w-full">
+              {Toggles}
+              <View>{LoadingSkeleton}</View>
+            </Animated.View>
+          </ScrollView>
+        </View>
+      );
+    }
     return (
       <View className="flex-1 bg-background">
         {Header}
         <ScrollView className="flex-1 px-5 pt-4" scrollEnabled={false}>
-          <SkeletonCard height={132} />
-
-          <View className="flex-row mt-4">
-            <SkeletonCard height={104} style={{ flex: 1, marginRight: 12 }} />
-            <SkeletonCard height={104} style={{ flex: 1 }} />
-          </View>
-
-          <Skeleton width="40%" height={12} style={{ marginTop: 28, marginBottom: 6 }} />
-          <View
-            className="rounded-3xl p-5 mt-2"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.6)',
-              borderWidth: 1,
-              borderColor: 'rgba(0,0,0,0.05)',
-            }}
-          >
-            {[0, 1, 2, 3].map(i => (
-              <View key={i} style={{ marginBottom: i === 3 ? 0 : 18 }}>
-                <View className="flex-row items-center justify-between mb-2">
-                  <Skeleton width="34%" height={12} />
-                  <Skeleton width={62} height={12} />
-                </View>
-                {/* The bar each category row draws. */}
-                <Skeleton width={`${88 - i * 18}%`} height={9} radius={5} />
-              </View>
-            ))}
-          </View>
+          {LoadingSkeleton}
         </ScrollView>
       </View>
     );
@@ -266,12 +370,6 @@ export default function AnalyticsScreen() {
   const splitPct = mixTotal > 0 ? Math.round((mixSplitSpend / mixTotal) * 100) : 0;
   const personalPct = mixTotal > 0 ? 100 - splitPct : 0;
 
-  const SCOPE_TABS: { id: SpendScope; label: string }[] = [
-    { id: 'overall', label: 'Overall' },
-    { id: 'split', label: 'Split' },
-    { id: 'personal', label: 'Personal' },
-  ];
-
   const windowLabel = monthDetail ? monthDetail.fullLabel : WINDOW_TEXT[windowPreset].label;
   const periodPhrase = monthDetail ? `in ${monthDetail.fullLabel}` : WINDOW_TEXT[windowPreset].phrase;
 
@@ -291,70 +389,7 @@ export default function AnalyticsScreen() {
           className="px-5 pt-6 max-w-xl mx-auto w-full"
         >
 
-          {/* Scope segmented control — switching is pure client-side (all
-              three breakdowns already arrived in one fetchAnalytics() call),
-              so there is no refetch and no loading flash. Own row from the
-              window toggle below rather than crammed onto one row — Home's
-              header taught this app that a tight row of pills has no slack
-              for a second control before it overflows on narrower phones. */}
-          <View className="flex-row p-1 rounded-2xl self-start" style={{ backgroundColor: 'rgba(255,255,255,0.65)' }}>
-            {SCOPE_TABS.map((tab) => {
-              const active = scope === tab.id;
-              return (
-                <AnimatedPressable
-                  key={tab.id}
-                  onPress={() => changeScope(tab.id)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 14,
-                    backgroundColor: active ? '#caead6' : 'transparent',
-                    borderWidth: active ? 1 : 0,
-                    borderColor: '#004c22',
-                  }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#004c22' : '#707a6f' }}>
-                    {tab.label}
-                  </Text>
-                </AnimatedPressable>
-              );
-            })}
-          </View>
-
-          {/* Window toggle — this changes the fetched data (unlike the scope
-              tabs above), so switching does show a brief loading flash while
-              fetchAnalytics re-runs with the new preset. Custom range is
-              deliberately not here yet — needs a date-picker dependency this
-              project doesn't have, queued for a later build.
-              Tighter padding/font than the scope tabs above (10/7/12 vs
-              16/8/13) — 4 pills at the original sizing overflow a narrow
-              phone's content width, the same crowding bug already found and
-              fixed on the personal-finance screen's toggle. */}
-          <View className="flex-row p-1 rounded-2xl self-start" style={{ backgroundColor: 'rgba(255,255,255,0.65)' }}>
-            {(['1w', '1m', '6m', '12m'] as WindowPreset[]).map((p) => {
-              const active = windowPreset === p;
-              return (
-                <AnimatedPressable
-                  key={p}
-                  onPress={() => { setWindowPreset(p); setSelectedMonthKey(null); }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                    borderRadius: 14,
-                    backgroundColor: active ? '#caead6' : 'transparent',
-                    borderWidth: active ? 1 : 0,
-                    borderColor: '#004c22',
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#004c22' : '#707a6f' }}>
-                    {WINDOW_TEXT[p].pill}
-                  </Text>
-                </AnimatedPressable>
-              );
-            })}
-          </View>
+          {Toggles}
 
           {/* 1. Spending in the selected window */}
           <View className="p-6 rounded-3xl relative overflow-hidden" style={styles.liquidGlass}>
@@ -391,17 +426,25 @@ export default function AnalyticsScreen() {
               </View>
 
               {changeLabel && (
-                <View
-                  className="flex-row items-center px-3 py-1 rounded-full gap-1"
-                  style={{ backgroundColor: changeIsDown ? '#DCFCE7' : '#FEE2E2' }}
-                >
-                  <MaterialIcons
-                    name={changeIsDown ? 'trending-down' : 'trending-up'}
-                    size={14}
-                    color={changeIsDown ? COLORS.primary : COLORS.error}
-                  />
-                  <Text className="font-bold text-xs" style={{ color: changeIsDown ? COLORS.primary : COLORS.error }}>
-                    {changeLabel}
+                <View className="items-end gap-1">
+                  <View
+                    className="flex-row items-center px-3 py-1 rounded-full gap-1"
+                    style={{ backgroundColor: changeIsDown ? '#DCFCE7' : '#FEE2E2' }}
+                  >
+                    <MaterialIcons
+                      name={changeIsDown ? 'trending-down' : 'trending-up'}
+                      size={14}
+                      color={changeIsDown ? COLORS.primary : COLORS.error}
+                    />
+                    <Text className="font-bold text-xs" style={{ color: changeIsDown ? COLORS.primary : COLORS.error }}>
+                      {changeLabel}
+                    </Text>
+                  </View>
+                  {/* The pill is always the whole-window change, even while a bar is
+                      drilled into a month, so the baseline names the window preset
+                      (not windowLabel, which becomes the month name on drill-down). */}
+                  <Text className="text-[10px] text-on-surface-variant font-medium">
+                    vs previous {WINDOW_TEXT[windowPreset].label.replace(/^Last /, '')}
                   </Text>
                 </View>
               )}
@@ -452,7 +495,7 @@ export default function AnalyticsScreen() {
             </View>
             {!selectedMonthKey && (
               <Text className="text-[10px] text-on-surface-variant text-center mt-1.5 opacity-70">
-                Tap a bar to see that month
+                Tap a bar to see that {BAR_GRAIN[windowPreset]}
               </Text>
             )}
             {view.previousWindowSpend === 0 && (
@@ -478,6 +521,17 @@ export default function AnalyticsScreen() {
               </View>
             )}
           </View>
+
+          {/* Insight sentence — sits directly under the headline card so the
+              takeaway is read with the headline figure, not below the list. */}
+          {activeCategory && (
+            <View className="bg-primary/5 p-4 rounded-2xl border border-primary/10 flex-row gap-3 items-start">
+              <MaterialIcons name="insights" size={20} color={COLORS.primary} />
+              <Text className="flex-1 text-sm text-primary leading-relaxed font-medium">
+                {activeCategory.name} is {activeCategory.percentage}% of your spending {periodPhrase}, at {money(activeCategory.amount)}.
+              </Text>
+            </View>
+          )}
 
           {/* 2. Expense count + Top category
               Both cards used to be sized with aspectRatio: 1, the only cards
@@ -593,26 +647,15 @@ export default function AnalyticsScreen() {
                 })}
               </View>
             )}
-
-            {activeCategory && (
-              <View className="bg-primary/5 p-4 rounded-2xl border border-primary/10 flex-row gap-3 items-start mt-4">
-                <MaterialIcons name="insights" size={20} color={COLORS.primary} />
-                <Text className="flex-1 text-sm text-primary leading-relaxed font-medium">
-                  {activeCategory.name} is {activeCategory.percentage}% of your spending {periodPhrase}, at {money(activeCategory.amount)}.
-                </Text>
-              </View>
-            )}
           </View>
 
           {/* 4. You vs the people you split with — meaningless for personal
               spend (nobody else is party to it), so that scope gets a note
               instead of a comparison nobody asked for. */}
           {scope === 'personal' ? (
-            <View className="p-6 rounded-3xl" style={styles.liquidGlass}>
-              <Text className="text-sm text-on-surface-variant text-center leading-relaxed">
-                Comparison uses expenses you split with others.
-              </Text>
-            </View>
+            <Text className="text-xs text-on-surface-variant">
+              Comparison uses expenses you split with others.
+            </Text>
           ) : canCompare ? (
             <View className="p-6 rounded-3xl" style={styles.liquidGlass}>
               <Text className="font-headline-md text-lg font-bold text-on-surface mb-4">How You Compare</Text>

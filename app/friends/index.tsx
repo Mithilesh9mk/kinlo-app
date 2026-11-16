@@ -112,8 +112,16 @@ export default function FriendsScreen() {
         initials: f.initials,
       }));
 
-      // Sort alphabetically
-      mapped.sort((a, b) => a.fullName.localeCompare(b.fullName));
+      // People with an open balance first (largest amount first), then
+      // settled friends alphabetically. Search filters this already-sorted
+      // list, so results keep the same order.
+      mapped.sort((a, b) => {
+        const aOpen = a.status !== 'settled';
+        const bOpen = b.status !== 'settled';
+        if (aOpen !== bOpen) return aOpen ? -1 : 1;
+        if (aOpen && bOpen && a.balance !== b.balance) return b.balance - a.balance;
+        return a.fullName.localeCompare(b.fullName);
+      });
 
       setFriendsList(mapped);
       setLoadState('ready');
@@ -171,7 +179,7 @@ export default function FriendsScreen() {
         className="px-6 pb-4 flex-row items-center justify-between bg-surface z-20 shadow-sm border-b border-outline-variant/20"
         style={{ paddingTop: Math.max(insets.top, 24) }}
       >
-        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <AnimatedPressable onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center bg-surface-container active:scale-95" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Go back">
           <MaterialIcons name="arrow-back" size={24} color="#404940" />
         </AnimatedPressable>
         <Text className="font-bold text-xl text-on-surface">All Friends</Text>
@@ -190,7 +198,7 @@ export default function FriendsScreen() {
             className="flex-1 ml-3 text-base text-on-surface font-body"
           />
           {searchQuery.length > 0 && (
-            <AnimatedPressable onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <AnimatedPressable onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Clear search">
               <MaterialIcons name="close" size={20} color="#707a6f" />
             </AnimatedPressable>
           )}
@@ -211,7 +219,7 @@ export default function FriendsScreen() {
                 className="items-center mr-3 bg-surface-container-low rounded-2xl px-4 py-3"
                 style={{ width: 112 }}
               >
-                <AnimatedPressable onPress={() => dismissMatch(match.id)} className="absolute top-1.5 right-1.5 z-10" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <AnimatedPressable onPress={() => dismissMatch(match.id)} className="absolute top-1.5 right-1.5 z-10" hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} accessibilityRole="button" accessibilityLabel="Dismiss suggestion">
                   <MaterialIcons name="close" size={14} color="#707a6f" />
                 </AnimatedPressable>
                 {/* size is required here: without it Avatar falls back to
@@ -315,7 +323,7 @@ export default function FriendsScreen() {
                 <Avatar uri={item.image} initials={item.initials} textClassName="text-primary font-bold text-lg" />
               </View>
               <View className="flex-1">
-                <Text className="text-base font-semibold text-on-surface">{item.fullName}</Text>
+                <Text numberOfLines={1} className="text-base font-semibold text-on-surface">{item.fullName}</Text>
                 <Text className="text-xs text-on-surface-variant mt-0.5">{item.phoneNumber || 'No phone added'}</Text>
               </View>
               <View className="items-end">
@@ -332,6 +340,8 @@ export default function FriendsScreen() {
       <AnimatedPressable 
         onPress={() => setIsAddModalOpen(true)}
         className="absolute bottom-[40px] right-6 h-16 px-6 rounded-2xl bg-primary flex-row items-center justify-center shadow-lg z-30"
+        accessibilityRole="button"
+        accessibilityLabel="Add friend"
       >
         <MaterialIcons name="person-add" size={24} color="white" />
         <Text className="text-white font-bold text-base ml-2">Add Friend</Text>

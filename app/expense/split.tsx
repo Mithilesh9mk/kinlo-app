@@ -15,6 +15,7 @@ import { createRecurringRule, REPEAT_SHORT, type RepeatFrequency } from '../../l
 import { useAlert } from '../../components/AppAlert';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
+import { formatINR } from '../../lib/format';
 
 const CATEGORY_ICONS: Record<string, string> = {
   food: 'restaurant',
@@ -37,6 +38,9 @@ export default function SplitExpenseScreen() {
   // "Repeat this expense": null = just once. Not offered when editing or when
   // several people paid (the template stores a single payer).
   const [repeat, setRepeat] = useState<RepeatFrequency | null>(null);
+  // Measured height of the absolutely-positioned bottom bar, so the scroll
+  // content always clears it. 0 until the first layout.
+  const [footerHeight, setFooterHeight] = useState(0);
 
   // Idempotency key for this expense attempt, so a double-tap retries the same
   // row instead of minting a second transaction. Mirrors settle-up.tsx.
@@ -156,7 +160,7 @@ export default function SplitExpenseScreen() {
    * propagated through calculateEqualSplit into every share while the screen
    * reported itself valid.
    */
-  const validation = useMemo((): { valid: boolean; problem: string | null } => {
+  const baseValidation = useMemo((): { valid: boolean; problem: string | null } => {
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       return { valid: false, problem: 'Enter an amount before splitting it.' };
     }
@@ -174,8 +178,8 @@ export default function SplitExpenseScreen() {
         return {
           valid: false,
           problem: gap > 0
-            ? `₹${gap.toFixed(2)} of the bill is unaccounted for — the payers put in ₹${contributed.toFixed(2)} of ₹${totalAmount.toFixed(2)}.`
-            : `The payers put in ₹${contributed.toFixed(2)}, which is ₹${Math.abs(gap).toFixed(2)} more than the ₹${totalAmount.toFixed(2)} bill.`,
+            ? `${formatINR(gap)} of the bill is unaccounted for — the payers put in ${formatINR(contributed)} of ${formatINR(totalAmount)}.`
+            : `The payers put in ${formatINR(contributed)}, which is ${formatINR(Math.abs(gap))} more than the ${formatINR(totalAmount)} bill.`,
         };
       }
     }
@@ -213,13 +217,44 @@ export default function SplitExpenseScreen() {
       return {
         valid: false,
         problem: shortfall > 0
-          ? `₹${shortfall.toFixed(2)} left to allocate — the shares total ₹${sum.toFixed(2)} of ₹${totalAmount.toFixed(2)}.`
-          : `₹${Math.abs(shortfall).toFixed(2)} over — the shares total ₹${sum.toFixed(2)} of ₹${totalAmount.toFixed(2)}.`,
+          ? `${formatINR(shortfall)} left to allocate — the shares total ${formatINR(sum)} of ${formatINR(totalAmount)}.`
+          : `${formatINR(Math.abs(shortfall))} over — the shares total ${formatINR(sum)} of ${formatINR(totalAmount)}.`,
       };
     }
 
     return { valid: false, problem: null };
   }, [participants, splitMode, totalAmount, includedCount]);
+
+  /**
+   * Outside a group, you can only record an expense you are actually on:
+   * you paid something, or you owe a share. A share of 0 is dropped when the
+   * expense is saved, so "A paid for B" entered by a third person left that
+   * person on none of the saved rows — they could not even see it afterwards
+   * — and record_expense() now refuses it (migration 0069). Saying so here,
+   * before posting, beats a server error. Groups keep their own rule.
+   *
+   * Checked only once the split itself adds up, so a half-filled split still
+   * shows its own problem first. This also covers "Repeat this expense": the
+   * rule is only created after a successful post, which this blocks.
+   */
+  const validation = useMemo((): { valid: boolean; problem: string | null } => {
+    if (!baseValidation.valid || groupId) return baseValidation;
+
+    const youPaid = payers.length > 1
+      ? payers.some(p => p.isYou && (p.amount || 0) > 0)
+      : !!payer.isYou;
+    const you = includedParticipants.find(p => p.isYou);
+    const yourShare = you ? (shares[you.id] || 0) : 0;
+
+    if (!youPaid && yourShare <= 0) {
+      const payerFirstName = (payer.name || '').split(' ')[0] || 'the person who paid';
+      return {
+        valid: false,
+        problem: `You're not part of this expense. Add it only if you paid or owe a share — or ask ${payerFirstName} to add it.`,
+      };
+    }
+    return baseValidation;
+  }, [baseValidation, groupId, payers, payer, includedParticipants, shares]);
 
   const isValidSplit = validation.valid;
 
@@ -388,8 +423,8 @@ Nothing was saved, so their version is intact.`
             [counterpartyId],
             editTransactionId ? 'Expense Updated ✏️' : 'New Expense Added 💸',
             editTransactionId
-              ? `${payerName} edited "${description}" — now ₹${totalAmount.toFixed(2)}.`
-              : `${payerName} added "${description}" for ₹${totalAmount.toFixed(2)}.`
+              ? `${payerName} edited "${description}" — now ${formatINR(totalAmount)}.`
+              : `${payerName} added "${description}" for ${formatINR(totalAmount)}.`
           );
         }
       }
@@ -409,8 +444,8 @@ Nothing was saved, so their version is intact.`
             groupUserIds,
             editTransactionId ? 'Circle Expense Updated ✏️' : 'New Circle Expense 💸',
             editTransactionId
-              ? `${currentUser.user_metadata?.full_name || 'Someone'} edited "${description}" — now ₹${totalAmount.toFixed(2)}.`
-              : `${currentUser.user_metadata?.full_name || 'Someone'} added "${description}" for ₹${totalAmount.toFixed(2)}.`
+              ? `${currentUser.user_metadata?.full_name || 'Someone'} edited "${description}" — now ${formatINR(totalAmount)}.`
+              : `${currentUser.user_metadata?.full_name || 'Someone'} added "${description}" for ${formatINR(totalAmount)}.`
           );
         }
       }
@@ -454,7 +489,9 @@ Nothing was saved, so their version is intact.`
           detailText: `${splitMode === 'equal' ? 'Equal' : splitMode === 'shares' ? 'Shares' : splitMode === 'percent' ? 'Percentage' : 'Exact'} split`,
           friendName: payerName,
           // Lets "View Details" open the transaction just written.
-          transactionId: txId
+          transactionId: txId,
+          // Title on the success screen: this is an edit or a new expense.
+          kind: editTransactionId ? 'updated' : 'added'
         }
       });
 
@@ -475,6 +512,40 @@ Nothing was saved, so their version is intact.`
     }
   };
 
+  // One-line recap shown right above the action buttons, so the outcome and
+  // the notification are visible without scrolling back up to "After posting".
+  // Amounts reuse settlementPreview (formatted with formatINR, same as the
+  // preview card, so the figures match exactly). The notified count mirrors handleFinish: a group
+  // post pushes to every included member except you; a 1-on-1 post pushes to
+  // the single counterparty.
+  const postSummary = (() => {
+    if (!isValidSplit) return null;
+    const parts: string[] = [];
+    if (settlementPreview.debts.length > 0) {
+      if (settlementPreview.payerIsYou) {
+        parts.push(`You get back ${formatINR(settlementPreview.totalOwedToPayer)}`);
+      } else {
+        const yourDebt = settlementPreview.debts.find(d => d.isYou);
+        if (yourDebt) parts.push(`You owe ${formatINR(yourDebt.amount)}`);
+      }
+    }
+    const others = includedParticipants.filter(p => !p.isYou).length;
+    const notifyCount = groupId ? others : Math.min(others, 1);
+    if (notifyCount > 0) {
+      parts.push(`${notifyCount} ${notifyCount === 1 ? 'person' : 'people'} will be notified`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : null;
+  })();
+
+  // Status strip pinned directly above the action buttons (see the bottom bar).
+  // It repeats the validation message shown in the list panel, verbatim, so a
+  // split that does not add up is visible at the moment you would press Finish;
+  // with several people the in-list panel can be scrolled out of sight. Nothing
+  // new is computed here. Invalid-only: never null while the split is invalid.
+  const statusStrip = !isValidSplit
+    ? { text: validation.problem ?? 'This split cannot be posted yet.' }
+    : null;
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       {/* Top Navigation */}
@@ -482,6 +553,9 @@ Nothing was saved, so their version is intact.`
         <View className="flex-row items-center space-x-3">
           <AnimatedPressable
             onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             className="w-10 h-10 items-center justify-center rounded-full active:bg-surface-container"
           >
             <MaterialIcons name="arrow-back" size={24} color="#004c22" />
@@ -490,7 +564,7 @@ Nothing was saved, so their version is intact.`
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-5 pt-8" contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView className="flex-1 px-5 pt-8" contentContainerStyle={{ paddingBottom: Math.max(150, footerHeight + 24) }}>
         <View className="max-w-xl mx-auto w-full space-y-8">
           
           {/* Progress Indicator */}
@@ -508,7 +582,7 @@ Nothing was saved, so their version is intact.`
               Step 3 of 3 · How is it split?
             </Text>
             <Text className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider">Total expense</Text>
-            <Text className="font-display-lg text-4xl font-bold text-primary mt-1">₹{totalAmount.toFixed(2)}</Text>
+            <Text className="font-display-lg text-4xl font-bold text-primary mt-1">{formatINR(totalAmount)}</Text>
 
             <View className="flex-row flex-wrap items-center justify-center mt-3">
               <View
@@ -554,6 +628,8 @@ Nothing was saved, so their version is intact.`
                   <AnimatedListItem key={tab.id} index={index} style={{ flex: 1 }}>
                     <AnimatedPressable
                       onPress={() => setSplitMode(tab.id)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: isActive }}
                       style={{
                         flex: 1,
                         paddingVertical: 11,
@@ -646,6 +722,10 @@ Nothing was saved, so their version is intact.`
                         <AnimatedPressable
                           className="flex-row items-center space-x-2 mt-1"
                           onPress={() => toggleParticipant(p.id)}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={isActualPayer ? `Has a share: ${p.name}` : `Include ${p.name}`}
+                          accessibilityState={{ checked: p.included }}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                         >
                           <MaterialIcons
                             name={p.included ? "check-box" : "check-box-outline-blank"}
@@ -662,7 +742,7 @@ Nothing was saved, so their version is intact.`
                     <View className="items-end justify-center w-24">
                       {splitMode === 'equal' && (
                         <Text className={`font-headline-md font-bold ${isActualPayer ? 'text-primary text-xl' : 'text-on-surface text-lg'}`}>
-                          {p.included ? `₹${shareVal.toFixed(2)}` : '₹0.00'}
+                          {p.included ? formatINR(shareVal) : '₹0.00'}
                         </Text>
                       )}
                       
@@ -696,7 +776,7 @@ Nothing was saved, so their version is intact.`
                           {/* The ratio is what you type; the rupees are what it
                               means. Showing both is the whole point of the mode. */}
                           <Text className="font-label-sm text-xs text-on-surface-variant mt-1">
-                            ₹{shareVal.toFixed(2)}
+                            {formatINR(shareVal)}
                           </Text>
                         </View>
                       )}
@@ -734,7 +814,7 @@ Nothing was saved, so their version is intact.`
                   {validation.problem}
                 </Text>
               )}
-              <Text className={`text-sm leading-relaxed ${isValidSplit ? 'text-on-secondary-container' : 'text-error'}`}>
+              <Text className={`text-sm leading-relaxed ${isValidSplit ? 'text-on-secondary-container' : 'text-on-surface-variant'}`}>
                 {getInfoText()}
               </Text>
             </View>
@@ -748,7 +828,7 @@ Nothing was saved, so their version is intact.`
                   After posting
                 </Text>
                 <Text className="font-headline-md text-base font-bold text-on-surface mt-1">
-                  {settlementPreview.payerName} paid ₹{totalAmount.toFixed(2)}
+                  {settlementPreview.payerName} paid {formatINR(totalAmount)}
                 </Text>
               </View>
 
@@ -772,7 +852,7 @@ Nothing was saved, so their version is intact.`
                         className="text-sm font-bold"
                         style={{ color: d.isYou ? '#ba1a1a' : '#1f6c3a' }}
                       >
-                        ₹{d.amount.toFixed(2)}
+                        {formatINR(d.amount)}
                       </Text>
                     </View>
                   </AnimatedListItem>
@@ -783,11 +863,11 @@ Nothing was saved, so their version is intact.`
                 <Text className="text-xs text-on-surface-variant leading-relaxed">
                   {settlementPreview.payerIsYou
                     ? (settlementPreview.payerShare > 0
-                        ? `You get back ₹${settlementPreview.totalOwedToPayer.toFixed(2)} in total. Your own share of ₹${settlementPreview.payerShare.toFixed(2)} is already spent.`
-                        : `You get back the full ₹${settlementPreview.totalOwedToPayer.toFixed(2)} — you have no share of this one.`)
+                        ? `You get back ${formatINR(settlementPreview.totalOwedToPayer)} in total. Your own share of ${formatINR(settlementPreview.payerShare)} is already spent.`
+                        : `You get back the full ${formatINR(settlementPreview.totalOwedToPayer)} — you have no share of this one.`)
                     : (settlementPreview.payerShare > 0
-                        ? `${settlementPreview.payerName} gets back ₹${settlementPreview.totalOwedToPayer.toFixed(2)} in total.`
-                        : `${settlementPreview.payerName} gets back the full ₹${settlementPreview.totalOwedToPayer.toFixed(2)} — no share of this one.`)}
+                        ? `${settlementPreview.payerName} gets back ${formatINR(settlementPreview.totalOwedToPayer)} in total.`
+                        : `${settlementPreview.payerName} gets back the full ${formatINR(settlementPreview.totalOwedToPayer)} — no share of this one.`)}
                 </Text>
               </View>
             </View>
@@ -812,6 +892,8 @@ Nothing was saved, so their version is intact.`
                     <AnimatedPressable
                       key={opt ?? 'never'}
                       onPress={() => setRepeat(opt)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active, checked: active }}
                       className={`px-3 py-2 rounded-full border ${active ? 'bg-primary border-primary' : 'bg-white border-outline-variant/40'}`}
                     >
                       <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-on-surface-variant'}`}>
@@ -829,9 +911,23 @@ Nothing was saved, so their version is intact.`
 
       {/* Bottom Action Bar */}
       <View 
-        className="absolute bottom-0 left-0 w-full px-5 pt-4 pb-8 flex-row space-x-4 z-50 border-t border-outline-variant/20"
+        className="absolute bottom-0 left-0 w-full px-5 pt-4 pb-8 z-50 border-t border-outline-variant/20"
         style={{ backgroundColor: 'rgba(252, 249, 244, 0.8)' }}
+        onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
       >
+        {postSummary && (
+          <Text className="text-xs text-on-surface-variant text-center mb-3" numberOfLines={2}>
+            {postSummary}
+          </Text>
+        )}
+        {statusStrip && (
+          <View accessibilityLiveRegion="polite" className="rounded-xl px-3 py-2 mb-3 bg-error-container/30">
+            <Text className="text-sm text-error">
+              {statusStrip.text}
+            </Text>
+          </View>
+        )}
+        <View className="flex-row space-x-4">
         {/* This button had no onPress at all — it looked like it saved a
             draft and did nothing. The expense is already being saved on every
             change; this writes the server copy immediately rather than waiting
@@ -865,6 +961,7 @@ Nothing was saved, so their version is intact.`
             </>
           )}
         </AnimatedPressable>
+        </View>
       </View>
     </SafeAreaView>
   );

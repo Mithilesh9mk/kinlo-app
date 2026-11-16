@@ -72,6 +72,7 @@ export default function FinanceEntryScreen() {
   const [quotaDismissed, setQuotaDismissed] = useState(false);
   // null = unknown (lookup failed or quota RPCs not deployed) -> show nothing.
   const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const [editLoading, setEditLoading] = useState(!!params.editId);
   const [editLoadError, setEditLoadError] = useState(false);
   const [editLoadAttempt, setEditLoadAttempt] = useState(0);
   const [aspect, setAspect] = useState<number | null>(null);
@@ -87,6 +88,7 @@ export default function FinanceEntryScreen() {
     if (!params.editId) return;
     let cancelled = false;
     setEditLoadError(false);
+    setEditLoading(true);
     (async () => {
       let tx: Awaited<ReturnType<typeof getPersonalTransaction>> = null;
       try {
@@ -95,6 +97,7 @@ export default function FinanceEntryScreen() {
         console.error('Failed to load transaction for edit:', e);
       }
       if (cancelled) return;
+      setEditLoading(false);
       if (!tx) {
         setEditLoadError(true);
         return;
@@ -291,6 +294,10 @@ export default function FinanceEntryScreen() {
     if (extraction.direction === 'credit') setDirectionWarning(true);
 
     if (extraction.confidence < 0.75) {
+      // Low overall confidence: amount and date need a second look even when
+      // they were filled in (a value that was read can still be wrong).
+      uncertain.add('amount');
+      uncertain.add('occurredAt');
       if (extraction.amount === null) uncertain.add('amount');
       if (!extraction.merchant) uncertain.add('merchant');
       if (!extraction.occurredAt) uncertain.add('occurredAt');
@@ -311,9 +318,30 @@ export default function FinanceEntryScreen() {
   const parsedAmount = parseFloat(amount || '0');
   const dateError = parseDate(dateText.trim()) === null;
   const canSave = parsedAmount > 0 && !saving && !parsing && !dateError;
+  // Shown only when the amount is the sole reason Save is disabled.
+  const showAmountHint = !editLoading && !saving && !parsing && !(parsedAmount > 0) && !dateError;
   // `touched` = the user typed in notes/date. A loaded note or a scanned value
   // is not an edit, so opening an existing row and closing it never prompts.
   const hasUnsavedEdits = editedFields.size > 0 || touched;
+
+  // Today / Yesterday chips for the date field. Same effect as typing the
+  // date: the text, the parsed occurredAt and the edited flag move together.
+  // Local time: Date(y, m, d - 1) rolls back correctly across month edges.
+  const today = new Date();
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const dateChips = [
+    { label: 'Today', date: today },
+    { label: 'Yesterday', date: yesterday },
+  ];
+  const setDateFromChip = (d: Date) => {
+    if (dateText.trim() === formatDate(d)) return;
+    const text = formatDate(d);
+    setDateText(text);
+    const parsed = parseDate(text);
+    if (parsed) setOccurredAt(parsed);
+    setTouched(true);
+    markEdited('occurredAt');
+  };
 
   const handleClose = () => {
     if (!hasUnsavedEdits || saving) {
@@ -389,6 +417,15 @@ export default function FinanceEntryScreen() {
   const fieldBorder = (field: FieldName) =>
     uncertainFields.has(field) ? { borderColor: '#d97706', borderWidth: 1.5 } : { borderColor: 'rgba(255,255,255,0.35)', borderWidth: 1 };
 
+  // Text companion to the amber border; shown only while the field is flagged
+  // (markEdited clears the flag). Margins tuck it under the field above.
+  const checkHint = (field: FieldName, marginTop: number, marginBottom: number, centered = false) =>
+    uncertainFields.has(field) ? (
+      <Text className="text-xs px-1" style={{ color: '#d97706', marginTop, marginBottom, textAlign: centered ? 'center' : 'left' }}>
+        Check this — the scan wasn't sure
+      </Text>
+    ) : null;
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       <View className="flex-row items-center justify-between px-5 h-16">
@@ -402,7 +439,35 @@ export default function FinanceEntryScreen() {
       </View>
 
       <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {imageUri && (
+        {/* Review mode: compact 72x72 thumbnail + caption so the parsed fields
+            and Save sit near the top; the full image opens in the viewer modal.
+            Edit mode keeps the large inline preview below. */}
+        {imageUri && isReview && !params.editId && (
+          <AnimatedPressable onPress={() => setViewerOpen(true)}>
+            <View className="flex-row items-center gap-3" style={{ marginBottom: 16 }}>
+              <View
+                className="rounded-xl border border-outline-variant/30 overflow-hidden"
+                style={{ width: 72, height: 72, backgroundColor: 'rgba(0,0,0,0.05)' }}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  onLoad={(e) => {
+                    const { width, height } = e.nativeEvent.source;
+                    if (width && height) setAspect(width / height);
+                  }}
+                  style={{ width: 72, height: 72 }}
+                  resizeMode="cover"
+                />
+              </View>
+              <View className="flex-row items-center gap-1 flex-1">
+                <MaterialIcons name="zoom-out-map" size={14} color="#404940" />
+                <Text className="text-xs text-on-surface-variant">Tap to view full screenshot</Text>
+              </View>
+            </View>
+          </AnimatedPressable>
+        )}
+
+        {imageUri && !(isReview && !params.editId) && (
           <AnimatedPressable onPress={() => setViewerOpen(true)}>
             <View style={{ marginBottom: 16 }}>
               <Image
@@ -455,7 +520,7 @@ export default function FinanceEntryScreen() {
             <Text className="text-xs text-on-surface-variant mb-3">
               {plan?.plan === 'gold'
                 ? `Gold includes ${GOLD_SCANS_PER_MONTH} receipt scans a month, and they reset on the 1st. You can still enter this expense by hand.`
-                : `Free accounts include ${FREE_SCANS_PER_MONTH} receipt scans a month. You can still enter this expense by hand, or get Gold for ${GOLD_SCANS_PER_MONTH} scans a month.`}
+                : `Free accounts include ${FREE_SCANS_PER_MONTH} receipt scans a month. You can still enter this expense by hand, or use a Gold coupon code for ${GOLD_SCANS_PER_MONTH} scans a month. Gold subscriptions aren't on sale yet.`}
             </Text>
             {plan?.plan !== 'gold' && (
               <AnimatedPressable
@@ -533,7 +598,7 @@ export default function FinanceEntryScreen() {
         {directionWarning && (
           <View className="flex-row items-center gap-2 p-3 rounded-2xl mb-4" style={{ backgroundColor: '#fef3c7' }}>
             <MaterialIcons name="info" size={18} color="#d97706" />
-            <Text className="text-xs text-on-surface flex-1">This looks like money you received, not a payment.</Text>
+            <Text className="text-xs text-on-surface flex-1">This looks like money coming in, not an expense. Check the amount before saving.</Text>
           </View>
         )}
 
@@ -573,6 +638,7 @@ export default function FinanceEntryScreen() {
                 style={{ minWidth: 60, textAlign: 'center' }}
               />
             </View>
+            {checkHint('amount', -16, 16, true)}
 
             <TextInput
               value={merchant}
@@ -582,6 +648,7 @@ export default function FinanceEntryScreen() {
               className="w-full text-base font-semibold text-on-surface px-4 py-3 rounded-2xl mb-3"
               style={{ backgroundColor: 'rgba(255,255,255,0.65)', ...fieldBorder('merchant') }}
             />
+            {checkHint('merchant', -8, 12)}
 
             <TextInput
               value={description}
@@ -591,6 +658,31 @@ export default function FinanceEntryScreen() {
               className="w-full text-sm text-on-surface px-4 py-3 rounded-2xl mb-3"
               style={{ backgroundColor: 'rgba(255,255,255,0.65)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}
             />
+
+            <View className="flex-row gap-2 mb-2">
+              {dateChips.map((chip) => {
+                const active = !editLoading && dateText.trim() === formatDate(chip.date);
+                return (
+                  <AnimatedPressable
+                    key={chip.label}
+                    onPress={() => setDateFromChip(chip.date)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Set date to ${chip.label.toLowerCase()}`}
+                    accessibilityState={{ selected: active }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9,
+                      borderRadius: 999,
+                      backgroundColor: active ? '#caead6' : 'rgba(255,255,255,0.7)',
+                      borderWidth: 1, borderColor: active ? '#004c22' : 'rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#004c22' : '#404940' }}>
+                      {chip.label}
+                    </Text>
+                  </AnimatedPressable>
+                );
+              })}
+            </View>
 
             <TextInput
               value={dateText}
@@ -610,6 +702,7 @@ export default function FinanceEntryScreen() {
                 Enter a valid date, e.g. 14/10/2026
               </Text>
             )}
+            {!dateError && checkHint('occurredAt', -12, 16)}
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="w-full mb-6">
               {CATEGORIES.map((c, index) => {
@@ -649,6 +742,7 @@ export default function FinanceEntryScreen() {
                 </Text>
               </AnimatedPressable>
             </ScrollView>
+            {!category && checkHint('category', -16, 24)}
 
             <AnimatedPressable
               onPress={handleSave}
@@ -660,6 +754,9 @@ export default function FinanceEntryScreen() {
                 {saving ? 'Saving…' : 'Save'}
               </Text>
             </AnimatedPressable>
+            {showAmountHint && (
+              <Text className="text-xs text-on-surface-variant text-center mt-2">Enter an amount to save</Text>
+            )}
           </>
         )}
       </ScrollView>
@@ -693,9 +790,11 @@ export default function FinanceEntryScreen() {
         </Pressable>
       </Modal>
 
-      {/* Full screenshot — the preview above is resizeMode="cover" (crops to
-          fill the fixed 180px box), so this is the only place the whole
-          image is visible. contain, not cover, on purpose. */}
+      {/* Full screenshot — in review mode the inline preview is a 72x72
+          resizeMode="cover" thumbnail (crops to fill the square); in edit mode
+          it is a contain-fit, aspect-clamped preview. This viewer is the only
+          place the whole image is visible at full size. contain, not cover,
+          on purpose. */}
       <Modal visible={viewerOpen} transparent animationType="fade" onRequestClose={() => setViewerOpen(false)}>
         <AnimatedPressable
           className="flex-1 items-center justify-center"

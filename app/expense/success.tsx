@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, Image, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, Image, StyleSheet, Animated, Dimensions, AccessibilityInfo } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
+import { formatINR } from '../../lib/format';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -35,13 +36,23 @@ export default function SuccessScreen() {
   // shows nothing instead of a made-up figure.
   const amountStr = (params.amount as string) || '';
   const amountVal = parseFloat(amountStr);
-  const formattedAmount = isNaN(amountVal) ? '' : `₹${amountVal.toFixed(2)}`;
+  const formattedAmount = isNaN(amountVal) ? '' : formatINR(amountVal);
 
   const description = (params.description as string) || '';
   const splitInfo = (params.splitInfo as string) || '';
   const detailText = (params.detailText as string) || '';
   const friendName = (params.friendName as string) || '';
   const transactionId = (params.transactionId as string) || '';
+  // Explicit outcome from the caller: 'added' | 'updated' | 'payment'. Params
+  // can arrive as string[], so take the first value. Anything else (or no
+  // param) falls back to the old description-based title below.
+  const rawKind = Array.isArray(params.kind) ? params.kind[0] : params.kind;
+  const kind = typeof rawKind === 'string' ? rawKind : '';
+  const titleText =
+    kind === 'added' ? 'Expense Added!'
+    : kind === 'updated' ? 'Expense Updated!'
+    : kind === 'payment' ? 'Payment Recorded!'
+    : description.includes('Settlement') ? 'Payment Recorded!' : 'Expense Added!';
 
   // Held so View Details can stop the auto-redirect to Home from firing on
   // top of the screen it opens.
@@ -72,7 +83,38 @@ export default function SuccessScreen() {
       anim: new Animated.Value(0),
       rotateAnim: new Animated.Value(0),
     }));
-    setConfettiParticles(particles);
+    // Confetti is skipped entirely when the OS asks for reduced motion. If the
+    // check is unavailable or fails, confetti shows as it always did.
+    let cancelled = false;
+    const startConfetti = () => {
+      if (cancelled) return;
+      setConfettiParticles(particles);
+      particles.forEach((p) => {
+        Animated.parallel([
+          Animated.timing(p.anim, {
+            toValue: 1,
+            duration: Math.random() * 1500 + 2500, // 2.5s - 4.0s
+            delay: Math.random() * 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.rotateAnim, {
+            toValue: 1,
+            duration: Math.random() * 1500 + 2500,
+            delay: Math.random() * 600,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    };
+    try {
+      AccessibilityInfo.isReduceMotionEnabled()
+        .then(
+          (reduceMotion) => { if (!reduceMotion) startConfetti(); },
+          () => startConfetti(),
+        );
+    } catch (_) {
+      startConfetti();
+    }
 
     // Start entrance animations
     Animated.sequence([
@@ -126,24 +168,6 @@ export default function SuccessScreen() {
       { iterations: 3 }
     ).start();
 
-    // Trigger confetti falls with staggered random delays
-    particles.forEach((p, idx) => {
-      Animated.parallel([
-        Animated.timing(p.anim, {
-          toValue: 1,
-          duration: Math.random() * 1500 + 2500, // 2.5s - 4.0s
-          delay: Math.random() * 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(p.rotateAnim, {
-          toValue: 1,
-          duration: Math.random() * 1500 + 2500,
-          delay: Math.random() * 600,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-
     // Countdown Timer and auto redirect
     const interval = setInterval(() => {
       setCountdown((prev) => {
@@ -157,7 +181,10 @@ export default function SuccessScreen() {
     }, 1000);
     redirectTimer.current = interval;
 
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleNavigateHome = () => {
@@ -252,7 +279,7 @@ export default function SuccessScreen() {
         {/* Title */}
         <Animated.View style={{ opacity: textOpacity }} className="items-center mb-8">
           <Text className="font-headline-lg text-3xl font-bold text-primary text-center">
-            {description.includes('Settlement') ? 'Payment Recorded!' : 'Expense Added!'}
+            {titleText}
           </Text>
         </Animated.View>
 

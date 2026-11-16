@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, Image, Modal, TextInput, Animated, A
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
+import { AddNumberCard } from '../../components/AddNumberCard';
 import { AVATAR_PRESETS, presetValue, parsePreset } from '../../lib/avatarPresets';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Skeleton } from '../../components/Skeleton';
@@ -25,7 +26,9 @@ import { fetchDeletionPreview, deleteMyAccount, DeletionPreview } from '../../li
 import { clearOfflineCache } from '../../lib/offlineCache';
 import { fetchConnectionRequests } from '../../lib/connections';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
+import { formatINR } from '../../lib/format';
 import * as Device from 'expo-device';
+import { checkAndDownloadUpdate, restartToApplyUpdate, openStoreListing, STORE_LISTING_URL } from '../../lib/appUpdates';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -358,6 +361,36 @@ export default function ProfileScreen() {
     ]).start();
   }, []);
 
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const handleCheckForUpdates = async () => {
+    if (isCheckingUpdate) return;
+    setIsCheckingUpdate(true);
+    try {
+      const result = await checkAndDownloadUpdate();
+      if (result.status === 'ready') {
+        showAlert('Update ready', 'A new version of Kinlo has been downloaded. Restart now to use it.', [
+          { text: 'Later' },
+          { text: 'Restart', onPress: () => { restartToApplyUpdate(); } },
+        ]);
+      } else if (result.status === 'up_to_date') {
+        if (STORE_LISTING_URL) {
+          showAlert('You are up to date', 'This is the latest update for your installed version. Newer versions of the app, when released, come from the store.', [
+            { text: 'OK' },
+            { text: 'Open store', onPress: openStoreListing },
+          ]);
+        } else {
+          showAlert('You are up to date', 'Kinlo is running the latest update.');
+        }
+      } else if (result.status === 'unavailable') {
+        showAlert('Updates unavailable', 'This build of Kinlo does not download updates.');
+      } else {
+        showAlert('Could not check', 'Check your internet connection and try again.');
+      }
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!tempName.trim()) {
       triggerToast('Name cannot be empty.');
@@ -639,6 +672,7 @@ export default function ProfileScreen() {
 
       <ScrollView
         className="flex-1"
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#004c22" />
@@ -717,6 +751,8 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          <AddNumberCard onSaved={(phone) => { setUserPhone(phone); setTempPhone(phone); }} />
+
           {/* Net Settlements Summary Dashboard */}
           <View 
             className="p-6 rounded-3xl"
@@ -755,23 +791,36 @@ export default function ProfileScreen() {
               <>
                 <View className="bg-primary/5 p-5 rounded-2xl border border-primary/10 items-center mb-5">
                   <Text className="font-label-md text-xs text-on-surface-variant font-semibold">Net Shared Balance</Text>
-                  <Text className={`text-3xl font-bold mt-1 ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{netBalance >= 0 ? '+' : '-'}₹{Math.abs(netBalance).toFixed(2)}</Text>
+                  {Math.abs(netBalance) < 0.005 ? (
+                    <>
+                      <Text className="text-3xl font-bold mt-1 text-on-surface-variant">All settled</Text>
 
-                  <View className={`flex-row items-center px-3 py-1 rounded-full gap-1 mt-3 ${netBalance >= 0 ? 'bg-[#DCFCE7]' : 'bg-error/10'}`}>
-                    <MaterialIcons name={netBalance >= 0 ? 'check-circle' : 'warning'} size={14} color={netBalance >= 0 ? '#004c22' : '#b91c1c'} />
-                    <Text className={`font-bold text-[10px] uppercase tracking-wide ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{netBalance >= 0 ? 'You are Net Owed' : 'You Owe Net'}</Text>
-                  </View>
+                      <View className="flex-row items-center px-3 py-1 rounded-full gap-1 mt-3 bg-surface-container">
+                        <MaterialIcons name="check-circle" size={14} color="#404940" />
+                        <Text className="font-bold text-[10px] uppercase tracking-wide text-on-surface-variant">All settled</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text className={`text-3xl font-bold mt-1 ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{formatINR(netBalance, { signed: true })}</Text>
+
+                      <View className={`flex-row items-center px-3 py-1 rounded-full gap-1 mt-3 ${netBalance >= 0 ? 'bg-[#DCFCE7]' : 'bg-error/10'}`}>
+                        <MaterialIcons name={netBalance >= 0 ? 'check-circle' : 'warning'} size={14} color={netBalance >= 0 ? '#004c22' : '#b91c1c'} />
+                        <Text className={`font-bold text-[10px] uppercase tracking-wide ${netBalance >= 0 ? 'text-primary' : 'text-error'}`}>{netBalance >= 0 ? 'You are Net Owed' : 'You Owe Net'}</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
 
                 <View className="flex-row justify-between mb-4 px-2">
                   <View className="items-center">
                     <Text className="text-sm font-semibold text-on-surface-variant">Net Owed to You</Text>
-                    <Text className="text-lg font-bold text-primary mt-0.5">+₹{totalOwed.toFixed(2)}</Text>
+                    <Text className="text-lg font-bold text-primary mt-0.5">{formatINR(totalOwed, { signed: true })}</Text>
                   </View>
                   <View className="w-px h-8 bg-outline-variant/40" />
                   <View className="items-center">
                     <Text className="text-sm font-semibold text-on-surface-variant">Net You Owe</Text>
-                    <Text className="text-lg font-bold text-error mt-0.5">-₹{totalOwe.toFixed(2)}</Text>
+                    <Text className="text-lg font-bold text-error mt-0.5">{formatINR(-totalOwe)}</Text>
                   </View>
                 </View>
               </>
@@ -788,7 +837,11 @@ export default function ProfileScreen() {
             </Text>
 
             <View className="gap-4">
-              {/* Menu Row 1: Payments & Wallets */}
+              {/* Menu Row 1: Payments & Wallets. Every section in its panel is
+                  unbuilt (banks/cards are never loaded, Multi-currency is
+                  Coming soon), so the row is hidden behind SHOW_UNBUILT_SETTINGS.
+                  UPI address stays reachable via Edit Profile. */}
+              {SHOW_UNBUILT_SETTINGS && (
               <AnimatedPressable 
                 onPress={() => setIsPaymentsOpen(true)}
                 activeOpacity={0.8}
@@ -805,6 +858,7 @@ export default function ProfileScreen() {
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
               </AnimatedPressable>
+              )}
 
               {/* Menu Row 2: Security & Privacy */}
               <AnimatedPressable 
@@ -818,7 +872,7 @@ export default function ProfileScreen() {
                   </View>
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Security & Privacy</Text>
-                    <Text className="text-xs text-on-surface-variant">2FA setup, FaceID Lock, Active sessions</Text>
+                    <Text className="text-xs text-on-surface-variant">Two-factor sign-in</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
@@ -836,7 +890,7 @@ export default function ProfileScreen() {
                   </View>
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Data & Export Compliance</Text>
-                    <Text className="text-xs text-on-surface-variant">PDF exporter, Delete Account (GDPR)</Text>
+                    <Text className="text-xs text-on-surface-variant">Delete your account and personal data</Text>
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
@@ -917,7 +971,7 @@ export default function ProfileScreen() {
                   </View>
                   <View>
                     <Text className="font-semibold text-base text-on-surface">Help & Support</Text>
-                    <Text className="text-xs text-on-surface-variant">FAQ sheets, Bug reporter, Health logs</Text>
+                    <Text className="text-xs text-on-surface-variant">Frequently asked questions</Text>
                   </View>
                 </View>
                 <View className="flex-row items-center gap-2">
@@ -1056,7 +1110,7 @@ export default function ProfileScreen() {
               <AnimatedPressable
                 onPress={handleToggleAutoScan}
                 activeOpacity={0.8}
-                className="flex-row items-center justify-between py-3"
+                className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
               >
                 <View className="flex-row items-center gap-4">
                   <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
@@ -1072,6 +1126,33 @@ export default function ProfileScreen() {
                 }`}>
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>
+              </AnimatedPressable>
+
+              {/* Downloads a newer over-the-air update if one exists for this
+                  build. Store builds cannot be installed from here; see
+                  lib/appUpdates.ts. */}
+              <AnimatedPressable
+                onPress={handleCheckForUpdates}
+                disabled={isCheckingUpdate}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3"
+              >
+                <View className="flex-row items-center gap-4">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    {isCheckingUpdate ? (
+                      <ActivityIndicator size="small" color="#004c22" />
+                    ) : (
+                      <MaterialIcons name="system-update" size={20} color="#004c22" />
+                    )}
+                  </View>
+                  <View>
+                    <Text className="font-semibold text-base text-on-surface">Check for updates</Text>
+                    <Text className="text-xs text-on-surface-variant">
+                      {isCheckingUpdate ? 'Checking...' : 'Get the latest fixes and features'}
+                    </Text>
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#707a6f" />
               </AnimatedPressable>
             </View>
           </View>
@@ -1264,7 +1345,7 @@ export default function ProfileScreen() {
                         </View>
                         <View>
                           <Text className="font-semibold text-sm text-on-surface">{b.bankName}</Text>
-                          <Text className="text-[10px] text-on-surface-variant mt-0.5">{b.accountType} • ₹{b.balance.toFixed(2)}</Text>
+                          <Text className="text-[10px] text-on-surface-variant mt-0.5">{b.accountType} • {formatINR(b.balance)}</Text>
                         </View>
                       </View>
                       <View className="items-end">
@@ -1452,6 +1533,9 @@ export default function ProfileScreen() {
               </View>
               )}
 
+              {/* Session list is never loaded (setSessions only filters), so this
+                  card is always the "not wired up" state. Hidden behind SHOW_UNBUILT_SETTINGS. */}
+              {SHOW_UNBUILT_SETTINGS && (
               <View className="p-6 rounded-3xl relative" style={styles.liquidGlass}>
                 <View className="flex-row justify-between items-center mb-4 pb-2 border-b border-outline-variant/30">
                   <View>
@@ -1489,6 +1573,7 @@ export default function ProfileScreen() {
                   <Text className={`text-[10px] ${SOON_TEXT}`}>Coming soon</Text>
                 </View>
               </View>
+              )}
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -1514,6 +1599,9 @@ export default function ProfileScreen() {
 
           <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
             <View className="max-w-xl mx-auto w-full gap-6">
+              {/* Export button is disabled and the panel says Coming soon.
+                  Hidden behind SHOW_UNBUILT_SETTINGS; the erasure card below stays live. */}
+              {SHOW_UNBUILT_SETTINGS && (
               <View className="p-6 rounded-3xl gap-6" style={styles.liquidGlass}>
                 <View>
                   <View className="flex-row items-center justify-between">
@@ -1567,6 +1655,7 @@ export default function ProfileScreen() {
                   <Text className="text-white font-bold text-sm">Export Statement</Text>
                 </AnimatedPressable>
               </View>
+              )}
 
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <Text className="font-headline text-base font-bold text-on-surface">Data Erasure Right (GDPR/CCPA)</Text>
@@ -1621,6 +1710,9 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
+              {/* Submit is disabled and the panel says Coming soon.
+                  Hidden behind SHOW_UNBUILT_SETTINGS; the FAQ card above stays live. */}
+              {SHOW_UNBUILT_SETTINGS && (
               <View className="p-6 rounded-3xl gap-4" style={styles.liquidGlass}>
                 <View>
                   <View className="flex-row items-center justify-between">
@@ -1643,6 +1735,7 @@ export default function ProfileScreen() {
                 </View>
                 <AnimatedPressable disabled className="w-full h-12 bg-primary rounded-2xl flex-row items-center justify-center gap-2" style={{ opacity: 0.4 }}><MaterialIcons name="send" size={16} color="white" /><Text className="text-white font-bold text-xs uppercase tracking-wide">Submit Bug Diagnostics</Text></AnimatedPressable>
               </View>
+              )}
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -1695,8 +1788,8 @@ export default function ProfileScreen() {
                       You still have money outstanding
                     </Text>
                     <Text className="text-xs text-on-surface-variant leading-relaxed mt-1">
-                      {deletionPreview.youOwe > 0 && `You owe ₹${deletionPreview.youOwe.toFixed(2)}. `}
-                      {deletionPreview.owedToYou > 0 && `₹${deletionPreview.owedToYou.toFixed(2)} is owed to you. `}
+                      {deletionPreview.youOwe > 0 && `You owe ${formatINR(deletionPreview.youOwe)}. `}
+                      {deletionPreview.owedToYou > 0 && `${formatINR(deletionPreview.owedToYou)} is owed to you. `}
                       Deleting will not cancel it — you just won&apos;t be able to see or settle it here.
                     </Text>
                   </View>

@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
+import { formatINR } from '../lib/format';
 
 /**
  * Confirmation after recording a payment.
@@ -22,6 +23,12 @@ export default function SettleSuccessScreen() {
   const friendName = (params.friendName as string) || 'your friend';
   const youPaid = (params.youPaid as string) === 'true';
   const remaining = parseFloat((params.remaining as string) || '0');
+  // Optional. Total still open with this friend across every scope (direct +
+  // circles). Absent (NaN) means "unknown" and the screen behaves as it always
+  // did, judging only the scope that was just settled.
+  const overallRemaining = params.overallRemaining != null
+    ? parseFloat(params.overallRemaining as string)
+    : NaN;
   const groupId = (params.groupId as string) || '';
   const friendId = (params.friendId as string) || '';
 
@@ -59,7 +66,11 @@ export default function SettleSuccessScreen() {
   };
 
   const firstName = friendName.split(' ')[0];
-  const isCleared = remaining <= 0.005;
+  const scopeCleared = remaining <= 0.005;
+  // This scope is clear but the friend still has an open balance elsewhere:
+  // say so rather than claiming the two of you are square.
+  const othersOpen = scopeCleared && Number.isFinite(overallRemaining) && overallRemaining > 0.005;
+  const isCleared = scopeCleared && !othersOpen;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
@@ -103,8 +114,8 @@ export default function SettleSuccessScreen() {
 
           <Text className="text-base text-on-surface-variant text-center mt-2 leading-relaxed">
             {youPaid
-              ? `You paid ${firstName} ₹${amount.toFixed(2)}.`
-              : `${firstName} paid you ₹${amount.toFixed(2)}.`}
+              ? `You paid ${firstName} ${formatINR(amount)}.`
+              : `${firstName} paid you ${formatINR(amount)}.`}
           </Text>
 
           {/* Where things stand now */}
@@ -117,10 +128,21 @@ export default function SettleSuccessScreen() {
             }}
           >
             <Text className="font-label-sm text-xs uppercase tracking-wider text-on-surface-variant font-bold text-center">
-              {isCleared ? 'You are all square' : `Still outstanding with ${firstName}`}
+              {othersOpen
+                ? 'This balance is cleared'
+                : isCleared ? 'You are all square' : `Still outstanding with ${firstName}`}
             </Text>
 
-            {isCleared ? (
+            {othersOpen ? (
+              <>
+                <Text className="font-display-lg text-3xl font-bold text-center mt-1" style={{ color: '#004c22' }}>
+                  {formatINR(overallRemaining)}
+                </Text>
+                <Text className="text-base text-on-surface-variant text-center mt-2 leading-relaxed">
+                  {`still open with ${firstName}`}
+                </Text>
+              </>
+            ) : isCleared ? (
               <View className="flex-row items-center justify-center mt-2">
                 <MaterialIcons name="done-all" size={20} color="#1f6c3a" />
                 <Text className="font-headline-md text-lg font-bold" style={{ color: '#1f6c3a', marginLeft: 8 }}>
@@ -129,7 +151,7 @@ export default function SettleSuccessScreen() {
               </View>
             ) : (
               <Text className="font-display-lg text-3xl font-bold text-center mt-1" style={{ color: '#004c22' }}>
-                ₹{remaining.toFixed(2)}
+                {formatINR(remaining)}
               </Text>
             )}
           </View>

@@ -199,6 +199,43 @@ export function groupBalanceMap(rows: LedgerRow[], userId: string): Record<strin
   return map;
 }
 
+/**
+ * Per group: what the user really has left to pay or receive there, once
+ * balances with the same people OUTSIDE the group are taken into account.
+ *
+ * groupBalanceMap answers "what does this circle's ledger say", which can be
+ * more than the user owes that person overall (they may be owed money by the
+ * same person elsewhere), and paying the circle figure would then overpay.
+ * Here each counterparty's circle amount is capped at the overall amount with
+ * them when both point the same way. When the overall balance is settled or
+ * points the other way the circle amount is kept as is, so a circle with open
+ * ledger rows is never shown as settled. Display only: settlements still clear
+ * one scope at a time. The circle screen's rows apply the same rule (payView).
+ */
+export function groupOverallAdjustedMap(rows: LedgerRow[], userId: string): Record<string, number> {
+  const overall: Record<string, number> = {};
+  const groupIds = new Set<string>();
+  for (const r of rows) {
+    if (r.group_id) groupIds.add(r.group_id);
+    if (r.creditor_id === userId) overall[r.debtor_id] = (overall[r.debtor_id] || 0) + r.amount;
+    else if (r.debtor_id === userId) overall[r.creditor_id] = (overall[r.creditor_id] || 0) - r.amount;
+  }
+  const map: Record<string, number> = {};
+  for (const gid of groupIds) {
+    const scope = balanceMapForScope(rows, userId, gid);
+    let sum = 0;
+    for (const otherId of Object.keys(scope)) {
+      const circle = scope[otherId];
+      const all = overall[otherId] || 0;
+      const sameDirection = Math.abs(all) >= 1 && (all > 0) === (circle > 0);
+      if (Math.abs(all - circle) >= 1 && sameDirection && Math.abs(all) < Math.abs(circle)) sum += all;
+      else sum += circle;
+    }
+    map[gid] = sum;
+  }
+  return map;
+}
+
 /** "+₹250" / "-₹180" / "Settled" — the compact form used on cards and strips. */
 export function formatBalanceLabel(balance: number): string {
   if (balance > 0.005) return `+₹${balance.toFixed(0)}`;
