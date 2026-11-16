@@ -516,6 +516,29 @@ export default function GroupDetailScreen() {
       : `Overall you owe ${first} ${formatINR(Math.abs(overall))}`;
   };
 
+  // What to show as the amount on a viewer row, so nobody pays the circle
+  // figure when they owe that person less overall (the rest is offset by what
+  // is owed the other way outside this circle). circleSigned as above.
+  //  - overall smaller, same direction: show the overall amount, circle amount
+  //    as a caption, and prefill settle-up with the overall amount.
+  //  - overall larger, same direction: circle amount stays (only this much can
+  //    be settled here), overall as a caption.
+  //  - otherwise (unknown, equal, settled or opposite): circle amount only.
+  const payView = (otherId: string, circleSigned: number): { amount: number; caption: string | null; suggested: number } => {
+    const circleAmt = Math.abs(circleSigned);
+    const plain = { amount: circleAmt, caption: null, suggested: circleAmt };
+    if (!overallMap) return plain;
+    const overall = overallMap[otherId] ?? 0;
+    if (Math.abs(overall - circleSigned) < 1) return plain;
+    const sameDirection = Math.abs(overall) >= 1 && (overall > 0) === (circleSigned > 0);
+    if (!sameDirection) return plain;
+    const overallAmt = Math.abs(overall);
+    if (overallAmt < circleAmt) {
+      return { amount: overallAmt, caption: `${formatINR(circleAmt)} in this circle`, suggested: overallAmt };
+    }
+    return { amount: circleAmt, caption: `${formatINR(overallAmt)} overall`, suggested: circleAmt };
+  };
+
   const { showToast: triggerToast } = useToast();
   const { showAlert } = useAlert();
 
@@ -1113,6 +1136,7 @@ export default function GroupDetailScreen() {
                           friendId: isYouPaying ? s.toId : s.fromId,
                           friendName: otherName,
                           balance: s.amount.toFixed(2),
+                          suggested: payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount).suggested.toFixed(2),
                           status: isYouPaying ? 'owes' : 'owed',
                           groupId: groupId,
                           groupName: group.title
@@ -1144,9 +1168,19 @@ export default function GroupDetailScreen() {
                         })()}
                       </View>
                     </View>
-                    <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
-                      {formatINR(s.amount)}
-                    </Text>
+                    {(() => {
+                      const pv = payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount);
+                      return (
+                        <View className="items-end">
+                          <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
+                            {formatINR(pv.amount)}
+                          </Text>
+                          {pv.caption ? (
+                            <Text style={tabularNums} className="text-xs text-on-surface-variant">{pv.caption}</Text>
+                          ) : null}
+                        </View>
+                      );
+                    })()}
                   </AnimatedPressable>
                 );
               })}
@@ -1650,6 +1684,7 @@ export default function GroupDetailScreen() {
                             friendId: isYouPaying ? s.toId : s.fromId,
                             friendName: isYouPaying ? s.toName : s.fromName,
                             balance: s.amount.toFixed(2),
+                            suggested: payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount).suggested.toFixed(2),
                             status: isYouPaying ? 'owes' : 'owed',
                             groupId: groupId,
                             groupName: group.title
@@ -1684,9 +1719,19 @@ export default function GroupDetailScreen() {
                           })()}
                         </View>
                       </View>
-                      <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
-                        {formatINR(s.amount)}
-                      </Text>
+                      {(() => {
+                        const pv = payView(isYouPaying ? s.toId : s.fromId, isYouPaying ? -s.amount : s.amount);
+                        return (
+                          <View className="items-end">
+                            <Text style={tabularNums} className={`font-bold text-lg ${isYouPaying ? 'text-error' : 'text-primary'}`}>
+                              {formatINR(pv.amount)}
+                            </Text>
+                            {pv.caption ? (
+                              <Text style={tabularNums} className="text-xs text-on-surface-variant">{pv.caption}</Text>
+                            ) : null}
+                          </View>
+                        );
+                      })()}
                     </AnimatedPressable>
                     </AnimatedListItem>
                   );

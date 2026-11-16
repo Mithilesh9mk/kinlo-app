@@ -54,7 +54,15 @@ export default function SettleUpScreen() {
   // once the chosen friend's scope has been resolved.
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(groupId);
 
-  const [amount, setAmount] = useState(initialBalance);
+  // Optional smaller starting amount (never above the scope's balance). The
+  // circle screen passes what is owed to this person overall when that is
+  // less than the circle's figure, so the default does not overpay.
+  const suggestedParam = parseFloat((params.suggested as string) || '');
+  const initialAmount =
+    Number.isFinite(suggestedParam) && suggestedParam > 0 && suggestedParam < initialBalance
+      ? suggestedParam
+      : initialBalance;
+  const [amount, setAmount] = useState(initialAmount);
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>(METHODS[0]);
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,7 +79,7 @@ export default function SettleUpScreen() {
 
   // Edit overlay state
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [tempAmount, setTempAmount] = useState(initialBalance.toString());
+  const [tempAmount, setTempAmount] = useState(initialAmount.toString());
 
   const handleSaveAmount = () => {
     const val = parseFloat(tempAmount);
