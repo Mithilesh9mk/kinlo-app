@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://kinlo.app/privacy">
+<meta property="og:url" content="https://kinlo.app/privacy">
 <title>Kinlo privacy policy</title>
-<meta name="description" content="What Kinlo collects, who handles it, and how to ask for deletion. Effective 31 October 2026.">
+<meta name="description" content="What Kinlo collects, who handles it, and how to ask for deletion. Draft, effective 18 November 2026.">
 <link rel="icon" href="../assets/img/favicon.png" type="image/png">
 <link rel="stylesheet" href="../assets/css/site.css">
 <script src="../assets/js/boot.js"></script>
@@ -25,133 +27,124 @@
       <details data-toc>
         <summary>On this page</summary>
         <ol>
-          <li><a href="#who">Who we are</a></li>
-          <li><a href="#collect">What Kinlo collects</a></li>
-          <li><a href="#scan">Scanning a payment screenshot</a></li>
-          <li><a href="#contacts">Your contacts</a></li>
-          <li><a href="#see">Who can see your data</a></li>
-          <li><a href="#providers">Who handles data for us</a></li>
-          <li><a href="#never">What Kinlo does not do</a></li>
-          <li><a href="#keep">How long we keep data</a></li>
-          <li><a href="#rights">Your rights</a></li>
-          <li><a href="#security">Security</a></li>
+          <li><a href="#in-short">In short</a></li>
+          <li><a href="#who-runs-kinlo">Who runs Kinlo</a></li>
+          <li><a href="#what-we-collect">What we collect</a></li>
+          <li><a href="#why-we-use-it">Why we use it</a></li>
+          <li><a href="#your-contacts">Your contacts</a></li>
+          <li><a href="#receipt-and-payment-screenshots">Receipt and payment screenshots</a></li>
+          <li><a href="#reminders-and-notifications">Reminders and notifications</a></li>
+          <li><a href="#kinlo-gold-and-coupons">Kinlo Gold and coupons</a></li>
+          <li><a href="#who-can-see-your-data">Who can see your data</a></li>
+          <li><a href="#who-processes-data-for-us">Who processes data for us</a></li>
+          <li><a href="#where-your-data-is-stored">Where your data is stored</a></li>
+          <li><a href="#how-long-we-keep-data">How long we keep data</a></li>
+          <li><a href="#deleting-your-account">Deleting your account</a></li>
+          <li><a href="#your-rights">Your rights</a></li>
+          <li><a href="#keeping-data-safe">Keeping data safe</a></li>
           <li><a href="#children">Children</a></li>
+          <li><a href="#contact-and-complaints">Contact and complaints</a></li>
           <li><a href="#changes">Changes</a></li>
-          <li><a href="#contact">Contact and grievances</a></li>
         </ol>
       </details>
     </nav>
     <article class="prose">
 
       <h1>Privacy policy</h1>
-      <p class="when">Version 1.0 &middot; Effective <time datetime="2026-10-31">31 October 2026</time></p>
+      <p class="when">Draft &middot; Effective <time datetime="2026-11-18">18 November 2026</time> &middot; Last updated 18 November 2026</p>
 
-      <div class="summary">
-        <p>The short version</p>
-        <ul>
-          <li>Your expenses, balances and friends are stored in a Supabase database. Only the people in a shared expense can see it.</li>
-          <li>Kinlo has no ads, does not sell data, and the app has no analytics or crash-reporting tools.</li>
-          <li>A payment screenshot you scan is sent to an AI service (Anthropic, or Google as a backup) to be read.</li>
-          <li>Your contacts are used only when you pick a friend or turn on contact sync.</li>
-        </ul>
-      </div>
+      <h2 id="in-short">In short</h2>
+      <p>Kinlo helps you split shared expenses and keep track of who owes whom. We never move money. When you settle up, Kinlo opens your own UPI app with the details filled in.</p>
+      <p>Kinlo is a free Android preview build, distributed from GitHub. It is not on the Play Store.</p>
+      <p>We collect what is needed to run the app. We tell you before anything leaves your phone. We do not sell your data and we do not show ads.</p>
+      <p>This policy is effective from 18 November 2026. It is a draft until the owner signs it off.</p>
 
-      <h2 id="who">Who we are</h2>
-      <p>Kinlo is made and run by Mithilesh Kale, an individual developer in India. In this policy, &ldquo;we&rdquo; means him. The email address at the foot of this page reaches us for anything here, including privacy requests.</p>
+      <h2 id="who-runs-kinlo">Who runs Kinlo</h2>
+      <p>Mithilesh Kale, an individual in Pune, India, runs Kinlo under the brand name Tummy Time Studio. Tummy Time Studio is not a registered company.</p>
 
-      <h2 id="collect">What Kinlo collects</h2>
-      <table class="data">
-        <thead><tr><th scope="col">Data</th><th scope="col">What it is</th><th scope="col">Why</th></tr></thead>
-        <tbody>
-          <tr><td>Sign-in</td><td data-label="What">Your email address, and a password or Google sign-in.</td><td data-label="Why">To create and secure your account. Supabase Authentication handles the password. With Google sign-in, Google shares your email and basic profile with it.</td></tr>
-          <tr><td>Profile</td><td data-label="What">Your name, an optional phone number, an avatar you pick and an optional UPI ID.</td><td data-label="Why">To show you to friends and to pre-fill a payment in your UPI app.</td></tr>
-          <tr><td>Expenses and balances</td><td data-label="What">Amounts, descriptions, categories, dates, who paid, each person&rsquo;s share, circles, settlements, repeating expenses and an activity log.</td><td data-label="Why">To work out who owes whom and show it to the people involved.</td></tr>
-          <tr><td>People you add</td><td data-label="What">The name, and phone number if you enter it, of someone who has not joined Kinlo.</td><td data-label="Why">So you can record expenses with them before they install.</td></tr>
-          <tr><td>Personal spending and reminders</td><td data-label="What">Entries and reminders you keep for yourself.</td><td data-label="Why">For your own tracking. Only you can see them.</td></tr>
-          <tr><td>Payment screenshots</td><td data-label="What">The image you scan, and the amount, merchant, date and category found.</td><td data-label="Why">See &ldquo;Scanning a payment screenshot&rdquo; below.</td></tr>
-          <tr><td>Notification token</td><td data-label="What">A push token from Expo, if you allow notifications.</td><td data-label="Why">To deliver notifications to your phone.</td></tr>
-          <tr><td>Install ID</td><td data-label="What">A random ID the app creates for your install. It is not a hardware ID.</td><td data-label="Why">To stop free scan and coupon limits being bypassed with extra accounts.</td></tr>
-          <tr><td>Plan and usage</td><td data-label="What">Free or Gold, any coupon you redeemed, and counts and records of scans, lookups and reminders. Rate-limit counters are short-lived. Scan and reminder records are kept until you delete your account.</td><td data-label="Why">To apply limits and keep the service from being abused.</td></tr>
-        </tbody>
-      </table>
-      <p>If the app hits a fatal error, a note about it is saved on your phone only. It is not sent to us.</p>
-      <p>Unsaved scan drafts and cached data are kept on your phone. A draft is removed when you save or discard it, and cached data is cleared when you sign out.</p>
+      <h2 id="what-we-collect">What we collect</h2>
+      <p>Your email address and a password, or your Google account, used to sign in</p>
+      <p>Your name, an optional phone number, an optional profile avatar and your base currency</p>
+      <p>Expense amounts, descriptions, categories and dates you enter</p>
+      <p>Who you split expenses with, and the balances that result</p>
+      <p>UPI IDs you save, used to pre-fill a payment in your UPI app</p>
+      <p>Phone numbers from your contacts, only if you turn on contact sync. They are sent to Kinlo servers to find matches</p>
+      <p>Payment screenshots and receipt photos you choose to scan. They are stored in your private area and sent to AI services (Anthropic Claude or Google Gemini) to read the amount, merchant and date</p>
+      <p>Personal expenses and reminders you log privately, which are never shared with anyone</p>
+      <p>A device token used to deliver push notifications, if you allow them</p>
+      <p>A random identifier for your app install (not your hardware ID), used only to limit abuse of free-plan limits</p>
+      <p>Your plan (Free or Gold) and any coupon you redeem</p>
+      <p>Kinlo has no analytics, advertising or crash-reporting SDK. If the app crashes, a short error note is saved on your phone only. It is not sent to us.</p>
+      <p>Our backend and service providers keep ordinary server logs, such as request errors. [TO CONFIRM: how long these logs are kept.]</p>
 
-      <h2 id="scan">Scanning a payment screenshot</h2>
-      <p>Scanning is optional. When you scan, the image is uploaded to a private storage area that only your account can read, and the image is sent to an AI service to read it.</p>
-      <ul>
-        <li>The AI service gets the image and a fixed instruction that includes today&rsquo;s date. It does not get your name, email or account ID.</li>
-        <li>Kinlo asks Anthropic&rsquo;s Claude first. If that fails or looks unsure, it may ask Google&rsquo;s Gemini, then a larger Claude model.</li>
-        <li>What comes back (amount, merchant, date and category) is saved on your personal entry. The text on the image is read to find these and is not kept. Check it before you save.</li>
-        <li>We do not keep the AI conversation. Our server logs note which AI service was called, the status it returned, the type of any error and how long the call took. They do not include the provider&rsquo;s reply, your image or the details read from it.</li>
-        <li>Each AI company handles the images it receives under its own terms, and we do not control how long it keeps them. Do not scan screenshots that show card numbers or anything you do not want processed.</li>
-        <li>In this preview, removing an entry does not remove its image, and the image from a scan you did not save also stays. Deleting your account removes them.</li>
-        <li>The free plan allows 3 scans a month per account, and 6 a month in total across all accounts used on one app install. Gold allows 125.</li>
-      </ul>
+      <h2 id="why-we-use-it">Why we use it</h2>
+      <p>To run the app: sign you in, calculate balances, show shared expenses to the people in them, keep your plan, and send notifications you have allowed.</p>
+      <p>To keep it safe: limit abuse. We rate-limit sign-in, coupon, phone-lookup, receipt-scan, delete-account and notification requests. The monthly receipt-scan allowance is also counted per app install, so extra accounts on one phone do not reset it.</p>
+      <p>Optional features run only if you choose them: contact sync, push notifications, receipt scanning and two-factor authentication. You can turn each one off.</p>
+      <p>To meet legal duties, for example a deletion request.</p>
 
-      <h2 id="contacts">Your contacts</h2>
-      <ul>
-        <li>When you add a friend, your phone&rsquo;s own contact picker opens. You choose one person, and only that person&rsquo;s name and number are used.</li>
-        <li>Contact sync is off until you turn it on. If you do, phone numbers from your contacts (the last ten digits) are sent to our server and checked against Kinlo accounts. Names stay on your phone. The numbers are used to look for matches and are not stored. Kinlo does remember which accounts matched, so that you can add them as friends.</li>
-        <li>You can turn contact sync off in Profile.</li>
-        <li>If someone has your number in their contacts and uses contact sync, or types your number to add you, they can see that you use Kinlo, with your name and phone number, and your avatar if they find you through contact sync.</li>
-      </ul>
+      <h2 id="your-contacts">Your contacts</h2>
+      <p>When you add a friend, Kinlo opens your phone&rsquo;s own contact picker. You choose one person, and only that person&rsquo;s name and number are used.</p>
+      <p>Contact sync is separate and off unless you turn it on. If you turn it on, Kinlo sends the phone numbers from your contacts to our servers to check which of them already use Kinlo. The numbers are used for that check. They are not saved as profiles.</p>
+      <p>You can turn contact sync off at any time in your Profile.</p>
 
-      <h2 id="see">Who can see your data</h2>
-      <ul>
-        <li>People in a shared expense or circle see that expense, its amount, the balance between you, and your name and avatar. They can also see the phone number and UPI ID on your profile, if you added them. That is the point of the app.</li>
-        <li>Kinlo sends notifications to other people about things you do: a payment reminder, a new, changed or deleted shared expense, a recorded payment, a request to delete an expense, a connection request, or a number you added that joins. They can include your name, the expense description and the amount. Kinlo cannot confirm that a notification arrived.</li>
-        <li>Your personal spending entries and reminders are visible only to you.</li>
-        <li>As the person who runs Kinlo, we can technically reach the database to fix problems. We do not browse it for any other reason.</li>
-      </ul>
+      <h2 id="receipt-and-payment-screenshots">Receipt and payment screenshots</h2>
+      <p>If you scan a payment screenshot or receipt photo, the image is uploaded to your private area of our storage. Our server then sends it to an AI vision service (Anthropic Claude or Google Gemini) to read the amount, merchant and date.</p>
+      <p>Only you can open the stored image. It is deleted when you delete your account.</p>
+      <p>Do not scan images that show information you do not want processed, such as full card numbers.</p>
 
-      <h2 id="providers">Who handles data for us</h2>
-      <table class="data">
-        <thead><tr><th scope="col">Provider</th><th scope="col">For what</th><th scope="col">What it receives</th></tr></thead>
-        <tbody>
-          <tr><td>Supabase</td><td data-label="For">Database, sign-in, file storage and server functions.</td><td data-label="Receives">Everything you store in Kinlo.</td></tr>
-          <tr><td>Anthropic</td><td data-label="For">Reading payment screenshots.</td><td data-label="Receives">The image you scan.</td></tr>
-          <tr><td>Google (Gemini)</td><td data-label="For">Backup reader for screenshots.</td><td data-label="Receives">The image, only if the first reader fails or looks unsure.</td></tr>
-          <tr><td>Google (sign-in)</td><td data-label="For">Only if you choose Google sign-in.</td><td data-label="Receives">Your sign-in details.</td></tr>
-          <tr><td>Expo</td><td data-label="For">Notifications and app updates.</td><td data-label="Receives">Your notification token and the message, and update requests from your phone.</td></tr>
-          <tr><td>GitHub</td><td data-label="For">Hosts the preview APK download.</td><td data-label="Receives">Its usual visitor logs, under GitHub&rsquo;s own policy.</td></tr>
-        </tbody>
-      </table>
-      <p>These providers may process data on servers outside India, and Supabase, Expo and GitHub keep their own server logs, which can include IP addresses, under their own policies. We may also share data if the law or a valid legal order requires it.</p>
+      <h2 id="reminders-and-notifications">Reminders and notifications</h2>
+      <p>Reminders you create (title, optional amount, date) are stored in your account and are visible only to you.</p>
+      <p>Push notifications use a device token, sent through Expo&rsquo;s push service. You can turn notifications off in your phone&rsquo;s settings at any time.</p>
 
-      <h2 id="never">What Kinlo does not do</h2>
-      <ul>
-        <li>It shows no ads.</li>
-        <li>It does not sell or rent your data.</li>
-        <li>The app includes no third-party analytics or crash-reporting tools.</li>
-        <li>It does not move money. Settling up opens your own UPI app.</li>
-      </ul>
+      <h2 id="kinlo-gold-and-coupons">Kinlo Gold and coupons</h2>
+      <p>Kinlo has a Free plan and a Gold plan. Today Gold comes from a coupon code or is granted by the owner. Kinlo does not take payments and does not see or store any card or bank details.</p>
+      <p>We store which plan you are on, when Gold ends, and any coupon you redeemed.</p>
+      <p>Kinlo never moves money between people. Settling up happens in your own UPI app.</p>
 
-      <h2 id="keep">How long we keep data</h2>
-      <p>We keep your data while your account exists. When you delete it, your private data is erased, and expenses shared with other people stay with your identity removed. The full list is on the <a href="/delete-account">delete account page</a>. Supabase may keep backups for a while, and we do not control exactly how long.</p>
+      <h2 id="who-can-see-your-data">Who can see your data</h2>
+      <p>People you share an expense or a group with can see that expense, its amount, and the balance between you. They can also see your name and avatar.</p>
+      <p>Personal expenses and reminders you log on your own are visible only to you.</p>
+      <p>We do not sell or rent your data. We do not use it for advertising.</p>
 
-      <h2 id="rights">Your rights</h2>
-      <p>Under India&rsquo;s Digital Personal Data Protection Act, 2023, you can ask to see a summary of your data, correct it, erase it, withdraw consent, nominate someone to act for you, and have a grievance answered. If we do not resolve a grievance, you may complain to the Data Protection Board of India. If you live elsewhere, local law may give you similar rights.</p>
-      <p>You can edit your profile and delete your account in the app. For anything else, email us. We will reply as soon as we can, and within the time the law sets. We may need to confirm it is you first.</p>
+      <h2 id="who-processes-data-for-us">Who processes data for us</h2>
+      <p>Supabase: database, sign-in and file storage.</p>
+      <p>Google: sign-in with Google, if you choose it, and receipt reading through Gemini.</p>
+      <p>Anthropic: receipt reading through Claude.</p>
+      <p>Expo: app updates and push notifications.</p>
+      <p>These providers act on our instructions and only for these purposes. We may disclose data if the law or a valid legal order requires it.</p>
 
-      <h2 id="security">Security</h2>
-      <ul>
-        <li>Data travels over encrypted connections.</li>
-        <li>Every database table has row-level security, so an account can read only the rows it is part of.</li>
-        <li>AI and service keys are kept on the server, not in the app.</li>
-        <li>Scans, lookups and reminders are rate limited.</li>
-        <li>You can turn on two-factor sign-in with an authenticator app in Profile.</li>
-      </ul>
-      <p>No system is perfectly secure. If a breach affects your data, we will tell you and the authorities as the law requires.</p>
+      <h2 id="where-your-data-is-stored">Where your data is stored</h2>
+      <p>[TO CONFIRM: the region of the Supabase project.] Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.</p>
+
+      <h2 id="how-long-we-keep-data">How long we keep data</h2>
+      <p>We keep your data while your account is active.</p>
+      <p>When you delete your account we erase: your personal expenses, expense drafts, reminders, repeating expenses, friendships, push token, name, phone number, avatar and UPI ID, your scanned images, and your login. People you added who never joined are also removed, if they have no shared expenses.</p>
+      <p>Shared expenses are also other people&rsquo;s financial records. They are kept but stripped of your identity. They show a participant called &ldquo;Deleted user&rdquo;, so other people&rsquo;s balances and history are not rewritten.</p>
+      <p>[TO CONFIRM: how long database backups keep deleted data.]</p>
+
+      <h2 id="deleting-your-account">Deleting your account</h2>
+      <p>Delete your account in the app from Profile &rarr; Data &amp; Export Compliance. The app shows what will be erased and what will remain before you confirm. Outstanding balances do not block deletion.</p>
+      <p>Deletion takes effect when you confirm. If it fails part-way, the app tells you.</p>
+      <p>You can also ask us to delete your data by writing to <a href="mailto:privacy@kinlo.app">privacy@kinlo.app</a>. [TO CONFIRM: how quickly we reply. Suggested: within 30 days.]</p>
+
+      <h2 id="your-rights">Your rights</h2>
+      <p>You can ask for a copy of your data, ask us to correct it, ask us to delete your account and data, and withdraw consent for optional features. Use the in-app options or write to us.</p>
+      <p>The law where you live may give you more rights, for example under India&rsquo;s Digital Personal Data Protection Act, 2023, or the GDPR in the EU and UK. We will respect the rights the law gives you.</p>
+      <p>To exercise a right, email <a href="mailto:privacy@kinlo.app">privacy@kinlo.app</a>. We may need to confirm it is you first.</p>
+
+      <h2 id="keeping-data-safe">Keeping data safe</h2>
+      <p>Data is encrypted in transit. Access rules in the database let you read only the rows you are part of. You can turn on two-factor authentication in your Profile.</p>
+      <p>No system is perfectly secure. If a breach affects your data, we will tell you as the law requires.</p>
 
       <h2 id="children">Children</h2>
-      <p>Kinlo is for people aged 18 and over, and creating an account confirms that you are. We do not knowingly collect data from anyone younger. If you think a child has an account, email us and we will remove it.</p>
+      <p>[TO CONFIRM: minimum age.] Kinlo does not check age when you sign up. We do not knowingly collect data from children. If you believe a child has given us data, contact us and we will remove it.</p>
+
+      <h2 id="contact-and-complaints">Contact and complaints</h2>
+      <p>For a question, request or complaint about your data, email <a href="mailto:privacy@kinlo.app">privacy@kinlo.app</a>. [TO CONFIRM: the named Grievance Officer, if the owner decides one is needed.]</p>
 
       <h2 id="changes">Changes</h2>
-      <p>If we change this policy in a way that matters, we will change the date at the top and the version, and try to tell you in the app first.</p>
-
-      <h2 id="contact">Contact and grievances</h2>
-      <p>For questions, requests or complaints, use the email address at the foot of this page. The grievance contact is Mithilesh Kale.</p>
+      <p>This policy was last updated on 18 November 2026. If we change it in a way that matters, we will tell you in the app first.</p>
 
     </article>
   </div>
@@ -168,9 +161,8 @@
       </ul>
     </div>
     <div class="foot__legal">
-      <p>Built by Mithilesh Kale. Android only for now.</p>
-      <!-- TODO: replace when domain arrives -->
-      <p>Contact: <a href="mailto:hello@example.com">hello@example.com</a></p>
+      <p>Mithilesh Kale, Pune, operating as Tummy Time Studio. Tummy Time Studio is not a registered company. Android only for now.</p>
+      <p>Contact: <a href="mailto:privacy@kinlo.app">privacy@kinlo.app</a></p>
       <p>The code is MIT licensed. The Kinlo name, logo and screenshots are not.</p>
     </div>
   </div>
