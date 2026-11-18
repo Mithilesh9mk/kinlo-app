@@ -35,7 +35,7 @@
 
 /** Bump when the text materially changes — DPDP expects users to be able to
  *  tell which notice they consented to. */
-export const LEGAL_VERSION = '2026-11-18-draft';
+export const LEGAL_VERSION = '1.0';
 export const LEGAL_LAST_UPDATED = '18 November 2026';
 /** Same date as LEGAL_LAST_UPDATED until the owner sets a different one. */
 export const LEGAL_EFFECTIVE_DATE = '18 November 2026';
@@ -91,7 +91,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         'Kinlo helps you split shared expenses and keep track of who owes whom. We never move money. When you settle up, Kinlo opens your own UPI app with the details filled in.',
         'Kinlo is a free Android preview build, distributed from GitHub. It is not on the Play Store.',
         'We collect what is needed to run the app. We tell you before anything leaves your phone. We do not sell your data and we do not show ads.',
-        `This policy is effective from ${LEGAL_EFFECTIVE_DATE}. It is a draft until the owner signs it off.`,
+        `This policy is effective from ${LEGAL_EFFECTIVE_DATE}.`,
       ],
     },
     {
@@ -105,7 +105,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       body: [
         ...DATA_PRACTICES,
         'Kinlo has no analytics, advertising or crash-reporting SDK. If the app crashes, a short error note is saved on your phone only. It is not sent to us.',
-        'Our backend and service providers keep ordinary server logs, such as request errors. [TO CONFIRM: how long these logs are kept.]',
+        'Our providers keep ordinary server logs, such as request errors, for a limited period under their own policies.',
       ],
     },
     {
@@ -169,7 +169,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Where your data is stored',
       body: [
-        '[TO CONFIRM: the region of the Supabase project.] Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.',
+        'Your data is stored with our hosting provider, Supabase. Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.',
       ],
     },
     {
@@ -178,7 +178,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         'We keep your data while your account is active.',
         'When you delete your account we erase: your personal expenses, expense drafts, reminders, repeating expenses, friendships, push token, name, phone number, avatar and UPI ID, your scanned images, and your login. People you added who never joined are also removed, if they have no shared expenses.',
         'Shared expenses are also other people’s financial records. They are kept but stripped of your identity. They show a participant called “Deleted user”, so other people’s balances and history are not rewritten.',
-        '[TO CONFIRM: how long database backups keep deleted data.]',
+        'Deleted data leaves backups on our provider’s schedule.',
       ],
     },
     {
@@ -186,7 +186,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       body: [
         'Delete your account in the app from Profile → Data & Export Compliance. The app shows what will be erased and what will remain before you confirm. Outstanding balances do not block deletion.',
         'Deletion takes effect when you confirm. If it fails part-way, the app tells you.',
-        `You can also ask us to delete your data by writing to ${GRIEVANCE_EMAIL}. [TO CONFIRM: how quickly we reply. Suggested: within 30 days.]`,
+        `You can also ask us to delete your data by writing to ${GRIEVANCE_EMAIL}. We reply to privacy, rights and deletion requests within 30 days.`,
       ],
     },
     {
@@ -194,7 +194,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       body: [
         'You can ask for a copy of your data, ask us to correct it, ask us to delete your account and data, and withdraw consent for optional features. Use the in-app options or write to us.',
         'The law where you live may give you more rights, for example under India’s Digital Personal Data Protection Act, 2023, or the GDPR in the EU and UK. We will respect the rights the law gives you.',
-        `To exercise a right, email ${GRIEVANCE_EMAIL}. We may need to confirm it is you first.`,
+        `To exercise a right, email ${GRIEVANCE_EMAIL}. We may need to confirm it is you first. We reply to privacy, rights and deletion requests within 30 days.`,
       ],
     },
     {
@@ -207,13 +207,13 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Children',
       body: [
-        '[TO CONFIRM: minimum age.] Kinlo does not check age when you sign up. We do not knowingly collect data from children. If you believe a child has given us data, contact us and we will remove it.',
+        'Kinlo is for people aged 18 or over. We do not knowingly collect data from anyone younger. If you believe a child has given us data, contact us and we will remove it.',
       ],
     },
     {
       heading: 'Contact and complaints',
       body: [
-        `For a question, request or complaint about your data, email ${GRIEVANCE_EMAIL}. [TO CONFIRM: the named Grievance Officer, if the owner decides one is needed.]`,
+        `Mithilesh Kale, the sole operator, handles questions, requests and complaints. Contact is by email: ${GRIEVANCE_EMAIL}. We do not publish a postal address.`,
       ],
     },
     {
@@ -240,7 +240,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
         'Kinlo is a record-keeping tool for shared expenses. It calculates who owes whom from what you and the people you share with enter.',
         'Kinlo is a free Android preview build, distributed from GitHub. It is not on the Play Store. It is early software and may have bugs.',
         'Kinlo does not hold, transfer or manage money. When you settle up, Kinlo opens your own UPI app with the details filled in. The payment happens between you, the other person and your payment providers.',
-        `These terms are effective from ${LEGAL_EFFECTIVE_DATE}. They are a draft until the owner signs them off.`,
+        `These terms are effective from ${LEGAL_EFFECTIVE_DATE}.`,
       ],
     },
     {
@@ -253,7 +253,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     {
       heading: 'Your account',
       body: [
-        '[TO CONFIRM: minimum age.]',
+        'Kinlo is for people aged 18 or over. Do not create an account if you are younger.',
         'You are responsible for your login and for what is entered from your account. We recommend turning on two-factor authentication.',
         'Give accurate information. Do not use Kinlo to pretend to be someone else.',
       ],
@@ -302,14 +302,14 @@ export const TERMS_OF_SERVICE: LegalDocument = {
       heading: 'Limits of liability',
       body: [
         'As far as the law allows, Kinlo is provided as is. We are not liable for losses from calculation errors, scanning errors, lost data, or payments made through other apps.',
-        '[TO CONFIRM: the cap on liability. The earlier draft said the amount paid in the last 12 months, or ₹1,000 if nothing was paid.]',
+        'As far as the law allows, our total liability to you for any claim is limited to the amount you paid us in the 12 months before the claim. While Kinlo is free, that amount is nothing.',
         'Nothing in these terms limits any right you have by law that cannot be waived, including consumer rights where you live.',
       ],
     },
     {
       heading: 'Governing law',
       body: [
-        '[TO CONFIRM: governing law and courts. The earlier draft said the laws and courts of India.]',
+        'These terms are governed by the laws of India. The courts at Pune, India have jurisdiction.',
       ],
     },
     {
