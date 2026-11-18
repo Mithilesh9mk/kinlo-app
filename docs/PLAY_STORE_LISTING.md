@@ -27,6 +27,6 @@ TRACK YOUR OWN SPENDING
 BUILT FOR INDIA
 • Amounts in rupees, with UPI payment screenshots in mind.
 
-Kinlo Gold adds unlimited scans, unlimited reminders and CSV statement export.
+Kinlo Gold raises receipt scans to 125 a month and adds unlimited reminders and CSV statement export. Gold is not for sale yet: for now it is available only with a coupon code. Do not mention a price or a purchase button until billing is live.
 
 > Only list features that have shipped in the build being published. Push alerts, dark mode, PDF export and Gold purchases are NOT live yet — add them to this text only once they are.
