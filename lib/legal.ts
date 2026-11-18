@@ -35,8 +35,10 @@
 
 /** Bump when the text materially changes — DPDP expects users to be able to
  *  tell which notice they consented to. */
-export const LEGAL_VERSION = '0.2-draft';
-export const LEGAL_LAST_UPDATED = '21 October 2026';
+export const LEGAL_VERSION = '2026-11-18-draft';
+export const LEGAL_LAST_UPDATED = '18 November 2026';
+/** Same date as LEGAL_LAST_UPDATED until the owner sets a different one. */
+export const LEGAL_EFFECTIVE_DATE = '18 November 2026';
 
 /** Placeholder — the website is not built yet. Replace these three (and only
  *  these) once it is live; nothing else in the app needs to change. Play
@@ -67,15 +69,16 @@ export interface LegalDocument {
  * apart easily when each is written separately.
  */
 export const DATA_PRACTICES = [
+  'Your email address and a password, or your Google account, used to sign in',
+  'Your name, an optional phone number, an optional profile avatar and your base currency',
   'Expense amounts, descriptions, categories and dates you enter',
   'Who you split expenses with, and the balances that result',
-  'Your name, email or phone number used to sign in, and an optional profile avatar',
   'UPI IDs you save, used to pre-fill a payment in your UPI app',
-  'Phone numbers from your contacts, IF you turn on contact sync — these are sent to Kinlo servers to find matches',
-  'Payment screenshots you choose to scan, which are sent to AI services (Anthropic Claude or Google Gemini) to read the amount and merchant',
+  'Phone numbers from your contacts, only if you turn on contact sync. They are sent to Kinlo servers to find matches',
+  'Payment screenshots and receipt photos you choose to scan. They are stored in your private area and sent to AI services (Anthropic Claude or Google Gemini) to read the amount, merchant and date',
   'Personal expenses and reminders you log privately, which are never shared with anyone',
   'A device token used to deliver push notifications, if you allow them',
-  'A random identifier for your app install (not your hardware ID), used only to prevent abuse of free limits',
+  'A random identifier for your app install (not your hardware ID), used only to limit abuse of free-plan limits',
   'Your plan (Free or Gold) and any coupon you redeem',
 ] as const;
 
@@ -85,132 +88,138 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'In short',
       body: [
-        'Kinlo helps you split shared expenses and keep track of who owes whom. We never move money — when you settle up, Kinlo hands the payment over to your own UPI app.',
-        'We collect what is needed to do that, we tell you before anything leaves your phone, we do not sell your data, and we do not show ads.',
-        'This policy applies to everyone who uses Kinlo, wherever you live. The section “Your rights, by region” explains the extra rights you have under the laws of India, the EU/UK, the United States and Australia.',
+        'Kinlo helps you split shared expenses and keep track of who owes whom. We never move money. When you settle up, Kinlo opens your own UPI app with the details filled in.',
+        'Kinlo is a free Android preview build, distributed from GitHub. It is not on the Play Store.',
+        'We collect what is needed to run the app. We tell you before anything leaves your phone. We do not sell your data and we do not show ads.',
+        `This policy is effective from ${LEGAL_EFFECTIVE_DATE}. It is a draft until the owner signs it off.`,
+      ],
+    },
+    {
+      heading: 'Who runs Kinlo',
+      body: [
+        'Mithilesh Kale, an individual in Pune, India, runs Kinlo under the brand name Tummy Time Studio. Tummy Time Studio is not a registered company.',
       ],
     },
     {
       heading: 'What we collect',
       body: [
         ...DATA_PRACTICES,
-        'Basic technical information needed to keep the service working, such as error logs and the app version. We do not use third-party advertising or behavioural analytics SDKs.',
+        'Kinlo has no analytics, advertising or crash-reporting SDK. If the app crashes, a short error note is saved on your phone only. It is not sent to us.',
+        'Our backend and service providers keep ordinary server logs, such as request errors. [TO CONFIRM: how long these logs are kept.]',
       ],
     },
     {
-      heading: 'Why we use it (and our legal basis)',
+      heading: 'Why we use it',
       body: [
-        'To run the app: calculate balances, show shared expenses to the people in them, sign you in, keep your plan, and send notifications you have allowed. This is necessary to provide the service you asked for.',
-        'To keep it safe: prevent abuse, enforce usage limits (such as the monthly receipt-scan allowance, which is also tracked per app install so extra accounts do not reset it), rate-limit sign-in, coupon and phone-lookup attempts, and investigate errors. We keep short-lived records of these attempts for that purpose.',
-        'Optional features run only on your choice and consent: contact sync, push notifications, receipt scanning, and two-factor authentication. You can withdraw consent at any time by turning the feature off.',
-        'To meet legal duties, for example responding to a lawful request or a deletion request.',
+        'To run the app: sign you in, calculate balances, show shared expenses to the people in them, keep your plan, and send notifications you have allowed.',
+        'To keep it safe: limit abuse. We rate-limit sign-in, coupon, phone-lookup, receipt-scan, delete-account and notification requests. The monthly receipt-scan allowance is also counted per app install, so extra accounts on one phone do not reset it.',
+        'Optional features run only if you choose them: contact sync, push notifications, receipt scanning and two-factor authentication. You can turn each one off.',
+        'To meet legal duties, for example a deletion request.',
       ],
     },
     {
       heading: 'Your contacts',
       body: [
-        'When you add a friend, Kinlo opens your phone’s own contact picker. You choose one person, and only that person’s name and number are used. Nothing else is read.',
-        'Contact sync is separate and off unless you turn it on. If you turn it on, Kinlo takes the phone numbers from your contacts and sends them to our servers to check which of them already use Kinlo. Numbers that do not match are not kept as a profile.',
+        'When you add a friend, Kinlo opens your phone’s own contact picker. You choose one person, and only that person’s name and number are used.',
+        'Contact sync is separate and off unless you turn it on. If you turn it on, Kinlo sends the phone numbers from your contacts to our servers to check which of them already use Kinlo. The numbers are used for that check. They are not saved as profiles.',
         'You can turn contact sync off at any time in your Profile.',
       ],
     },
     {
       heading: 'Receipt and payment screenshots',
       body: [
-        'If you scan a payment screenshot, the image is sent to an AI vision service (Anthropic Claude or Google Gemini), which reads the amount, merchant and date from it. The provider processes the image to return that result.',
-        'The image is stored in your private area of our storage so you can see what a figure came from later. Only you can access it.',
-        'The temporary copy on your phone is deleted once the upload finishes. Do not scan screenshots that show information you do not want processed, such as full card numbers.',
+        'If you scan a payment screenshot or receipt photo, the image is uploaded to your private area of our storage. Our server then sends it to an AI vision service (Anthropic Claude or Google Gemini) to read the amount, merchant and date.',
+        'Only you can open the stored image. It is deleted when you delete your account.',
+        'Do not scan images that show information you do not want processed, such as full card numbers.',
       ],
     },
     {
       heading: 'Reminders and notifications',
       body: [
-        'Reminders you create (title, optional amount, date) are stored in your account so they survive a new phone, and are visible only to you. Reminder alerts are scheduled on your device.',
-        'Push notifications use a device token. You can turn notifications off in your phone’s settings at any time.',
+        'Reminders you create (title, optional amount, date) are stored in your account and are visible only to you.',
+        'Push notifications use a device token, sent through Expo’s push service. You can turn notifications off in your phone’s settings at any time.',
       ],
     },
     {
-      heading: 'Kinlo Gold, payments and coupons',
+      heading: 'Kinlo Gold and coupons',
       body: [
-        'Kinlo has a free plan and a paid plan, Kinlo Gold. We store which plan you are on, when it started and ends, and any coupon you redeemed.',
-        'Gold purchases are handled by the app store or payment provider shown at checkout. They process your payment details; Kinlo does not see or store your card or bank details.',
-        'Separately, Kinlo never moves money between people. Settling up between friends happens in your own UPI app.',
+        'Kinlo has a Free plan and a Gold plan. Today Gold comes from a coupon code or is granted by the owner. Kinlo does not take payments and does not see or store any card or bank details.',
+        'We store which plan you are on, when Gold ends, and any coupon you redeemed.',
+        'Kinlo never moves money between people. Settling up happens in your own UPI app.',
       ],
     },
     {
       heading: 'Who can see your data',
       body: [
-        'People you share an expense or a group with can see that expense, its amount, and the balance between you. That is the point of the app. They can also see your name and avatar.',
+        'People you share an expense or a group with can see that expense, its amount, and the balance between you. They can also see your name and avatar.',
         'Personal expenses and reminders you log on your own are visible only to you.',
-        'We do not sell or rent your data, and we do not use it for advertising or share it for cross-context behavioural advertising.',
+        'We do not sell or rent your data. We do not use it for advertising.',
       ],
     },
     {
       heading: 'Who processes data for us',
       body: [
-        'Supabase — database, authentication and file storage.',
-        'Anthropic and Google (Claude / Gemini API) — reading payment screenshots you choose to scan.',
-        'Expo — app delivery, updates and push notifications.',
-        'Google Play / Apple App Store, and any payment provider shown at checkout — Gold purchases.',
+        'Supabase: database, sign-in and file storage.',
+        'Google: sign-in with Google, if you choose it, and receipt reading through Gemini.',
+        'Anthropic: receipt reading through Claude.',
+        'Expo: app updates and push notifications.',
         'These providers act on our instructions and only for these purposes. We may disclose data if the law or a valid legal order requires it.',
       ],
     },
     {
       heading: 'Where your data is stored',
       body: [
-        'Our service providers may process data on servers outside your country, including outside India, the EU/UK and Australia. Where the law requires it, we rely on appropriate safeguards for such transfers, such as standard contractual clauses or the provider’s certified protections.',
+        '[TO CONFIRM: the region of the Supabase project.] Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.',
       ],
     },
     {
       heading: 'How long we keep data',
       body: [
-        'We keep your data while your account is active. Personal expenses, reminders, drafts, friendships, push token and your name, phone, avatar and UPI ID are erased when you delete your account.',
-        'Shared expenses are also other people’s financial records. When you delete your account they are kept but stripped of your identity: they show a nameless participant, so other people’s balances and history are not rewritten.',
-        'Scanned screenshots are removed with your account. Backups are overwritten on the normal backup cycle.',
+        'We keep your data while your account is active.',
+        'When you delete your account we erase: your personal expenses, expense drafts, reminders, repeating expenses, friendships, push token, name, phone number, avatar and UPI ID, your scanned images, and your login. People you added who never joined are also removed, if they have no shared expenses.',
+        'Shared expenses are also other people’s financial records. They are kept but stripped of your identity. They show a participant called “Deleted user”, so other people’s balances and history are not rewritten.',
+        '[TO CONFIRM: how long database backups keep deleted data.]',
       ],
     },
     {
       heading: 'Deleting your account',
       body: [
         'Delete your account in the app from Profile → Data & Export Compliance. The app shows what will be erased and what will remain before you confirm. Outstanding balances do not block deletion.',
-        `You can also ask us to delete your data by writing to ${GRIEVANCE_EMAIL}. We will confirm the request and complete it within a reasonable time and within any period the law requires.`,
+        'Deletion takes effect when you confirm. If it fails part-way, the app tells you.',
+        `You can also ask us to delete your data by writing to ${GRIEVANCE_EMAIL}. [TO CONFIRM: how quickly we reply. Suggested: within 30 days.]`,
       ],
     },
     {
-      heading: 'Your rights, by region',
+      heading: 'Your rights',
       body: [
-        'Everywhere: you can ask for a copy of your data, ask us to correct it, ask us to delete your account and data, and withdraw consent for optional features. Use the in-app options or write to us.',
-        'India (Digital Personal Data Protection Act, 2023): you are a “Data Principal”. You have the right to access a summary of your data and who it is shared with, to correct and erase it, to withdraw consent, to nominate someone to exercise your rights if you die or are incapacitated, and to a response to your grievance. If we do not resolve a grievance, you may complain to the Data Protection Board of India.',
-        'European Economic Area and United Kingdom (GDPR / UK GDPR): you have the rights of access, rectification, erasure, restriction, objection and data portability, and the right not to be subject to solely automated decisions with significant effects (Kinlo makes none). You may lodge a complaint with your local data-protection authority, such as the UK ICO.',
-        'United States: depending on your state (for example California under the CCPA/CPRA, and other states with similar laws) you may have the right to know, access, correct, delete and obtain a portable copy of your personal information, and to opt out of its sale or sharing. We do not sell or share personal information for advertising. We will not discriminate against you for exercising these rights. An authorised agent may make a request for you.',
-        'Australia (Privacy Act 1988 and the Australian Privacy Principles): you may ask to access or correct your personal information. If you are not satisfied with our response, you may complain to us and then to the Office of the Australian Information Commissioner (OAIC).',
-        `To exercise any right, email ${GRIEVANCE_EMAIL}. We may need to confirm it is you before acting.`,
+        'You can ask for a copy of your data, ask us to correct it, ask us to delete your account and data, and withdraw consent for optional features. Use the in-app options or write to us.',
+        'The law where you live may give you more rights, for example under India’s Digital Personal Data Protection Act, 2023, or the GDPR in the EU and UK. We will respect the rights the law gives you.',
+        `To exercise a right, email ${GRIEVANCE_EMAIL}. We may need to confirm it is you first.`,
       ],
     },
     {
       heading: 'Keeping data safe',
       body: [
-        'Data is encrypted in transit. Access is restricted so that you can only read rows you are a party to, enforced by the database itself rather than by the app. You can turn on two-factor authentication in Profile → Security & Privacy.',
-        'No system is perfectly secure. If a breach affects your data, we will notify you and the relevant authority as the law requires.',
+        'Data is encrypted in transit. Access rules in the database let you read only the rows you are part of. You can turn on two-factor authentication in your Profile.',
+        'No system is perfectly secure. If a breach affects your data, we will tell you as the law requires.',
       ],
     },
     {
       heading: 'Children',
       body: [
-        'Kinlo is not intended for anyone under 18. We do not knowingly collect data from children. If you believe a child has given us data, contact us and we will remove it.',
+        '[TO CONFIRM: minimum age.] Kinlo does not check age when you sign up. We do not knowingly collect data from children. If you believe a child has given us data, contact us and we will remove it.',
       ],
     },
     {
-      heading: 'Grievance Officer and contact',
+      heading: 'Contact and complaints',
       body: [
-        'If you have a question or complaint about how your data is handled, contact us. We will acknowledge your message and respond within the timeframes required by the law that applies to you (for India, the DPDP Act and its rules).',
-        `Email: ${GRIEVANCE_EMAIL}`,
+        `For a question, request or complaint about your data, email ${GRIEVANCE_EMAIL}. [TO CONFIRM: the named Grievance Officer, if the owner decides one is needed.]`,
       ],
     },
     {
       heading: 'Changes',
       body: [
-        `This policy was last updated on ${LEGAL_LAST_UPDATED}. If we change it materially, we will tell you in the app before the change applies to you.`,
+        `This policy was last updated on ${LEGAL_LAST_UPDATED}. If we change it in a way that matters, we will tell you in the app first.`,
       ],
     },
   ],
@@ -220,83 +229,93 @@ export const TERMS_OF_SERVICE: LegalDocument = {
   title: 'Terms of Service',
   sections: [
     {
+      heading: 'Who runs Kinlo',
+      body: [
+        'Mithilesh Kale, an individual in Pune, India, runs Kinlo under the brand name Tummy Time Studio. Tummy Time Studio is not a registered company.',
+      ],
+    },
+    {
       heading: 'What Kinlo is',
       body: [
-        'Kinlo is a record-keeping tool for shared expenses. It calculates who owes whom based on what you and the people you share with enter.',
-        'Kinlo does not hold, transfer or manage money. When you settle up, Kinlo opens your own UPI app with the details filled in. The payment happens entirely between you, the other person, and your payment providers.',
+        'Kinlo is a record-keeping tool for shared expenses. It calculates who owes whom from what you and the people you share with enter.',
+        'Kinlo is a free Android preview build, distributed from GitHub. It is not on the Play Store. It is early software and may have bugs.',
+        'Kinlo does not hold, transfer or manage money. When you settle up, Kinlo opens your own UPI app with the details filled in. The payment happens between you, the other person and your payment providers.',
+        `These terms are effective from ${LEGAL_EFFECTIVE_DATE}. They are a draft until the owner signs them off.`,
       ],
     },
     {
       heading: 'The numbers are yours',
       body: [
-        'Balances are calculated from what people enter. Kinlo cannot verify that an expense really happened or that an amount is correct. Scanned figures are read by AI and may be wrong — check them before saving.',
-        'A balance shown in Kinlo is a record of what was entered, not proof of a debt. Disagreements about money are between you and the people you share with.',
+        'Balances come from what people enter. Kinlo cannot check that an expense happened or that an amount is right. Scanned figures are read by AI and may be wrong. Check them before you save.',
+        'A balance in Kinlo is a record of what was entered. It is not proof of a debt. Money disagreements are between you and the people you share with.',
       ],
     },
     {
       heading: 'Your account',
       body: [
-        'You must be at least 18 and able to enter a binding agreement.',
-        'You are responsible for keeping your login details secure and for what is entered from your account. We recommend turning on two-factor authentication.',
-        'Give accurate information. Do not use Kinlo to impersonate someone else.',
+        '[TO CONFIRM: minimum age.]',
+        'You are responsible for your login and for what is entered from your account. We recommend turning on two-factor authentication.',
+        'Give accurate information. Do not use Kinlo to pretend to be someone else.',
       ],
     },
     {
       heading: 'Adding people who have not joined',
       body: [
-        'You can add someone who does not use Kinlo yet, so you can record expenses with them. If that person later joins with the same phone number, both of you must confirm before any shared history is connected to their account.',
+        'You can add someone who does not use Kinlo yet, so you can record expenses with them. If that person later joins with the same phone number, both of you must confirm before shared history is connected to their account.',
         'Only add people you have a real reason to share expenses with.',
       ],
     },
     {
       heading: 'Free plan and Kinlo Gold',
       body: [
-        'Kinlo is free to use with a monthly allowance of receipt scans (currently 3). Kinlo Gold is a paid plan that raises it to 125 receipt scans a month and adds other benefits described on the Gold screen. Allowances reset on the 1st of each month (India time) and may be adjusted with notice. Benefits may change over time; we will not remove a benefit you have already paid for during the period you paid for.',
-        'Prices are shown in the app before you buy. Gold is billed through the app store or payment provider shown at checkout, so renewal, cancellation and refunds follow that provider’s rules. A subscription renews automatically until you cancel it in your store account, and cancelling takes effect at the end of the paid period.',
-        'Refunds: you can request a refund from the store you bought through. Nothing in these terms limits any refund or cancellation right you have by law, including consumer rights in your country (for example statutory cooling-off rights in the EU/UK, and the consumer guarantees under the Australian Consumer Law).',
+        'Kinlo is free to use. The Free plan includes a monthly allowance of receipt scans (currently 3) and a limit on active reminders (currently 3).',
+        'Kinlo Gold raises the receipt-scan allowance to 125 a month, removes the reminder limit and adds other benefits shown on the Gold screen. Allowances reset on the 1st of each month, India time.',
+        'Today Gold is available only with a coupon code or from the owner. Paid subscriptions are not on sale. If that changes, we will update these terms and tell you in the app first.',
+        'Benefits and allowances may change. We will not remove a Gold benefit during a period you already have.',
       ],
     },
     {
       heading: 'Coupons',
       body: [
-        'A coupon code gives the benefit stated when it was issued, for the period stated. Codes are single-use unless stated, cannot be exchanged for cash, can be withdrawn if they are misused, and cannot be resold.',
+        'A coupon code gives the benefit stated when it was issued, for the period stated. A code can be redeemed once per account, and some codes have a limited number of uses. It cannot be exchanged for cash or resold. We can withdraw a code that is misused.',
       ],
     },
     {
       heading: 'Acceptable use',
       body: [
-        'Do not use Kinlo for anything unlawful, to harass anyone, or to attempt to access data belonging to other people. Do not try to bypass usage limits (for example by creating multiple accounts to get extra free scans or reuse a coupon), reverse engineer the service, or overload it. We may suspend an account that breaks these rules.',
+        'Do not use Kinlo for anything unlawful, to harass anyone, or to try to reach other people’s data. Do not try to get around usage limits, for example by making several accounts for extra free scans or to reuse a coupon. Do not reverse engineer the service or overload it. We may suspend an account that breaks these rules.',
       ],
     },
     {
       heading: 'Your content',
       body: [
-        'You keep ownership of what you enter. You give us permission to store and process it, and to show it to the people you share it with, only so that we can provide Kinlo.',
+        'You keep ownership of what you enter. You allow us to store and process it, and to show it to the people you share it with, only so that we can run Kinlo. Kinlo’s source code is open source under the MIT licence.',
       ],
     },
     {
       heading: 'Availability and changes',
       body: [
-        'We aim to keep Kinlo working but cannot promise it will always be available or error-free. Features may change. We may update these terms; if the change is material we will tell you in the app first, and continuing to use Kinlo afterwards means you accept it.',
+        'We try to keep Kinlo working but cannot promise it will always be available or free of errors. Features may change. If we change these terms in a way that matters, we will tell you in the app first.',
       ],
     },
     {
       heading: 'Limits of liability',
       body: [
-        'To the extent the law allows, Kinlo is provided as-is, and we are not liable for losses arising from calculation errors, scanning errors, lost data, or payments made through third-party apps. Our total liability to you for any claim is limited to the amount you paid us for Kinlo in the 12 months before the claim, or ₹1,000 if you paid nothing.',
-        'Nothing in these terms excludes or limits liability that cannot be excluded by law, including for fraud, or rights you have as a consumer that cannot be waived (including under the Consumer Protection Act 2019 in India, consumer law in the EU/UK, and the Australian Consumer Law).',
+        'As far as the law allows, Kinlo is provided as is. We are not liable for losses from calculation errors, scanning errors, lost data, or payments made through other apps.',
+        '[TO CONFIRM: the cap on liability. The earlier draft said the amount paid in the last 12 months, or ₹1,000 if nothing was paid.]',
+        'Nothing in these terms limits any right you have by law that cannot be waived, including consumer rights where you live.',
       ],
     },
     {
       heading: 'Governing law',
       body: [
-        'These terms are governed by the laws of India, and the courts of India have jurisdiction, except that if you are a consumer in another country, you also keep the benefit of the mandatory consumer-protection laws and courts of the place you live.',
+        '[TO CONFIRM: governing law and courts. The earlier draft said the laws and courts of India.]',
       ],
     },
     {
       heading: 'Ending your use',
       body: [
-        'You can stop using Kinlo and delete your account at any time from Profile → Data & Export Compliance. What happens to your data is explained in the Privacy Policy.',
+        'You can stop using Kinlo and delete your account at any time from Profile → Data & Export Compliance. The Privacy Policy explains what happens to your data.',
       ],
     },
     {
