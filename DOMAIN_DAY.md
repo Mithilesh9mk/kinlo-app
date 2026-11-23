@@ -40,6 +40,20 @@ Derived automatically: `PUBLIC_PRIVACY_URL`, `PUBLIC_TERMS_URL`, `PUBLIC_DELETIO
 12. **App Store Connect** (only if iOS ships): same privacy and support URLs, and the App Privacy answers in `docs/store/DATA_SAFETY_AND_PRIVACY_LABELS.md`.
 13. **README and website wording:** when the app is on Google Play, change "not on the Play Store" in `README.md`, the website pages and `lib/legal.ts` ("What Kinlo is"), then regenerate.
 
+## Launch-day verifier
+
+After steps 6 and 7, run from the repo root (Node 18 or newer, no install):
+
+```bash
+node website/tools/verify-live.mjs https://kinlo.tummytimestudio.com https://tummytimestudio.com
+```
+
+It checks that `/`, `/privacy`, `/terms`, `/delete-account` return 200, that `canonical` and `og:url` match each URL, that `sitemap.xml` lists them and `robots.txt` points to it, that the footer links to the parent home, privacy and terms and those resolve, and that no page contains `example.com`, `[[`, `[TO CONFIRM` or `DOMAIN_PLACEHOLDER`. It exits with 1 if anything fails. Leave out the second address to skip the parent checks.
+
+## Where to read the Supabase region
+
+For the owner to paste back (the repo does not record it): open the Supabase dashboard, choose the Kinlo project, then **Project Settings, General**. The region is shown there (for example "South Asia (Mumbai)"). Send the exact text. Then add one sentence to "Where your data is stored" in `lib/legal.ts`, and regenerate (step 6).
+
 ## Post-deploy checks
 
 - Each returns 200 over HTTPS: `/`, `/privacy`, `/terms`, `/delete-account`, `/sitemap.xml`, `/robots.txt`, and the parent `/privacy.html`, `/terms.html`.
