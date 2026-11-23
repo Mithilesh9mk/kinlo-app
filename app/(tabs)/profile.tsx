@@ -28,6 +28,8 @@ import { fetchConnectionRequests } from '../../lib/connections';
 import { dispatchPushNotification } from '../../lib/pushDispatcher';
 import { formatINR } from '../../lib/format';
 import * as Device from 'expo-device';
+import { getHidden as getSproutHidden, setHiddenPref as setSproutHiddenPref } from '../../lib/sprout/prefs';
+import { setMySproutShown } from '../../lib/sprout/friends';
 import { checkAndDownloadUpdate, restartToApplyUpdate, openStoreListing, STORE_LISTING_URL } from '../../lib/appUpdates';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -340,6 +342,19 @@ export default function ProfileScreen() {
     setAutoScanReceipts(next);
     AsyncStorage.setItem(AUTO_SCAN_KEY, next ? 'true' : 'false');
     triggerToast(next ? 'Auto-scan enabled!' : 'Auto-scan disabled — screenshots open blank for manual entry.');
+  };
+
+  // Sprout visibility: local pref (default shown) plus a best-effort server
+  // flag so friends stop seeing it. The server call never blocks the UI.
+  const [sproutShown, setSproutShown] = useState<boolean>(true);
+  useEffect(() => {
+    getSproutHidden().then((h) => setSproutShown(!h));
+  }, []);
+  const handleToggleSprout = () => {
+    const next = !sproutShown;
+    setSproutShown(next);
+    void setSproutHiddenPref(!next);
+    void setMySproutShown(next);
   };
 
   // 5. Enterprise Support FAQ sheet & Bug report
@@ -1123,6 +1138,27 @@ export default function ProfileScreen() {
                 </View>
                 <View className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${
                   autoScanReceipts ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
+                }`}>
+                  <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </View>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                onPress={handleToggleSprout}
+                activeOpacity={0.8}
+                className="flex-row items-center justify-between py-3 border-b border-outline-variant/30 pb-4"
+              >
+                <View className="flex-row items-center gap-4 flex-1 pr-3">
+                  <View className="w-10 h-10 rounded-xl bg-secondary-container items-center justify-center">
+                    <MaterialIcons name="eco" size={20} color="#004c22" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-semibold text-base text-on-surface">Show Sprout</Text>
+                    <Text className="text-xs text-on-surface-variant">Your Kinlo plant. Friends can see its stage and points; turn off to hide it everywhere, including from friends.</Text>
+                  </View>
+                </View>
+                <View className={`w-12 h-6 rounded-full p-1 flex-row items-center transition-colors ${
+                  sproutShown ? 'bg-primary justify-end' : 'bg-outline-variant/60 justify-start'
                 }`}>
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>

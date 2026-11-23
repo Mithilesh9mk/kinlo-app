@@ -1,12 +1,12 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 14/11/2026, 5:10:46 pm
+> **Last Generated:** 23/11/2026, 5:11:29 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 192
-- **UI Screens (`app/`):** 54
-- **Components (`components/`):** 16
-- **Business Logic (`lib/` & `context/`):** 45
-- **SQL Migrations (`supabase/migrations/`):** 71
+- **Total Tracked System Nodes:** 204
+- **UI Screens (`app/`):** 55
+- **Components (`components/`):** 21
+- **Business Logic (`lib/` & `context/`):** 50
+- **SQL Migrations (`supabase/migrations/`):** 72
 - **Edge Functions (`supabase/functions/`):** 6
 
 ---
@@ -21,6 +21,7 @@
 - `app/activity.tsx`
 - `app/connect/[id].tsx`
 - `app/connect/_layout.tsx`
+- `app/dev/sprout-preview.tsx`
 - `app/expense/amount.tsx`
 - `app/expense/details.tsx`
 - `app/expense/payer.tsx`
@@ -110,6 +111,11 @@
 - `lib/recurringExpenses.ts`
 - `lib/reminders.ts`
 - `lib/splitCalculator.ts`
+- `lib/sprout/friends.ts`
+- `lib/sprout/model.ts`
+- `lib/sprout/prefs.ts`
+- `lib/sprout/stats.ts`
+- `lib/sprout/useSprout.ts`
 - `lib/statementCsv.ts`
 - `lib/supabase.ts`
 - `lib/useFirstRunHints.ts`
@@ -188,3 +194,4 @@
 - `supabase/migrations/0070_connection_request_preview_consent.sql`
 - `supabase/migrations/0072_friend_invites.sql`
 - `supabase/migrations/0073_group_invites.sql`
+- `supabase/migrations/0074_sprout_stats.sql`

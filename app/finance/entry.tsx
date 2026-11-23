@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Skeleton } from '../../components/Skeleton';
+import { Sprout } from '../../components/sprout/Sprout';
+import { useSprout } from '../../lib/sprout/useSprout';
 import { useToast } from '../../components/Toast';
 import { useAlert } from '../../components/AppAlert';
 import { CATEGORIES, MAX_CATEGORY_LENGTH } from '../../lib/categories';
@@ -38,6 +40,7 @@ export default function FinanceEntryScreen() {
   const params = useLocalSearchParams<{ id: string; path?: string; autoScan?: string; editId?: string }>();
   const { showToast } = useToast();
   const { showAlert } = useAlert();
+  const sprout = useSprout();
 
   const isReview = !!params.path;
   const [txId] = useState(params.id || String(Date.now()));
@@ -548,6 +551,11 @@ export default function FinanceEntryScreen() {
 
         {parsing && (
           <View className="mb-5">
+            {!sprout.hidden && (
+              <View className="items-center mb-2" pointerEvents="none">
+                <Sprout stage={sprout.stage} mood="curious" blossoms={sprout.blossoms} size={72} />
+              </View>
+            )}
             <View className="bg-surface-container rounded-2xl p-4 border border-outline-variant/30 mb-3">
               <View className="flex-row items-center justify-between mb-2.5">
                 <View className="flex-row items-center gap-2 flex-1 mr-2">

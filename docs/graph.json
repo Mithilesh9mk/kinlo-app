@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-14T11:40:46.003Z",
-  "totalFiles": 192,
+  "timestamp": "2026-11-23T11:41:29.537Z",
+  "totalFiles": 204,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -12,6 +12,7 @@
       "app/activity.tsx",
       "app/connect/[id].tsx",
       "app/connect/_layout.tsx",
+      "app/dev/sprout-preview.tsx",
       "app/expense/amount.tsx",
       "app/expense/details.tsx",
       "app/expense/payer.tsx",
@@ -73,6 +74,11 @@
       "components/ParetoChart.tsx",
       "components/QrCodeView.tsx",
       "components/Skeleton.tsx",
+      "components/sprout/palette.ts",
+      "components/sprout/Sprout.tsx",
+      "components/sprout/SproutCompare.tsx",
+      "components/sprout/SproutFigure.tsx",
+      "components/sprout/SproutHomeCard.tsx",
       "components/SwipeableRow.tsx",
       "components/Toast.tsx"
     ],
@@ -117,6 +123,11 @@
       "lib/recurringExpenses.ts",
       "lib/reminders.ts",
       "lib/splitCalculator.ts",
+      "lib/sprout/friends.ts",
+      "lib/sprout/model.ts",
+      "lib/sprout/prefs.ts",
+      "lib/sprout/stats.ts",
+      "lib/sprout/useSprout.ts",
       "lib/statementCsv.ts",
       "lib/supabase.ts",
       "lib/useFirstRunHints.ts"
@@ -196,7 +207,8 @@
       "supabase/migrations/0069_record_expense_participant_check.sql",
       "supabase/migrations/0070_connection_request_preview_consent.sql",
       "supabase/migrations/0072_friend_invites.sql",
-      "supabase/migrations/0073_group_invites.sql"
+      "supabase/migrations/0073_group_invites.sql",
+      "supabase/migrations/0074_sprout_stats.sql"
     ],
     "edgeFunctions": [
       "supabase/functions/delete-account/index.ts",

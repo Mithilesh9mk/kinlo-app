@@ -5,6 +5,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { formatINR } from '../lib/format';
+import { Sprout } from '../components/sprout/Sprout';
+import { useSprout } from '../lib/sprout/useSprout';
 
 /**
  * Confirmation after recording a payment.
@@ -31,6 +33,9 @@ export default function SettleSuccessScreen() {
     : NaN;
   const groupId = (params.groupId as string) || '';
   const friendId = (params.friendId as string) || '';
+
+  // The hook refreshes its counts on mount, so they include this settlement.
+  const sprout = useSprout({ event: 'settled' });
 
   const checkScale = useRef(new Animated.Value(0)).current;
   const ringScale = useRef(new Animated.Value(0.6)).current;
@@ -75,6 +80,19 @@ export default function SettleSuccessScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
       <View className="flex-1 items-center justify-center px-8">
+
+        {/* Sprout celebration: overlaid at the top (far from the buttons) so the layout below is untouched */}
+        {!sprout.hidden && !sprout.loading ? (
+          <View style={{ position: 'absolute', top: 8, alignSelf: 'center' }}>
+            <Sprout
+              stage={sprout.stage}
+              mood={sprout.mood}
+              blossoms={sprout.blossoms}
+              size={96}
+              onAnimationEnd={sprout.markSeen}
+            />
+          </View>
+        ) : null}
 
         {/* Check with a pulsing ring */}
         <View className="items-center justify-center" style={{ width: 140, height: 140 }}>

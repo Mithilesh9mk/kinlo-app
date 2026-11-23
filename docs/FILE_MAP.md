@@ -30,6 +30,7 @@ Generated from GRAPH_REPORT.md on 2026-10-15; update when adding files. Open thi
 | Categories | `lib/categories.ts` | `supabase/migrations/0010_flexible_categories.sql` | |
 | Legal, privacy policy, DPDP | `app/legal/[doc].tsx`, `lib/legal.ts` | `app/legal/_layout.tsx` | Text is DRAFT, not legally reviewed |
 | Account deletion | `lib/accountDeletion.ts`, `supabase/functions/delete-account/index.ts` | migrations 0044, 0046, 0054, 0056 | Deploy function after editing |
+| Sprout (character), growth stage, Show Sprout toggle, friend compare | `components/sprout/SproutFigure.tsx` (look), `Sprout.tsx` (motion), `SproutHomeCard.tsx`, `SproutCompare.tsx`; `lib/sprout/model.ts`, `stats.ts`, `prefs.ts`, `useSprout.ts`, `friends.ts` | `docs/CHARACTER_PLAN.md`, `docs/character/sprout-preview.html`, migration `0074_sprout_stats` (written, NOT applied), tests `tests/sprout-model.test.ts` | Look is plain Views (no svg lib, OTA fingerprint); money must never influence Sprout; friends see stage/blossoms/points only |
 
 ## Logic & infrastructure
 | Task keywords | Primary | Related | Gotchas |

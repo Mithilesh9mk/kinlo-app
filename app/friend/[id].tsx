@@ -16,6 +16,9 @@ import { readCache, writeCache, isLikelyNetworkError } from '../../lib/offlineCa
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { sendDebtNudge, describeNudgeResult } from '../../lib/debtNudges';
 import { formatINR, tabularNums } from '../../lib/format';
+import { SproutCompare } from '../../components/sprout/SproutCompare';
+import { useSprout } from '../../lib/sprout/useSprout';
+import { fetchFriendSprout, type FriendSprout } from '../../lib/sprout/friends';
 
 // Transaction with exact Date tags for mindful timeline filtering
 interface Transaction {
@@ -109,6 +112,23 @@ export default function FriendDetailScreen() {
   const [isRequestPopupOpen, setIsRequestPopupOpen] = useState(false);
 
   const [nudgeSending, setNudgeSending] = useState(false);
+
+  // Sprout comparison: cosmetic, fails soft, never depends on money data.
+  const mySprout = useSprout();
+  const [friendSprout, setFriendSprout] = useState<FriendSprout | null>(null);
+  useEffect(() => {
+    setFriendSprout(null);
+    // Only real linked friends have a user id (UUID); skip placeholders.
+    const isUserId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(friendId || '');
+    if (!isUserId || mySprout.loading || mySprout.hidden) return;
+    let cancelled = false;
+    fetchFriendSprout(friendId).then(s => {
+      if (!cancelled) setFriendSprout(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [friendId, mySprout.loading, mySprout.hidden]);
 
   // Load real transactions from Supabase
   useFocusEffect(
@@ -846,6 +866,16 @@ export default function FriendDetailScreen() {
           </View>
 
           <View className="w-full h-px bg-outline-variant/30 mb-6" />
+
+          {!mySprout.loading && !mySprout.hidden && friendSprout && (
+            <View className="w-full mb-6">
+              <SproutCompare
+                me={{ stage: mySprout.stage, blossoms: mySprout.blossoms, points: mySprout.points }}
+                friend={friendSprout}
+                friendName={friend.name}
+              />
+            </View>
+          )}
 
           {/* Transaction History Section Header with Filter Pill */}
           <View className="w-full">

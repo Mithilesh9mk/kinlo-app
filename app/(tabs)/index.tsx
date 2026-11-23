@@ -18,6 +18,7 @@ import { withOfflineFallback } from '../../lib/offlineCache';
 import { Avatar } from '../../components/Avatar';
 import AddFriendModal from '../../components/AddFriendModal';
 import { AddNumberCard } from '../../components/AddNumberCard';
+import { SproutHomeCard } from '../../components/sprout/SproutHomeCard';
 import { Skeleton, SkeletonListRow } from '../../components/Skeleton';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { FirstRunHintCard } from '../../components/FirstRunHintCard';
@@ -765,6 +766,7 @@ export default function HomeScreen() {
         {/* Own-number nudge: renders nothing unless the number is missing. */}
         <View className="px-6">
           <AddNumberCard className="mt-1 mb-3" />
+          <SproutHomeCard className="mt-1 mb-3" />
         </View>
 
         {/* Friends row: a horizontally-scrolling strip plus a fixed "View
