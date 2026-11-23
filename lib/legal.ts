@@ -40,16 +40,45 @@ export const LEGAL_LAST_UPDATED = '18 November 2026';
 /** Same date as LEGAL_LAST_UPDATED until the owner sets a different one. */
 export const LEGAL_EFFECTIVE_DATE = '18 November 2026';
 
-/** Placeholder — the website is not built yet. Replace these three (and only
- *  these) once it is live; nothing else in the app needs to change. Play
- *  requires the deletion URL to be reachable WITHOUT signing in. */
-export const PUBLIC_WEBSITE_URL = 'https://kinlo.app';
+/** ONE-PLACE DOMAIN CONFIG. Nothing else in the app or the website generator
+ *  hard-codes a domain. See DOMAIN_DAY.md.
+ *
+ *  PUBLIC_WEBSITE_URL is the planned Kinlo site. It is not live yet, so
+ *  WEBSITE_LIVE stays false: the app shows no web links and the website
+ *  footer shows no parent-site links until you flip it on domain day.
+ *  Play and the App Store both need the deletion URL reachable WITHOUT
+ *  signing in, so it must be live before store submission. */
+export const WEBSITE_LIVE = false;
+export const PUBLIC_WEBSITE_URL = 'https://kinlo.tummytimestudio.com';
 export const PUBLIC_PRIVACY_URL = `${PUBLIC_WEBSITE_URL}/privacy`;
 export const PUBLIC_TERMS_URL = `${PUBLIC_WEBSITE_URL}/terms`;
 export const PUBLIC_DELETION_URL = `${PUBLIC_WEBSITE_URL}/delete-account`;
 
-/** A real monitored address is mandatory in India — the Grievance Officer
- *  must be a named person, not a role alias (see header). */
+/** Parent brand site. Planned pages: privacy.html and terms.html. Leave empty
+ *  until they are live, so no dead link ships. */
+export const PARENT_SITE_URL = '';
+export const PARENT_PRIVACY_URL = PARENT_SITE_URL ? `${PARENT_SITE_URL}/privacy.html` : '';
+export const PARENT_TERMS_URL = PARENT_SITE_URL ? `${PARENT_SITE_URL}/terms.html` : '';
+
+/** Links the legal screen shows under the text. Empty until WEBSITE_LIVE. */
+export function webLegalLinks(): { label: string; url: string }[] {
+  if (!WEBSITE_LIVE) return [];
+  const links = [
+    { label: 'Privacy Policy on the web', url: PUBLIC_PRIVACY_URL },
+    { label: 'Terms of Service on the web', url: PUBLIC_TERMS_URL },
+    { label: 'Delete your account on the web', url: PUBLIC_DELETION_URL },
+  ];
+  if (PARENT_SITE_URL) {
+    links.push(
+      { label: 'Tummy Time Studio privacy', url: PARENT_PRIVACY_URL },
+      { label: 'Tummy Time Studio terms', url: PARENT_TERMS_URL },
+    );
+  }
+  return links;
+}
+
+/** Contact for privacy, rights, deletion and complaints. Mithilesh Kale is the
+ *  sole operator and handles these by email. */
 export const GRIEVANCE_EMAIL = 'privacy@kinlo.app';
 
 export interface LegalSection {
