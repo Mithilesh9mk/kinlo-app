@@ -85,6 +85,12 @@ export function webLegalLinks(): { label: string; url: string }[] {
 export const STUDIO_EMAIL = '';
 export const CONTACT_LINE = STUDIO_EMAIL || 'Studio email coming soon.';
 
+/** Supabase database region, stated in the privacy text only when set, so no
+ *  unverified region is published. Candidate: Seoul, South Korea (ap-northeast-2),
+ *  from supabase/.temp/pooler-url. Confirm in the Supabase dashboard (Project
+ *  Settings, General) before setting, e.g. 'Seoul, South Korea'. */
+export const DATABASE_REGION = '';
+
 export interface LegalSection {
   heading: string;
   body: string[];
@@ -202,7 +208,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Where your data is stored',
       body: [
-        'Your data is stored with our hosting provider, Supabase. Our database runs in Supabase’s Seoul, South Korea region. Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.',
+        `Your data is stored with our hosting provider, Supabase.${DATABASE_REGION ? ` Our database runs in ${DATABASE_REGION}.` : ''} Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.`,
       ],
     },
     {

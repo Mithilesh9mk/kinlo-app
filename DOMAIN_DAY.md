@@ -52,7 +52,7 @@ It checks that `/`, `/privacy`, `/terms`, `/delete-account` return 200, that `ca
 
 ## Where to read the Supabase region
 
-For the owner to paste back (the repo does not record it): open the Supabase dashboard, choose the Kinlo project, then **Project Settings, General**. The region is shown there (for example "South Asia (Mumbai)"). Send the exact text. The text already says Seoul, South Korea (read on 23 November 2026 from the Supabase CLI's linked-project cache, pooler host `aws-1-ap-northeast-2`). If the dashboard shows a different region, edit "Where your data is stored" in `lib/legal.ts` and regenerate (step 6).
+For the owner to paste back (the repo does not record it): open the Supabase dashboard, choose the Kinlo project, then **Project Settings, General**. The region is shown there (for example "South Asia (Mumbai)"). Send the exact text. The privacy text states no region yet. Candidate: Seoul (ap-northeast-2) per `supabase/.temp/pooler-url`, confirm in dashboard Project Settings, General. When confirmed, set `DATABASE_REGION` in `lib/legal.ts` (for example `'Seoul, South Korea'`) and regenerate (step 6). Another app's notes point to Tokyo, so check which project each app uses.
 
 ## Post-deploy checks
 
