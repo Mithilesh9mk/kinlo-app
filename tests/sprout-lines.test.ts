@@ -46,11 +46,24 @@ test('gain event states the growth, never an amount of money', () => {
   assert.match(l, /\+2 growth/);
 });
 
-test('level 10 has tap lines and never says N to go', () => {
-  for (let tapCount = 0; tapCount < 30; tapCount++) {
-    const l = pickLine({ level: 10, toNext: null, hour: 14, event: 'tap', tapCount });
-    assert.ok(l.length > 0);
-    assert.equal(/to go/.test(l), false);
+test('level 10 and every level past it still have a next level to name', () => {
+  for (const level of [10, 11, 25, 60]) {
+    for (let tapCount = 0; tapCount < 30; tapCount++) {
+      const l = pickLine({ level, toNext: { remaining: 9, nextName: 'Songbird tree' }, hour: 14, event: 'tap', tapCount });
+      assert.ok(l.length > 0);
+      assert.equal(/fully grown|all the way up/i.test(l), false, l);
+    }
+  }
+});
+
+test('era unlock lines name the era and are digit-free', () => {
+  for (const level of [11, 16, 21, 26, 31, 36, 41]) {
+    const lines = new Set<string>();
+    for (let tapCount = 0; tapCount < 6; tapCount++) {
+      lines.add(pickLine({ level, toNext: null, hour: 9, event: 'eraUp', tapCount }));
+    }
+    assert.ok([...lines].some((x) => /era begins/.test(x)), `level ${level}`);
+    for (const x of lines) assert.equal(/\d/.test(x), false, x);
   }
 });
 

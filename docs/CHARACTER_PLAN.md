@@ -86,7 +86,38 @@ the figure scales up continuously (`growth` 0..1 within the level, inner scale
 | 9 | Grand tree | 62 | 17 | tree | 4 |
 | 10 | Ancient tree | 85 | 23 | tree | 5 |
 
-Level 10 is the top. Past it points still count but nothing more is shown.
+Level 10 is the end of the BASE table, not the top (see Endless levels below).
+
+Levels are ENDLESS (23 Nov owner decision, JS only, no migration). The table
+above is the base table (levels 1-10) and is unchanged. Past level 10 every
+level costs a constant 23 points (the last base gap), so
+`threshold(n) = 85 + 23 * (n - 10)`: strictly increasing, never slower than the
+end of the table, and `levelFor` is O(1) for any total (about level 11 at 108,
+level 12 at 131). There is no top level and no "fully grown" state: the
+progress bar always restarts at a level boundary and "N to go to <next>" always
+shows. Art stays a tree with 5 blossoms from level 10 on.
+
+**Eras (cosmetics past level 10).** Every 5 levels past 10 starts a named era
+(era 1 = level 11, era 2 = level 16, ...). Each era unlocks ONE small
+cosmetic in `SproutFigure` (new optional `era` prop, tree stage only, plain
+Views, kept as later eras arrive): Fruiting (ripe fruit), Songbird, Lantern,
+Starlight (tiny stars), Golden (golden leaves). After the five, the names cycle
+with a Roman-numeral suffix (Fruiting II, ...) and the cosmetic set starts
+again. Level names are `<era> <rank>` (Fruiting tree, Fruiting canopy, ...),
+deterministic and digit-free. An era unlock is a bigger `growing` moment (more
+confetti, longer, still skippable, reduced motion honoured) with its own line
+(`eraUp`). With no era set the figure renders exactly as before.
+
+**Caps unchanged.** Daily caps stay (anti-farming, same as the server);
+"endless" means no ceiling over time, not removing caps. The server keeps
+`sprout_stats.level` capped at 1..10 (and blossoms 0..5, stage) BY DESIGN and
+stores points unbounded; that is harmless because every device derives the
+endless level from points: friends see `max(row.level, levelFor(row.points))`
+(`friendLevelFrom`, used by `fetchFriendSprout`).
+
+**UI.** The Sprout screen journey is a window, not the whole list: levels
+already grown collapse into one row ("N levels grown"), the current level is
+highlighted, the next 3 levels follow, then the next era with what it unlocks.
 
 **Weights (unchanged):** expense 1, settlement 2, friend 2, circle 2, receipt
 scan 1, circle squared 3.
@@ -95,7 +126,7 @@ scan 1, circle squared 3.
 1-point actions reaches level 2 in <= 3 actions, level 3 in <= 8, level 4 in
 <= 15 (actual: 3 / 6 / 10). Typical month profile: ~5 expenses, 2 settlements,
 1 scan, 1 new friend or circle ≈ 12-14 points, so level 10 (85) ≈ 6 months
-and level 7 (32) ≈ 2.5 months. Past-the-top is "a few months of normal use".
+and level 7 (32) ≈ 2.5 months. Past level 10 each further level is about 2 months at that pace.
 
 **Anti-farming (points have no cash value; friends only see them, so caps are
 generous and only stop a one-session sprint):**
@@ -129,10 +160,10 @@ interface SproutCounts {
   circlesSquared: number;            // before the lifetime cap
 }
 ```
-Model exports: `pointsFrom(counts)`, `levelFor(points)` (1..10), `levelName(level)`,
+Model exports: `pointsFrom(counts)`, `levelFor(points)` (1 and up, endless), `levelName(level)`,
 `artFor(level)` -> `{ stage: SproutStage; blossoms: number }`, `growthIn(points)`
-(0..1 progress through the current level, 1 at the top), `toNextLevel(points)`
--> `{ next: number; nextName: string; remaining: number; fraction: number } | null`,
+(0..1 progress through the current level), `toNextLevel(points)`
+-> `{ nextLevel: number; nextName: string; remaining: number; fraction: number }` (never null),
 `displayLevel(derived, cached)` (never regresses). `stageFor`/`blossomsFor` stay as
 thin wrappers over level so old callers keep working. `lastSeenLevel` and
 `cachedLevel` replace the stage-based prefs (Sprout has not shipped, so no

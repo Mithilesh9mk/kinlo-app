@@ -10,7 +10,7 @@
  *  - the only digits ever produced are "N to go", "+N growth", "N days in a row".
  * Nothing here reads balances, so money cannot influence what Sprout says.
  */
-import { LEVELS, MAX_LEVEL, istDay, type SproutCounts } from './model';
+import { eraFor, eraName, eraSlot, istDay, levelName, type SproutCounts } from './model';
 
 export type LineEvent =
   | 'open'
@@ -21,7 +21,9 @@ export type LineEvent =
   | 'settled'
   | 'friendAdded'
   | 'scan'
-  | 'revived';
+  | 'revived'
+  /** An era unlock: a bigger level-up moment (see model.ts eras). */
+  | 'eraUp';
 
 /** Quiet moods that get their own line tier (inactivity only; see model.ts). */
 export type QuietTier = 'droopy' | 'sad' | 'grumpy';
@@ -37,9 +39,9 @@ export interface TodayCounts {
 export const EMPTY_TODAY: TodayCounts = { expenses: 0, settlements: 0, scans: 0, friends: 0 };
 
 export interface LineInput {
-  /** 1..10 */
+  /** 1 and up (levels are endless). */
   level: number;
-  /** Progress to the next level; null at the top. */
+  /** Progress to the next level; null only when unknown. */
   toNext: { remaining: number; nextName: string } | null;
   todayCounts?: TodayCounts;
   /** Local hour 0..23. */
@@ -71,7 +73,7 @@ export function todayCountsFrom(counts: SproutCounts | null | undefined, now: Da
 
 const clampLevel = (l: number) => {
   const n = Math.floor(Number(l));
-  return Number.isFinite(n) ? Math.min(MAX_LEVEL, Math.max(1, n)) : 1;
+  return Number.isFinite(n) ? Math.max(1, n) : 1;
 };
 
 const pick = (pool: readonly string[], n: number): string => {
@@ -79,7 +81,7 @@ const pick = (pool: readonly string[], n: number): string => {
   return pool[i];
 };
 
-const nameOf = (level: number) => LEVELS[clampLevel(level) - 1].name;
+const nameOf = (level: number) => levelName(clampLevel(level));
 
 function dayPart(hour: number): 'morning' | 'afternoon' | 'evening' | 'night' {
   const h = Number.isFinite(hour) ? ((Math.floor(hour) % 24) + 24) % 24 : 12;
@@ -118,14 +120,31 @@ const LEVEL_TAP: Record<number, string[]> = {
   8: ['Look, blossoms are coming!', 'I am blooming, thanks to you.'],
   9: ['Grand and leafy, and still growing.', 'So many blossoms today.'],
   10: [
-    'Ancient and still blossoming.',
+    'Ancient, and still growing.',
     'I keep growing a little, always.',
     'Rooted deep, leaves swaying.',
     'Still here, still happy.',
   ],
 };
 
-const EVENT_POOL: Record<Exclude<LineEvent, 'open' | 'tap' | 'gain' | 'levelUp' | 'revived'>, string[]> = {
+/** Tap lines for levels past the base table, by era cosmetic (cycles every five eras). */
+const ERA_TAP: string[][] = [
+  ['Ripe fruit on my branches!', 'I can smell the fruit from here.'],
+  ['A songbird sings in my branches.', 'Tweet, tweet! My friend says hi.'],
+  ['My little lantern glows for you.', 'Cosy lantern light tonight.'],
+  ['Stars twinkle around me now.', 'Look up, the stars are out!'],
+  ['My leaves are touched with gold.', 'Golden leaves, golden days.'],
+];
+
+const ERA_UP_LINES = [
+  'Fruit is ripening on my branches!',
+  'A songbird has moved in!',
+  'I have a lantern now!',
+  'Tiny stars are twinkling on me!',
+  'My leaves turned golden!',
+];
+
+const EVENT_POOL: Record<Exclude<LineEvent, 'open' | 'tap' | 'gain' | 'levelUp' | 'revived' | 'eraUp'>, string[]> = {
   expenseLogged: ['Logged! That helps me grow.', 'Nice and tidy. Thank you!'],
   settled: ['A fresh start with a friend. Lovely!', 'Squared up. I feel light as a leaf.'],
   friendAdded: ['A new friend! Welcome to the garden.', 'The more, the merrier.'],
@@ -182,6 +201,11 @@ function candidates(input: LineInput): string[] {
     const nm = nameOf(level);
     return [`I am a ${nm} now!`, `${nm}! Look at me go!`];
   }
+  if (event === 'eraUp') {
+    const era = eraFor(level);
+    if (era < 1) return [`I am a ${nameOf(level)} now!`];
+    return [`The ${eraName(era)} era begins!`, ERA_UP_LINES[eraSlot(era)]];
+  }
   if (event === 'gain') {
     const g = Math.floor(Number(input.lastGain));
     if (Number.isFinite(g) && g > 0) {
@@ -200,13 +224,12 @@ function candidates(input: LineInput): string[] {
   }
   if (event !== 'tap') return EVENT_POOL[event];
 
-  const pool = [...TAP_GENERIC, ...(LEVEL_TAP[level] ?? [])];
+  const era = eraFor(level);
+  const pool = [...TAP_GENERIC, ...(LEVEL_TAP[level] ?? (era > 0 ? ERA_TAP[eraSlot(era)] : []))];
   pool.push(...todayLines(today));
   if (input.toNext && input.toNext.remaining > 0) {
     pool.push(`${input.toNext.remaining} to go to ${input.toNext.nextName}.`);
     pool.push(`Next up: ${input.toNext.nextName}!`);
-  } else if (level >= MAX_LEVEL) {
-    pool.push('All the way up, and still blossoming.');
   }
   pool.push(GREETING[part][0]);
   return pool;
@@ -229,7 +252,7 @@ export function pickLine(input: LineInput): string {
  */
 export function allPossibleLines(): string[] {
   const seen = new Set<string>();
-  const events: LineEvent[] = ['open', 'tap', 'gain', 'levelUp', 'expenseLogged', 'settled', 'friendAdded', 'scan', 'revived'];
+  const events: LineEvent[] = ['open', 'tap', 'gain', 'levelUp', 'expenseLogged', 'settled', 'friendAdded', 'scan', 'revived', 'eraUp'];
   const quiets: (QuietTier | null)[] = [null, 'droopy', 'sad', 'grumpy'];
   const todays: TodayCounts[] = [
     EMPTY_TODAY,
@@ -237,11 +260,10 @@ export function allPossibleLines(): string[] {
     { expenses: 0, settlements: 1, scans: 1, friends: 1 },
     { expenses: 3, settlements: 2, scans: 1, friends: 1 },
   ];
-  for (let level = 1; level <= MAX_LEVEL; level++) {
+  // Levels 1..10 plus enough past the base table to cover every era name and one full name cycle.
+  for (let level = 1; level <= 45; level++) {
     const nexts: LineInput['toNext'][] = [null];
-    if (level < MAX_LEVEL) {
-      for (const r of [1, 2, 3, 4, 9, 25]) nexts.push({ remaining: r, nextName: nameOf(level + 1) });
-    }
+    for (const r of [1, 2, 3, 4, 9, 25]) nexts.push({ remaining: r, nextName: nameOf(level + 1) });
     for (const toNext of nexts) {
       for (const event of events) {
         for (const todayCounts of todays) {

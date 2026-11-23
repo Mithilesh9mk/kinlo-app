@@ -18,11 +18,11 @@ async function setItem(key: string, value: string): Promise<void> {
   }
 }
 
-/** Valid level = integer 1..10, else null. */
+/** Valid level = integer >= 1 (levels are endless), else null. */
 function asLevel(v: string | null): number | null {
   if (v == null) return null;
   const n = Number(v);
-  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : null;
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
 /** Default false = Sprout is shown. Device-wide, not per user. */

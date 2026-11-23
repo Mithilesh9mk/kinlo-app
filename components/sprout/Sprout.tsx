@@ -36,6 +36,10 @@ export interface SproutProps {
   accessibilityHint?: string;
   /** 0..1 wilt passed to the figure (default: derived from the mood). Look only. */
   wilt?: number;
+  /** Era (0 or undefined = none): unlocks small cosmetics on the tree stage. */
+  era?: number;
+  /** A 'growing' moment that is an era unlock: more confetti, a longer moment. Still skippable. */
+  bigMoment?: boolean;
 }
 
 const MOOD_WORD: Record<SproutMood, string> = {
@@ -55,12 +59,23 @@ const MOOD_WORD: Record<SproutMood, string> = {
 const TERRACOTTA = '#D85A30';
 const CELEBRATE_MS = 1000;
 const GROWING_MS = 1200;
+const GROWING_BIG_MS = 2400;
 
 // [x offset as fraction of size, delay ms, piece size fraction]
 const CONFETTI: [number, number, number][] = [
   [-0.28, 0, 0.07],
   [0.02, 90, 0.06],
   [0.3, 170, 0.07],
+];
+
+// Era unlock: the same three plus five more, and the run lasts twice as long.
+const CONFETTI_BIG: [number, number, number][] = [
+  ...CONFETTI,
+  [-0.42, 40, 0.06],
+  [-0.14, 120, 0.05],
+  [0.16, 60, 0.05],
+  [0.42, 140, 0.06],
+  [0.0, 200, 0.07],
 ];
 
 const easeOut = Easing.out(Easing.quad);
@@ -131,8 +146,12 @@ export function Sprout({
   onTap,
   accessibilityHint,
   wilt,
+  era,
+  bigMoment,
 }: SproutProps) {
   const reduced = useReducedMotion();
+  const bigRef = useRef(bigMoment === true);
+  bigRef.current = bigMoment === true;
 
   const scale = useSharedValue(1);
   const scaleX = useSharedValue(1);
@@ -279,8 +298,9 @@ export function Sprout({
             -1,
           ),
         );
-        confettiRun(GROWING_MS);
-        timer.current = setTimeout(finish, GROWING_MS);
+        const growMs = bigRef.current ? GROWING_BIG_MS : GROWING_MS;
+        confettiRun(growMs);
+        timer.current = setTimeout(finish, growMs);
         break;
       }
       case 'curious': {
@@ -664,11 +684,11 @@ export function Sprout({
           importantForAccessibility="no-hide-descendants"
           pointerEvents="none"
         >
-          <SproutFigure stage={stage} mood={mood} blossoms={blossoms} size={size} blink={blink} wilt={wilt} />
+          <SproutFigure stage={stage} mood={mood} blossoms={blossoms} size={size} blink={blink} wilt={wilt} era={era} />
         </View>
       </Animated.View>
       {showConfetti &&
-        CONFETTI.map(([dx, delay, piece], i) => (
+        (bigMoment && mood === 'growing' ? CONFETTI_BIG : CONFETTI).map(([dx, delay, piece], i) => (
           <ConfettiPiece
             key={i}
             progress={confetti}

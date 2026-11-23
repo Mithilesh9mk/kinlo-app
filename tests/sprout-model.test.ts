@@ -8,20 +8,29 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  ENDLESS_GAP,
   EMPTY_COUNTS,
+  ERA_NAMES,
   LEVELS,
   artFor,
   blossomsFor,
   displayLevel,
+  eraFor,
+  eraName,
+  eraStartLevel,
+  eraUnlocked,
+  friendLevelFrom,
   growthIn,
   istDay,
   levelFor,
+  levelInfo,
   levelName,
   pointsFrom,
   resolveMood,
   QUIET_MOODS,
   stageFor,
   streakInfo,
+  thresholdFor,
   toNextLevel,
   toNextStage,
   wiltFor,
@@ -136,7 +145,7 @@ test('level boundaries at every threshold', () => {
   const cases: [number, number][] = [
     [0, 1], [2, 1], [3, 2], [5, 2], [6, 3], [9, 3], [10, 4], [14, 4],
     [15, 5], [21, 5], [22, 6], [31, 6], [32, 7], [44, 7], [45, 8],
-    [61, 8], [62, 9], [84, 9], [85, 10], [500, 10],
+    [61, 8], [62, 9], [84, 9], [85, 10], [107, 10], [108, 11], [130, 11], [131, 12],
   ];
   for (const [p, l] of cases) assert.equal(levelFor(p), l, `${p} points`);
 });
@@ -162,6 +171,7 @@ test('levelName and artFor', () => {
   assert.deepEqual(artFor(8), { stage: 'tree', blossoms: 2 });
   assert.deepEqual(artFor(10), { stage: 'tree', blossoms: 5 });
   // out-of-range clamps rather than throwing
+  // past the base table the art stays a fully blossoming tree (the eras add cosmetics instead)
   assert.deepEqual(artFor(99), artFor(10));
   assert.deepEqual(artFor(-4), artFor(1));
 });
@@ -174,15 +184,18 @@ test('growthIn is 0..1, monotonic within a level, resets at each level', () => {
     const l = levelFor(p);
     assert.ok(g >= 0 && g <= 1, `${p}: ${g}`);
     if (l === prevLevel) assert.ok(g >= prev, `monotonic at ${p}`);
-    else if (l < 10) assert.equal(g, 0, `reset at ${p}`);
+    else assert.equal(g, 0, `reset at ${p}`);
     prev = g;
     prevLevel = l;
   }
   assert.equal(growthIn(0), 0);
   assert.equal(growthIn(1), 1 / 3);
   assert.equal(growthIn(84), 1 - 1 / 23);
-  assert.equal(growthIn(85), 1);
-  assert.equal(growthIn(1000), 1);
+  // no top level: growth restarts at 85 and keeps cycling, never pinned at 1
+  assert.equal(growthIn(85), 0);
+  assert.equal(growthIn(107), 22 / 23);
+  assert.equal(growthIn(108), 0);
+  assert.ok(growthIn(1000) < 1);
 });
 
 test('toNextLevel', () => {
@@ -193,8 +206,9 @@ test('toNextLevel', () => {
   assert.equal(t.remaining, 2);
   assert.equal(t.fraction, 0.5);
   assert.equal(toNextLevel(84)!.remaining, 1);
-  assert.equal(toNextLevel(85), null);
-  assert.equal(toNextLevel(900), null);
+  // never null: levels are endless
+  assert.deepEqual(toNextLevel(85), { nextLevel: 11, nextName: levelName(11), remaining: 23, fraction: 0 });
+  assert.equal(toNextLevel(900).remaining > 0, true);
 });
 
 test('displayLevel never regresses', () => {
@@ -204,7 +218,8 @@ test('displayLevel never regresses', () => {
   assert.equal(displayLevel(2, null), 2);
   assert.equal(displayLevel(2, undefined), 2);
   assert.equal(displayLevel(1, 10), 10);
-  assert.equal(displayLevel(99, null), 10);
+  assert.equal(displayLevel(99, null), 99);
+  assert.equal(displayLevel(1, 40), 40);
 });
 
 test('stage and blossom wrappers follow the level logic', () => {
@@ -419,4 +434,111 @@ test('negative moods occur only with daysQuiet >= 2, whatever else is set', () =
                     assert.ok(typeof daysQuiet === 'number' && daysQuiet >= 2, `${m} with daysQuiet ${daysQuiet}`);
                   }
                 }
+});
+
+// ---- endless levels and eras ----
+
+test('85 to 86 and beyond: level 10 holds, then the formula takes over', () => {
+  assert.equal(levelFor(85), 10);
+  assert.equal(levelFor(86), 10);
+  assert.equal(levelFor(107), 10);
+  assert.equal(levelFor(108), 11);
+  assert.equal(levelFor(127), 11); // the owner's current total
+  assert.equal(levelFor(131), 12);
+  assert.equal(levelInfo(11).stage, 'tree');
+});
+
+test('thresholds strictly increase and no gap past level 10 exceeds the last base gap', () => {
+  const baseGaps = LEVELS.slice(1).map((l, i) => l.threshold - LEVELS[i].threshold);
+  const lastBaseGap = baseGaps[baseGaps.length - 1];
+  assert.equal(lastBaseGap, 23);
+  assert.ok(ENDLESS_GAP <= lastBaseGap && ENDLESS_GAP >= 1);
+  assert.equal(thresholdFor(10), 85);
+  let prev = thresholdFor(1);
+  for (let n = 2; n <= 5000; n++) {
+    const t = thresholdFor(n);
+    assert.ok(t > prev, `strictly increasing at ${n}`);
+    if (n > 10) assert.ok(t - prev <= lastBaseGap, `gap at ${n}`);
+    prev = t;
+  }
+  // thresholdFor and levelFor agree on every boundary
+  for (let n = 1; n <= 3000; n++) {
+    assert.equal(levelFor(thresholdFor(n)), n);
+    if (n > 1) assert.equal(levelFor(thresholdFor(n) - 1), n - 1);
+  }
+});
+
+test('huge point totals are fast and sane (levelFor is O(1))', () => {
+  const t0 = Date.now();
+  for (let i = 0; i < 100000; i++) levelFor(10_000_000 + i);
+  assert.ok(Date.now() - t0 < 500, 'bounded work for large totals');
+  const l = levelFor(1e7);
+  assert.equal(l, 10 + Math.floor((1e7 - 85) / ENDLESS_GAP));
+  assert.ok(thresholdFor(l) <= 1e7 && thresholdFor(l + 1) > 1e7);
+  const g = growthIn(1e7);
+  assert.ok(g >= 0 && g < 1);
+  assert.ok(toNextLevel(1e7).remaining > 0);
+  assert.ok(levelName(l).length > 0);
+});
+
+test('names are deterministic, unique per level in a long run, and never contain digits', () => {
+  const seen = new Set<string>();
+  for (let n = 1; n <= 600; n++) {
+    const a = levelInfo(n);
+    assert.equal(a.name, levelInfo(n).name);
+    assert.equal(/\d/.test(a.name), false, `digit in "${a.name}"`);
+    assert.equal(a.eraName == null || !/\d/.test(a.eraName), true);
+    assert.ok(a.blossoms <= 5);
+    assert.ok(!seen.has(a.name), `duplicate name "${a.name}" at ${n}`);
+    seen.add(a.name);
+  }
+  assert.equal(levelName(11), 'Fruiting tree');
+  assert.equal(levelName(36), 'Fruiting tree II');
+  assert.equal(levelName(1e9).length > 0, true);
+});
+
+test('eras: every five levels past ten, five names, then the set cycles with a numeral', () => {
+  assert.equal(eraFor(10), 0);
+  assert.equal(eraFor(11), 1);
+  assert.equal(eraFor(15), 1);
+  assert.equal(eraFor(16), 2);
+  assert.equal(eraStartLevel(1), 11);
+  assert.equal(eraStartLevel(2), 16);
+  assert.deepEqual([1, 2, 3, 4, 5].map((e) => eraName(e)), [...ERA_NAMES]);
+  assert.equal(eraName(6), 'Fruiting II');
+  assert.equal(eraName(11), 'Fruiting III');
+  assert.equal(eraName(0), null);
+  assert.equal(levelInfo(10).era, 0);
+  assert.equal(levelInfo(11).eraName, 'Fruiting');
+  assert.equal(eraUnlocked(11, 10), true);
+  assert.equal(eraUnlocked(12, 11), false);
+  assert.equal(eraUnlocked(16, 12), true);
+  assert.equal(eraUnlocked(11, null), false);
+});
+
+test('friend-derived level equals the local derived level for the same points', () => {
+  for (const p of [0, 3, 84, 85, 107, 108, 127, 500, 12345, 1e7]) {
+    // the server stores level capped at 10 and points unbounded
+    const serverLevel = Math.min(10, levelFor(p));
+    assert.equal(friendLevelFrom(serverLevel, p), displayLevel(levelFor(p), null), `${p} points`);
+  }
+  assert.equal(friendLevelFrom(undefined, 200), levelFor(200));
+  assert.equal(friendLevelFrom(10, undefined), 10);
+  assert.equal(friendLevelFrom('x', 'y'), 1);
+});
+
+test('displayLevel never decreases as points or the cache grow', () => {
+  let prev = 0;
+  for (let p = 0; p <= 5000; p += 7) {
+    const d = displayLevel(levelFor(p), null);
+    assert.ok(d >= prev, `at ${p}`);
+    prev = d;
+  }
+  assert.equal(displayLevel(levelFor(100), 25), 25);
+});
+
+test('growing mood fires on any level rise past ten, not only up to ten', () => {
+  assert.equal(resolveMood({ ...base, level: 11, lastSeenLevel: 10 }), 'growing');
+  assert.equal(resolveMood({ ...base, level: 40, lastSeenLevel: 39 }), 'growing');
+  assert.notEqual(resolveMood({ ...base, level: 40, lastSeenLevel: 40 }), 'growing');
 });

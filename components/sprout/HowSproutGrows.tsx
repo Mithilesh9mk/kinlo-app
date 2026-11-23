@@ -17,7 +17,7 @@ export function HowSproutGrows() {
   return (
     <View>
       <Text style={[{ fontSize: 14, color: MUTED }]}>
-        Sprout has 10 levels, from Seed to Ancient tree. The early levels come quickly; the later ones take a little longer. Sprout grows a little each time you use Kinlo:
+        Sprout never stops growing. The first levels come quickly, from Seed to Ancient tree, and then it keeps going, with a new era every few levels and a little something new to wear. Sprout grows a little each time you use Kinlo:
       </Text>
       <View style={[{ marginTop: 12, gap: 6 }]}>
         {GROWTH_LINES.map((line) => (

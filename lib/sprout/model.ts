@@ -110,7 +110,121 @@ export const LEVELS: readonly SproutLevel[] = [
   { level: 10, name: 'Ancient tree', threshold: 85, stage: 'tree', blossoms: 5 },
 ];
 
-export const MAX_LEVEL = LEVELS.length;
+/** Levels in the hand-written base table. Levels past this come from a formula (see thresholdFor). */
+export const BASE_LEVELS = LEVELS.length;
+
+/**
+ * ENDLESS LEVELS (23 Nov owner decision): Sprout never stops growing.
+ * Past the base table every level costs the same ENDLESS_GAP points, which
+ * equals the last base gap (62 to 85 is 23), so the pace never gets slower
+ * than the end of the table: threshold(n) = 85 + 23 * (n - 10) for n >= 10.
+ * Daily caps are unchanged (anti-farming); "endless" means no ceiling over
+ * time. The server still caps sprout_stats.level at 10 by design; friends'
+ * devices derive the same level from the points they can read
+ * (see friendLevelFrom).
+ */
+export const ENDLESS_GAP = 23;
+
+/** Every ERA_SPAN levels past the base table starts a named era (era 1 = level 11). */
+export const ERA_SPAN = 5;
+/** First level of era 1 (the first level past the base table). */
+export const FIRST_ERA_LEVEL = BASE_LEVELS + 1;
+
+/** Era names, then they cycle with a Roman numeral suffix (no digits in names). */
+export const ERA_NAMES = ['Fruiting', 'Songbird', 'Lantern', 'Starlight', 'Golden'] as const;
+/** One small cosmetic per era name (drawn in SproutFigure, tree stage only). */
+export const ERA_UNLOCKS = [
+  'Ripe fruit on the branches',
+  'A little songbird',
+  'A glowing lantern',
+  'Tiny twinkling stars',
+  'Golden leaves',
+] as const;
+const LEVEL_RANKS = ['tree', 'canopy', 'grove', 'elder', 'legend'] as const;
+
+function roman(n: number): string {
+  let v = ((Math.max(1, Math.floor(n)) - 1) % 3999) + 1;
+  const table: [number, string][] = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ];
+  let out = '';
+  for (const [n1, sym] of table) {
+    while (v >= n1) {
+      out += sym;
+      v -= n1;
+    }
+  }
+  return out;
+}
+
+function clampLevel(level: number): number {
+  const n = Math.floor(Number(level));
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, n));
+}
+
+/** Era number of a level: 0 for the base table, then 1, 2, ... every ERA_SPAN levels. */
+export function eraFor(level: number): number {
+  const n = clampLevel(level);
+  return n < FIRST_ERA_LEVEL ? 0 : Math.floor((n - FIRST_ERA_LEVEL) / ERA_SPAN) + 1;
+}
+
+/** First level of era e (e >= 1). */
+export function eraStartLevel(era: number): number {
+  const e = Math.max(1, Math.floor(Number(era)) || 1);
+  return FIRST_ERA_LEVEL + (e - 1) * ERA_SPAN;
+}
+
+/** Index 0..4 into ERA_NAMES / ERA_UNLOCKS / figure cosmetics for an era >= 1. */
+export function eraSlot(era: number): number {
+  return (Math.max(1, Math.floor(Number(era)) || 1) - 1) % ERA_NAMES.length;
+}
+
+/** Era name without the word "era", e.g. "Fruiting", "Fruiting II". null for era 0. No digits. */
+export function eraName(era: number): string | null {
+  const e = Math.floor(Number(era));
+  if (!Number.isFinite(e) || e < 1) return null;
+  const round = Math.floor((e - 1) / ERA_NAMES.length);
+  return ERA_NAMES[eraSlot(e)] + (round > 0 ? ` ${roman(round + 1)}` : '');
+}
+
+/** What an era unlocks (its cosmetic), plain words. null for era 0. */
+export function eraUnlock(era: number): string | null {
+  const e = Math.floor(Number(era));
+  if (!Number.isFinite(e) || e < 1) return null;
+  return ERA_UNLOCKS[eraSlot(e)];
+}
+
+/** True when `level` is in a later era than the last celebrated level (an era unlock moment). */
+export function eraUnlocked(level: number, lastSeenLevel: number | null | undefined): boolean {
+  if (lastSeenLevel == null || !Number.isFinite(lastSeenLevel)) return false;
+  return eraFor(level) > eraFor(lastSeenLevel);
+}
+
+export interface LevelInfo extends SproutLevel {
+  /** 0 for levels 1..10, then 1, 2, ... */
+  era: number;
+  eraName: string | null;
+}
+
+/** Points needed to reach level n, for ANY n >= 1. O(1). Strictly increasing. */
+export function thresholdFor(level: number): number {
+  const n = clampLevel(level);
+  if (n <= BASE_LEVELS) return LEVELS[n - 1].threshold;
+  return LEVELS[BASE_LEVELS - 1].threshold + ENDLESS_GAP * (n - BASE_LEVELS);
+}
+
+/** Name, threshold, art stage, blossoms and era for ANY level >= 1. Deterministic, no digits in names. */
+export function levelInfo(level: number): LevelInfo {
+  const n = clampLevel(level);
+  if (n <= BASE_LEVELS) return { ...LEVELS[n - 1], era: 0, eraName: null };
+  const era = eraFor(n);
+  const pos = (n - FIRST_ERA_LEVEL) % ERA_SPAN;
+  const round = Math.floor((era - 1) / ERA_NAMES.length);
+  const name = `${ERA_NAMES[eraSlot(era)]} ${LEVEL_RANKS[pos]}${round > 0 ? ` ${roman(round + 1)}` : ''}`;
+  return { level: n, name, threshold: thresholdFor(n), stage: 'tree', blossoms: 5, era, eraName: eraName(era) };
+}
 
 export const STAGE_ORDER: SproutStage[] = ['seed', 'sprout', 'sapling', 'tree'];
 
@@ -212,9 +326,11 @@ export function pointsFrom(counts: SproutCounts): number {
   );
 }
 
-/** Level 1..10 for a point total. */
+/** Level (1 and up, no ceiling) for a point total. O(1) past the base table. */
 export function levelFor(points: number): number {
   const p = safeCount(points);
+  const top = LEVELS[BASE_LEVELS - 1].threshold;
+  if (p >= top) return BASE_LEVELS + Math.floor((p - top) / ENDLESS_GAP);
   let level = 1;
   for (const l of LEVELS) {
     if (p >= l.threshold) level = l.level;
@@ -222,29 +338,22 @@ export function levelFor(points: number): number {
   return level;
 }
 
-function clampLevel(level: number): number {
-  const n = Math.floor(Number(level));
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(MAX_LEVEL, Math.max(1, n));
-}
-
 export function levelName(level: number): string {
-  return LEVELS[clampLevel(level) - 1].name;
+  return levelInfo(level).name;
 }
 
-/** Art stage and blossoms for a level. */
+/** Art stage and blossoms for a level (tree with 5 blossoms from level 10 on). */
 export function artFor(level: number): { stage: SproutStage; blossoms: number } {
-  const l = LEVELS[clampLevel(level) - 1];
+  const l = levelInfo(level);
   return { stage: l.stage, blossoms: l.blossoms };
 }
 
-/** 0..1 progress through the current level; 1 at the top level. */
+/** 0..1 progress through the current level. Never pinned at 1: every level has a next. */
 export function growthIn(points: number): number {
   const p = safeCount(points);
   const level = levelFor(p);
-  if (level >= MAX_LEVEL) return 1;
-  const lo = LEVELS[level - 1].threshold;
-  const hi = LEVELS[level].threshold;
+  const lo = thresholdFor(level);
+  const hi = thresholdFor(level + 1);
   return Math.min(1, Math.max(0, (p - lo) / (hi - lo)));
 }
 
@@ -255,12 +364,11 @@ export interface ToNextLevel {
   fraction: number;
 }
 
-/** Progress toward the next level; null at the top. */
-export function toNextLevel(points: number): ToNextLevel | null {
+/** Progress toward the next level. Never null: levels are endless. */
+export function toNextLevel(points: number): ToNextLevel {
   const p = safeCount(points);
   const level = levelFor(p);
-  if (level >= MAX_LEVEL) return null;
-  const next = LEVELS[level];
+  const next = levelInfo(level + 1);
   return {
     nextLevel: next.level,
     nextName: next.name,
@@ -274,6 +382,18 @@ export function displayLevel(derived: number, cached: number | null | undefined)
   const d = clampLevel(derived);
   if (cached == null || !Number.isFinite(cached)) return d;
   return Math.max(d, clampLevel(cached));
+}
+
+/**
+ * A friend's level as seen on this device. The server stores level capped at
+ * 10 (CHECK 1..10) but points unbounded, so every device derives the same
+ * endless level from the points it can read: max(stored level, levelFor(points)).
+ */
+export function friendLevelFrom(rowLevel: unknown, rowPoints: unknown): number {
+  const stored =
+    typeof rowLevel === 'number' && Number.isFinite(rowLevel) ? clampLevel(rowLevel) : 1;
+  const pts = typeof rowPoints === 'number' ? rowPoints : 0;
+  return Math.max(stored, levelFor(pts));
 }
 
 // ---- stage wrappers kept so existing callers compile ----

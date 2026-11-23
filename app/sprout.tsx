@@ -18,8 +18,8 @@ const INK = '#1c1c19';
 const MUTED = '#404940';
 
 /**
- * Sprout screen: a big tappable Sprout, the 10-level journey, how Sprout
- * grows, and today's counts (never amounts). When Show Sprout is off the
+ * Sprout screen: a big tappable Sprout, the endless journey (a window of it),
+ * how Sprout grows, and today's counts (never amounts). When Show Sprout is off the
  * figure, bubble, +N and journey are replaced by a calm note.
  */
 export default function SproutScreen() {
@@ -27,10 +27,10 @@ export default function SproutScreen() {
   const insets = useSafeAreaInsets();
   const {
     stage, level, levelName, mood, points, blossoms, growth, fraction, toNext, tickKey,
-    hidden, markSeen, refresh, loading, userId, counts, wilt, streakDays, daysQuiet, justRevived,
+    hidden, markSeen, refresh, loading, userId, counts, wilt, streakDays, daysQuiet, justRevived, era, bigMoment,
   } = useSprout();
 
-  const next = toNext ? { remaining: toNext.remaining, nextName: toNext.nextName } : null;
+  const next = { remaining: toNext.remaining, nextName: toNext.nextName };
   const talk = useSproutTalk({ userId, points, level, toNext: next, counts, hidden, loading, mood, justRevived });
 
   useFocusEffect(
@@ -41,9 +41,11 @@ export default function SproutScreen() {
 
   const animating = mood === 'celebrate' || mood === 'growing';
   const today = todayCountsFrom(counts, new Date());
-  const summary = toNext
-    ? `${toNext.remaining} to go to ${toNext.nextName}`
-    : `${levelName} · ${points} growth points`;
+  const summary = `${toNext.remaining} to go to ${toNext.nextName}`;
+
+  // Both Show Sprout rows land on the Sprout setting in Profile (same `t` trick as Home).
+  const openSproutSetting = () =>
+    router.navigate({ pathname: '/(tabs)/profile', params: { focus: 'sprout', t: String(Date.now()) } });
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -74,7 +76,10 @@ export default function SproutScreen() {
         showsVerticalScrollIndicator={false}
       >
         {loading ? null : hidden ? (
-          <View
+          <Pressable
+            onPress={openSproutSetting}
+            accessibilityRole="button"
+            accessibilityLabel="Sprout is resting. Opens the Show Sprout setting in Profile."
             className="liquid-glass rounded-2xl"
             style={[{ padding: 20, marginTop: 8 }]}
           >
@@ -82,7 +87,7 @@ export default function SproutScreen() {
             <Text style={[{ fontSize: 14, color: MUTED, marginTop: 6 }]}>
               Show Sprout is turned off, so Sprout stays tucked away. You can bring it back any time in Profile, under Show Sprout.
             </Text>
-          </View>
+          </Pressable>
         ) : (
           <>
             <View style={[{ alignItems: 'center', marginTop: 4 }]}>
@@ -107,6 +112,8 @@ export default function SproutScreen() {
                   accessibilityHint="Tap to play with Sprout"
                   onAnimationEnd={animating ? markSeen : undefined}
                   wilt={wilt}
+                  era={era}
+                  bigMoment={bigMoment}
                 />
                 {talk.pop ? (
                   <SproutPlusPop key={talk.pop.id} n={talk.pop.n} onDone={talk.clearPop} style={{ top: 8, right: 0 }} />
@@ -117,7 +124,7 @@ export default function SproutScreen() {
                 {summary}
               </Text>
               <View style={[{ alignSelf: 'stretch', paddingHorizontal: 12 }]}>
-                <SproutProgress fraction={toNext ? fraction : 1} />
+                <SproutProgress fraction={fraction} />
               </View>
             </View>
 
@@ -151,7 +158,7 @@ export default function SproutScreen() {
         </View>
 
         <Pressable
-          onPress={() => router.push('/profile')}
+          onPress={openSproutSetting}
           accessibilityRole="button"
           accessibilityLabel="Show Sprout setting. Opens Profile."
           className="liquid-glass rounded-2xl"

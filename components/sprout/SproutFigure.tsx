@@ -31,6 +31,13 @@ export interface SproutFigureProps {
    * wilt, every other mood 0 so the approved look is untouched).
    */
   wilt?: number;
+  /**
+   * Era (0 / undefined = none). Tree stage only: each era unlocks one small
+   * cosmetic, kept as later eras arrive (ripe fruit, songbird, lantern, stars,
+   * golden leaves), then the set starts again every five eras. With no era the
+   * figure renders exactly as before.
+   */
+  era?: number;
 }
 
 /** Default wilt per mood when the caller passes none. */
@@ -479,8 +486,84 @@ const BLOSSOM_SPOTS: [number, number][] = [
   [28, 68],
 ];
 
+// ------------------------------------------------------------ era cosmetics
+const ERA_FRUIT = '#C8352B';
+const ERA_BIRD = '#4DA3D8';
+const ERA_LANTERN = '#F4B942';
+const ERA_STAR = '#FFF1A8';
+const ERA_GOLD = '#E8B923';
+const ERA_COUNT = 5;
+
+/** Plain-View cosmetics for an era (1 = fruit, 2 = + songbird, ... 5 = + golden leaves). u = size / 100. */
+function eraCosmetics(era: number, u: number, depth: number): React.ReactNode[] {
+  const e = Math.floor(Number(era));
+  if (!Number.isFinite(e) || e < 1) return [];
+  const shown = ((e - 1) % ERA_COUNT) + 1;
+  const dot = (key: string, x: number, y: number, d: number, color: string, extra?: ViewStyle) => (
+    <View
+      key={key}
+      style={[box({ cx: x * u, cy: y * u, w: d * u, h: d * u }), { backgroundColor: color, borderRadius: (d * u) / 2 }, extra]}
+    />
+  );
+  const out: React.ReactNode[] = [];
+  if (shown >= 1) {
+    for (const [i, [x, y]] of ([[17, 62], [84, 63], [89, 47]] as [number, number][]).entries()) {
+      out.push(dot(`ef${i}`, x, y, 7, ERA_FRUIT));
+      out.push(dot(`efh${i}`, x - 1.4, y - 1.6, 2, P.highlight, { opacity: 0.7 }));
+    }
+  }
+  if (shown >= 2) {
+    // Songbird perched on the upper right of the canopy.
+    out.push(
+      <View
+        key="eb"
+        style={[box({ cx: 87.5 * u, cy: 18 * u, w: 4 * u, h: 2.5 * u }), { backgroundColor: ERA_LANTERN, borderRadius: u }]}
+      />,
+      dot('ebb', 77, 22, 11, ERA_BIRD),
+      dot('ebh', 82, 17, 7, ERA_BIRD),
+      <View
+        key="ebw"
+        style={[box({ cx: 75 * u, cy: 23 * u, w: 7 * u, h: 4 * u }), { backgroundColor: '#2E7FB3', borderRadius: 2 * u }]}
+      />,
+      dot('ebe', 84, 16, 1.8, P.eye),
+    );
+  }
+  if (shown >= 3) {
+    // Lantern hanging from the left of the canopy.
+    out.push(
+      <View key="elg" style={[box({ cx: 14 * u, cy: 40 * u, w: 1 * u, h: 8 * u }), { backgroundColor: P.soilDark }]} />,
+      dot('elh', 14, 50, 13, ERA_LANTERN, { opacity: 0.28 }),
+      <View
+        key="elb"
+        style={[box({ cx: 14 * u, cy: 50 * u, w: 7 * u, h: 9 * u }), { backgroundColor: ERA_LANTERN, borderRadius: 2.5 * u, borderWidth: Math.max(1, u * 0.8), borderColor: P.soilDark }]}
+      />,
+    );
+  }
+  if (shown >= 4) {
+    // Tiny stars: a square and a turned square make an eight-point twinkle.
+    for (const [i, [x, y, s]] of ([[12, 14, 5], [88, 10, 4], [64, 5, 4], [30, 6, 3.5]] as [number, number, number][]).entries()) {
+      const side = s * u;
+      const sq = (key: string, rotate: string) => (
+        <View
+          key={key}
+          style={[box({ cx: x * u, cy: y * u, w: side, h: side }), { backgroundColor: ERA_STAR, borderRadius: side * 0.15, transform: [{ rotate }] }]}
+        />
+      );
+      out.push(sq(`es${i}a`, '0deg'), sq(`es${i}b`, '45deg'));
+    }
+  }
+  if (shown >= 5) {
+    // Golden leaves at the crown.
+    out.push(
+      <Leaf key="eg1" k="eg1" cx={34 * u} cy={17 * u} s={10 * u} rot={-45 - 28} base={ERA_GOLD} tip={0.25} depth={depth * 0.5} />,
+      <Leaf key="eg2" k="eg2" cx={66 * u} cy={17 * u} s={10 * u} rot={-45 + 28} base={ERA_GOLD} tip={0.25} depth={depth * 0.5} />,
+    );
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ figure
-export function SproutFigure({ stage, mood, blossoms, size, blink, wilt }: SproutFigureProps) {
+export function SproutFigure({ stage, mood, blossoms, size, blink, wilt, era }: SproutFigureProps) {
   const u = size / 100;
   const wRaw = wilt ?? MOOD_WILT[mood] ?? 0;
   const w = Number.isFinite(wRaw) ? Math.min(1, Math.max(0, wRaw)) : 0;
@@ -623,6 +706,7 @@ export function SproutFigure({ stage, mood, blossoms, size, blink, wilt }: Sprou
       ...BLOSSOM_SPOTS.slice(0, count).map(([bx, by], i) => (
         <Blossom key={`bl${i}`} cx={bx * u} cy={by * u} d={Math.max(4, 7.5 * u)} />
       )),
+      ...(era ? eraCosmetics(era, u, depth) : []),
     );
   }
 

@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, Image, Modal, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, Modal, TextInput, Animated, ActivityIndicator, StyleSheet, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, RefreshControl, AccessibilityInfo } from 'react-native';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { AnimatedListItem } from '../../components/AnimatedListItem';
 import { Avatar } from '../../components/Avatar';
@@ -9,7 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Skeleton } from '../../components/Skeleton';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
 import { fetchMyPlan, FREE_SCANS_PER_MONTH, PlanInfo } from '../../lib/plan';
 import { fetchBalances } from '../../lib/balances';
@@ -350,6 +350,59 @@ export default function ProfileScreen() {
   useEffect(() => {
     getSproutHidden().then((h) => setSproutShown(!h));
   }, []);
+  // Deep link from the Sprout screen's "Show Sprout" row: ?focus=sprout&t=<now>.
+  // Scrolls to the Show Sprout row, highlights it briefly (reduced motion: no
+  // animation, a static highlight), then clears the param so coming back later
+  // does not scroll again. Plain Views only; the shared AnimatedPressable is untouched.
+  const { focus: focusParam, t: focusStamp } = useLocalSearchParams<{ focus?: string; t?: string }>();
+  const profileScrollRef = useRef<ScrollView>(null);
+  const sproutRowRef = useRef<View>(null);
+  const sproutGlow = useRef(new Animated.Value(0)).current;
+  const sproutGlowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (sproutGlowTimer.current) clearTimeout(sproutGlowTimer.current);
+  }, []);
+  useEffect(() => {
+    if (focusParam !== 'sprout') return;
+    const startTimer = setTimeout(async () => {
+      let reduced = false;
+      try {
+        reduced = await AccessibilityInfo.isReduceMotionEnabled();
+      } catch {
+        /* default: animate */
+      }
+      const glow = () => {
+        if (sproutGlowTimer.current) clearTimeout(sproutGlowTimer.current);
+        if (reduced) {
+          sproutGlow.setValue(1);
+          sproutGlowTimer.current = setTimeout(() => sproutGlow.setValue(0), 1600);
+        } else {
+          sproutGlow.setValue(1);
+          Animated.timing(sproutGlow, { toValue: 0, duration: 1600, useNativeDriver: false }).start();
+        }
+      };
+      const row = sproutRowRef.current;
+      // getInnerViewRef exists at runtime (RN 0.85) but is missing from the bundled ScrollView type.
+      const inner = (profileScrollRef.current as unknown as { getInnerViewRef?: () => unknown } | null)?.getInnerViewRef?.();
+      if (row && inner) {
+        // y is measured against the scroll content, so section wrappers are included.
+        row.measureLayout(
+          inner as never,
+          (_x, y) => {
+            profileScrollRef.current?.scrollTo({ y: Math.max(0, y - 140), animated: !reduced });
+            glow();
+          },
+          () => glow(),
+        );
+      } else {
+        glow();
+      }
+      router.setParams({ focus: undefined, t: undefined });
+    }, 450); // let the screen's own fade-in settle so the measured position is final
+    return () => clearTimeout(startTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusParam, focusStamp]);
+
   const handleToggleSprout = () => {
     const next = !sproutShown;
     setSproutShown(next);
@@ -686,6 +739,7 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView
+        ref={profileScrollRef}
         className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 120 }}
@@ -1143,6 +1197,13 @@ export default function ProfileScreen() {
                 </View>
               </AnimatedPressable>
 
+              <View ref={sproutRowRef} collapsable={false}>
+              <Animated.View
+                style={{
+                  borderRadius: 14,
+                  backgroundColor: sproutGlow.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,76,34,0)', 'rgba(0,76,34,0.14)'] }),
+                }}
+              >
               <AnimatedPressable
                 onPress={handleToggleSprout}
                 activeOpacity={0.8}
@@ -1163,6 +1224,8 @@ export default function ProfileScreen() {
                   <View className="w-4 h-4 bg-white rounded-full shadow-sm" />
                 </View>
               </AnimatedPressable>
+              </Animated.View>
+              </View>
 
               {/* Downloads a newer over-the-air update if one exists for this
                   build. Store builds cannot be installed from here; see

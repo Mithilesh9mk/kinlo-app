@@ -4,7 +4,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
-import { levelName, type SproutStage } from './model';
+import { friendLevelFrom, levelName, type SproutStage } from './model';
 import { getHidden } from './prefs';
 
 export interface FriendSprout {
@@ -30,10 +30,8 @@ export async function fetchFriendSprout(friendId: string): Promise<FriendSprout 
     if (error || !data) return null;
     const row = data as { stage: unknown; blossoms: unknown; points: unknown; level: unknown };
     if (typeof row.stage !== 'string' || !STAGES.includes(row.stage)) return null;
-    const level =
-      typeof row.level === 'number' && Number.isFinite(row.level)
-        ? Math.max(1, Math.min(10, Math.floor(row.level)))
-        : 1;
+    // Server level is capped at 10 by design; derive the endless level from points.
+    const level = friendLevelFrom(row.level, row.points);
     return {
       stage: row.stage as SproutStage,
       blossoms: typeof row.blossoms === 'number' ? row.blossoms : 0,

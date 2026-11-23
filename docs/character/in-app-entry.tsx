@@ -30,14 +30,20 @@ import {
   EMPTY_COUNTS,
   LEVELS,
   LIFETIME_CAPS,
-  MAX_LEVEL,
   POINT_WEIGHTS,
   artFor,
   displayLevel,
+  eraFor,
+  eraName,
+  eraUnlock,
+  eraUnlocked,
+  friendLevelFrom,
   growthIn,
   istDay,
   levelFor,
+  levelInfo,
   levelName,
+  thresholdFor,
   pointsFrom,
   resolveMood,
   streakInfo,
@@ -269,7 +275,7 @@ function App() {
     const text = pickLine({
       quiet,
       level: lvl,
-      toNext: tn ? { remaining: tn.remaining, nextName: tn.nextName } : null,
+      toNext: { remaining: tn.remaining, nextName: tn.nextName },
       todayCounts: todayCountsFrom(o.counts, at),
       hour,
       event,
@@ -284,7 +290,7 @@ function App() {
         lineTimer.current = null;
         setLine(null);
       },
-      event === 'gain' || event === 'levelUp' || event === 'revived' ? 6000 : 7000,
+      event === 'gain' || event === 'levelUp' || event === 'eraUp' || event === 'revived' ? 6000 : 7000,
     );
   };
   const onSproutTap = () => {
@@ -310,11 +316,12 @@ function App() {
   const name = levelName(level);
   const toNext = toNextLevel(points);
   const growth = growthIn(points);
-  const fraction = toNext ? toNext.fraction : 1;
+  const fraction = toNext.fraction;
+  const era = eraFor(level);
   // Streak and quiet days come from the real streakInfo() over the virtual clock.
   const { streakDays, daysQuiet } = streakInfo(s.counts, new Date(BASE_MS + s.dayIdx * DAY_MS));
   const wilt = wiltFor(daysQuiet);
-  const mood = resolveMood({
+  const mood0 = resolveMood({
     level,
     lastSeenLevel: s.lastSeenLevel,
     event,
@@ -323,6 +330,8 @@ function App() {
     justRevived: revived,
     now,
   });
+  const mood = mood0;
+  const bigMoment = mood === 'growing' && eraUnlocked(level, s.lastSeenLevel);
   const hidden = !s.shown;
   const animating = mood === 'celebrate' || mood === 'growing';
   const running = simLeft > 0;
@@ -358,6 +367,13 @@ function App() {
       setNonce((n) => n + 1);
       patch({ screen: 'home' });
     }
+  };
+
+  // Same rule as useSproutTalk: an era unlock is a bigger moment than a plain level-up.
+  const levelEvent = (before: number, after: number, cached: number | null): LineEvent => {
+    const lb = displayLevel(levelFor(before), cached);
+    const la = displayLevel(levelFor(after), cached);
+    return eraFor(la) > eraFor(lb) ? 'eraUp' : la > lb ? 'levelUp' : 'gain';
   };
 
   // One action through the real model: caps applied by pointsFrom, level-up via displayLevel.
@@ -428,7 +444,7 @@ function App() {
       const next = { ...sref.current };
       sayFrom(
         next,
-        revive ? 'revived' : newLevel > displayLevel(levelFor(before), o.cachedLevel) ? 'levelUp' : 'gain',
+        revive ? 'revived' : levelEvent(before, after, o.cachedLevel),
         gained,
       );
     }
@@ -485,7 +501,7 @@ function App() {
     if (sref.current.shown && n > 0) {
       lineId.current += 1;
       setPop({ id: lineId.current, n });
-      sayFrom(sref.current, newLevel > displayLevel(levelFor(pointsFrom(o.counts)), o.cachedLevel) ? 'levelUp' : 'gain', n);
+      sayFrom(sref.current, levelEvent(pointsFrom(o.counts), pointsFrom(c), o.cachedLevel), n);
     }
   };
 
@@ -495,7 +511,7 @@ function App() {
     stopSim();
     setEvent(null);
     setNonce((x) => x + 1);
-    const pts = LEVELS[l - 1].threshold;
+    const pts = thresholdFor(l);
     commit((o) => ({
       ...o,
       counts: countsForPoints(pts),
@@ -609,7 +625,7 @@ function App() {
             tickKey={s.tickKey}
             levelName={name}
             points={points}
-            toNext={toNext ? { remaining: toNext.remaining, nextName: toNext.nextName } : null}
+            toNext={{ remaining: toNext.remaining, nextName: toNext.nextName }}
             fraction={fraction}
             line={line}
             pop={pop}
@@ -619,6 +635,8 @@ function App() {
             onOpen={() => go('sprout')}
             onAnimationEnd={animating ? markSeen : undefined}
             wilt={wilt}
+            era={era}
+            bigMoment={bigMoment}
             streakDays={streakDays}
           />
         </Card>
@@ -646,7 +664,8 @@ function App() {
     </ScrollView>
   );
 
-  const friendLevel = levelFor(s.friendPoints);
+  // The server stores level capped at 10 and points unbounded; friends derive the endless level (friendLevelFrom, same as lib/sprout/friends.ts).
+  const friendLevel = friendLevelFrom(Math.min(10, levelFor(s.friendPoints)), s.friendPoints);
   const friendArt = artFor(friendLevel);
 
   const Friend = (
@@ -774,7 +793,7 @@ function App() {
           {s.screen === 'circles' && Placeholder('Circles')}
           {s.screen === 'analytics' && Placeholder('Analytics')}
           {s.screen === 'settle' && <SettleSuccess key={`settle-${nonce}`} name={s.friendName || 'your friend'} hidden={hidden} stage={stage} mood={mood} blossoms={blossoms} growth={growth} tickKey={s.tickKey} markSeen={markSeen} go={go} />}
-          {s.screen === 'sprout' && <SproutScreenMock hidden={hidden} stage={stage} mood={mood} blossoms={blossoms} growth={growth} tickKey={s.tickKey} level={level} name={name} points={points} toNext={toNext} fraction={fraction} line={line} pop={pop} onTap={onSproutTap} clearLine={clearLine} clearPop={() => setPop(null)} today={todayCountsFrom(s.counts, new Date(BASE_MS + s.dayIdx * DAY_MS))} markSeen={markSeen} animating={animating} go={go} wilt={wilt} streakDays={streakDays} daysQuiet={daysQuiet} />}
+          {s.screen === 'sprout' && <SproutScreenMock hidden={hidden} stage={stage} mood={mood} blossoms={blossoms} growth={growth} tickKey={s.tickKey} level={level} name={name} points={points} toNext={toNext} fraction={fraction} line={line} pop={pop} onTap={onSproutTap} clearLine={clearLine} clearPop={() => setPop(null)} today={todayCountsFrom(s.counts, new Date(BASE_MS + s.dayIdx * DAY_MS))} markSeen={markSeen} animating={animating} go={go} wilt={wilt} era={era} bigMoment={bigMoment} streakDays={streakDays} daysQuiet={daysQuiet} />}
           {s.screen === 'scan' && <ScanScreen hidden={hidden} stage={stage} blossoms={blossoms} growth={growth} />}
         </View>
         {s.screen !== 'settle' && s.screen !== 'scan' && s.screen !== 'sprout' && (
@@ -803,11 +822,12 @@ function App() {
         <Card style={{ padding: 12 }}>
           <Row k="Mock day" v={`${today} (day ${s.dayIdx + 1}; virtual clock, daily caps reset on Next day)`} />
           <Row k="Points" v={String(points)} />
-          <Row k="Level" v={`${level} of ${MAX_LEVEL}${derivedLevel !== level ? ` (derived ${derivedLevel}, no-regress cache)` : ''}`} />
+          <Row k="Level" v={`${level} (endless)${derivedLevel !== level ? ` (derived ${derivedLevel}, no-regress cache)` : ''}`} />
+          <Row k="Era" v={era > 0 ? `${eraName(era)} (era ${era}): ${eraUnlock(era)}${bigMoment ? '  (era unlock moment)' : ''}` : 'none yet (eras start at level 11)'} />
           <Row k="Name" v={name} />
           <Row k="Growth in level" v={growth.toFixed(2)} />
           <Row k="Bar fraction" v={fraction.toFixed(2)} />
-          <Row k="To next" v={toNext ? `${toNext.remaining} to go to ${toNext.nextName}` : 'none (fully grown, still blossoming)'} />
+          <Row k="To next" v={`${toNext.remaining} to go to ${toNext.nextName}`} />
           <Row k="Streak days" v={`${streakDays} (consecutive active days; one missed day is forgiven)`} />
           <Row k="Quiet days" v={`${daysQuiet}  (1 = idle, 2 = droopy, 3-4 = sad, 5+ = grumpy; circle joins do not count as a logged day)`} />
           <Row k="Wilt" v={`${wilt.toFixed(2)} (look only: level, points and the bar never drop)`} />
@@ -883,16 +903,19 @@ function App() {
             onChange={(e: any) => jumpToLevel(parseInt(e.target.value, 10))}
             style={selStyle}
           >
-            {LEVELS.map((l) => (
-              <option key={l.level} value={l.level}>
-                {`${l.level}. ${l.name} (${l.threshold} points)`}
-              </option>
-            ))}
+            {(JUMP_LEVELS.includes(level) ? JUMP_LEVELS : [...JUMP_LEVELS, level].sort((a, b) => a - b)).map((n) => {
+              const l = levelInfo(n);
+              return (
+                <option key={l.level} value={l.level}>
+                  {`${l.level}. ${l.name} (${l.threshold} points)`}
+                </option>
+              );
+            })}
           </select>
           <Text style={{ fontSize: 11, color: C.onVar, flex: 1 }}>Sets exact points and overrides the no-regress cache so the level can go down.</Text>
         </View>
 
-        <H>Levels (click a row to jump)</H>
+        <H>Levels (click a row to jump; eleven and up are the endless levels)</H>
         <Card style={{ padding: 8 }}>
           <View style={{ flexDirection: 'row', paddingVertical: 2, paddingHorizontal: 6 }}>
             <Text style={{ width: 28, fontSize: 11, color: C.onVar }}>Lv</Text>
@@ -900,8 +923,10 @@ function App() {
             <Text style={{ width: 70, fontSize: 11, color: C.onVar }}>From points</Text>
             <Text style={{ width: 64, fontSize: 11, color: C.onVar }}>Art</Text>
             <Text style={{ width: 52, fontSize: 11, color: C.onVar }}>Blossoms</Text>
+            <Text style={{ width: 70, fontSize: 11, color: C.onVar }}>Era</Text>
           </View>
-          {LEVELS.map((l) => {
+          {JUMP_LEVELS.map((n) => {
+            const l = levelInfo(n);
             const cur = l.level === level;
             return (
               <Pressable
@@ -914,6 +939,7 @@ function App() {
                 <Text style={{ width: 70, fontSize: 12, color: C.onSurface }}>{l.threshold}</Text>
                 <Text style={{ width: 64, fontSize: 12, color: C.onSurface }}>{l.stage}</Text>
                 <Text style={{ width: 52, fontSize: 12, color: C.onSurface }}>{l.blossoms}</Text>
+                <Text style={{ width: 70, fontSize: 12, color: C.onSurface }}>{l.eraName ?? '-'}</Text>
               </Pressable>
             );
           })}
@@ -951,7 +977,7 @@ function App() {
             </Text>
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-            {[0, 10, 40, 100, 200].map((p) => (
+            {[0, 10, 40, 100, 200, 500, 1000].map((p) => (
               <Btn key={p} label={`${p} pts`} onPress={() => patch({ friendPoints: p })} />
             ))}
             <Btn
@@ -962,12 +988,15 @@ function App() {
         </Card>
 
         <Text style={{ fontSize: 11, color: C.onVar, marginTop: 18, lineHeight: 16 }}>
-          Browser mock of the screens built from the real Sprout components (hero, bubble, +N, journey, today, how it grows) and model and line logic. Not the installed app: layout, fonts and gestures on a phone can differ. Friend data is fake; the 0074 server migration is not applied. Streak and mood are local only: they are never sent to friends or the server, and only days without logging change them. The mock day is a virtual clock; the real app counts per Asia/Kolkata day from server data.
+          Browser mock of the screens built from the real Sprout components (hero, bubble, +N, journey, today, how it grows) and model and line logic. Not the installed app: layout, fonts and gestures on a phone can differ. Friend data is fake; the 0074 server migration is not applied. Levels past 10 are endless and computed locally (the server keeps level capped at 10 by design). Streak and mood are local only: they are never sent to friends or the server, and only days without logging change them. The mock day is a virtual clock; the real app counts per Asia/Kolkata day from server data.
         </Text>
       </View>
     </View>
   );
 }
+
+// Jump targets: the ten base levels plus endless ones (eras start at 11, 16, 21, 26, 31, then cycle with a numeral).
+const JUMP_LEVELS = [...LEVELS.map((l) => l.level), 11, 12, 15, 16, 20, 21, 26, 30, 31, 36, 50];
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
@@ -1002,10 +1031,12 @@ function SproutScreenMock(p: {
   animating: boolean;
   go: (s: Screen) => void;
   wilt: number;
+  era: number;
+  bigMoment: boolean;
   streakDays: number;
   daysQuiet: number;
 }) {
-  const summary = p.toNext ? `${p.toNext.remaining} to go to ${p.toNext.nextName}` : `${p.name} \u00b7 ${p.points} growth points`;
+  const summary = `${p.toNext.remaining} to go to ${p.toNext.nextName}`;
   const section = { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: C.onVar, marginTop: 24, marginBottom: 8 } as const;
   return (
     <View style={{ flex: 1 }}>
@@ -1036,13 +1067,13 @@ function SproutScreenMock(p: {
                 )}
               </View>
               <View style={{ width: 200, height: 200 }}>
-                <Sprout stage={p.stage} mood={p.mood} blossoms={p.blossoms} growth={p.growth} tickKey={p.tickKey} size={200} onTap={p.onTap} accessibilityHint="Tap to play with Sprout" onAnimationEnd={p.animating ? p.markSeen : undefined} wilt={p.wilt} />
+                <Sprout stage={p.stage} mood={p.mood} blossoms={p.blossoms} growth={p.growth} tickKey={p.tickKey} size={200} onTap={p.onTap} accessibilityHint="Tap to play with Sprout" onAnimationEnd={p.animating ? p.markSeen : undefined} wilt={p.wilt} era={p.era} bigMoment={p.bigMoment} />
                 {p.pop ? <SproutPlusPop key={p.pop.id} n={p.pop.n} onDone={p.clearPop} style={{ top: 8, right: 0 }} /> : null}
               </View>
               <Text style={{ fontSize: 22, fontWeight: '800', color: C.onSurface, marginTop: 8 }}>{p.name}</Text>
               <Text testID="sprout-summary" style={{ fontSize: 13, color: C.onVar, marginTop: 2 }}>{summary}</Text>
               <View style={{ alignSelf: 'stretch', paddingHorizontal: 12 }}>
-                <SproutProgress fraction={p.toNext ? p.fraction : 1} />
+                <SproutProgress fraction={p.fraction} />
               </View>
             </View>
             <Text style={section}>Streak</Text>

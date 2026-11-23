@@ -20,14 +20,14 @@ export function SproutHomeCard({ className = '' }: Props) {
   const router = useRouter();
   const {
     stage, level, levelName, mood, points, blossoms, growth, fraction, toNext, tickKey,
-    hidden, markSeen, refresh, loading, userId, counts, wilt, streakDays, justRevived,
+    hidden, markSeen, refresh, loading, userId, counts, wilt, streakDays, justRevived, era, bigMoment,
   } = useSprout();
 
   const talk = useSproutTalk({
     userId,
     points,
     level,
-    toNext: toNext ? { remaining: toNext.remaining, nextName: toNext.nextName } : null,
+    toNext: { remaining: toNext.remaining, nextName: toNext.nextName },
     counts,
     hidden,
     loading,
@@ -66,8 +66,8 @@ export function SproutHomeCard({ className = '' }: Props) {
       tickKey={tickKey}
       levelName={levelName}
       points={points}
-      toNext={toNext ? { remaining: toNext.remaining, nextName: toNext.nextName } : null}
-      fraction={toNext ? fraction : 1}
+      toNext={{ remaining: toNext.remaining, nextName: toNext.nextName }}
+      fraction={fraction}
       line={talk.line}
       pop={talk.pop}
       onTap={talk.onTap}
@@ -76,6 +76,8 @@ export function SproutHomeCard({ className = '' }: Props) {
       onOpen={() => router.push('/sprout')}
       onAnimationEnd={animating ? markSeen : undefined}
       wilt={wilt}
+      era={era}
+      bigMoment={bigMoment}
       streakDays={streakDays}
     />
   );

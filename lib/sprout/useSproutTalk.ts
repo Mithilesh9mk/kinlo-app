@@ -10,7 +10,7 @@
  * silently, so turning it back on never replays old growth.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { levelFor, type SproutMood } from './model';
+import { eraFor, levelFor, type SproutMood } from './model';
 import { pickLine, todayCountsFrom, type LineEvent, type QuietTier } from './lines';
 import { getLastShownPoints, setLastShownPoints } from './prefs';
 import type { SproutCounts } from './model';
@@ -89,7 +89,7 @@ export function useSproutTalk(args: Args) {
     idRef.current += 1;
     setLine({ id: idRef.current, text });
     if (timer.current) clearTimeout(timer.current);
-    const ms = ev === 'gain' || ev === 'levelUp' || ev === 'revived' ? GAIN_MS : LINE_MS;
+    const ms = ev === 'gain' || ev === 'levelUp' || ev === 'eraUp' || ev === 'revived' ? GAIN_MS : LINE_MS;
     timer.current = setTimeout(() => {
       timer.current = null;
       if (mounted.current) setLine(null);
@@ -143,7 +143,12 @@ export function useSproutTalk(args: Args) {
         const gain = pts - stored;
         idRef.current += 1;
         setPop({ id: idRef.current, n: gain });
-        say(levelFor(pts) > levelFor(stored) ? 'levelUp' : 'gain', gain);
+        const lvlNow = levelFor(pts);
+        const lvlBefore = levelFor(stored);
+        say(
+          eraFor(lvlNow) > eraFor(lvlBefore) ? 'eraUp' : lvlNow > lvlBefore ? 'levelUp' : 'gain',
+          gain,
+        );
       })
       .catch(() => {
         /* cosmetic; ignore */

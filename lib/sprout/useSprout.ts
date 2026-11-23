@@ -7,6 +7,9 @@ import { supabase } from '../supabase';
 import {
   artFor,
   displayLevel,
+  eraFor,
+  eraName,
+  eraUnlocked,
   growthIn,
   levelFor,
   levelName,
@@ -46,16 +49,22 @@ export interface UseSproutResult {
   levelName: string;
   blossoms: number;
   points: number;
-  /** 0..1 progress through the current level (1 at the top). */
+  /** Era number of the shown level: 0 up to level 10, then 1, 2, ... (drives the figure's cosmetics). */
+  era: number;
+  /** Era name without "era" (null before the first era). */
+  eraName: string | null;
+  /** True while a 'growing' moment is an era unlock (a bigger celebration). */
+  bigMoment: boolean;
+  /** 0..1 progress through the current level. */
   growth: number;
-  /** Progress to the next level, 1 at the top. */
+  /** Progress to the next level (levels are endless, so there is always a next). */
   fraction: number;
   toNext: {
     nextLevel: number;
     nextName: string;
     remaining: number;
     fraction: number;
-  } | null;
+  };
   mood: SproutMood;
   hidden: boolean;
   setHidden: (hidden: boolean) => void;
@@ -217,14 +226,19 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
     void setCachedLevel(userId, level);
   }, [userId, level]);
 
+  const era = eraFor(level);
+
   return {
     stage: art.stage,
     level,
     levelName: levelName(level),
     blossoms: art.blossoms,
+    era,
+    eraName: eraName(era),
+    bigMoment: mood === 'growing' && eraUnlocked(level, lastSeenLevel),
     points,
     growth: growthIn(points),
-    fraction: toNext?.fraction ?? 1,
+    fraction: toNext.fraction,
     toNext,
     mood,
     hidden,

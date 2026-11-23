@@ -928,6 +928,46 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Personal Spending card — amber. While the first-run "Track your own
+            spending" hint is showing and there is nothing to report, the card
+            would say the same thing, so it waits until the hint is dismissed
+            or the first expense exists. */}
+        {personalSummary !== null && !(showPersonal && personalSummary.count === 0) && (
+          <View className="px-6 mb-3">
+            <AnimatedPressable
+              onPress={() => router.push('/finance')}
+              className="rounded-2xl p-4 flex-row gap-4 items-center"
+              style={{ backgroundColor: 'rgba(217,119,6,0.14)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.35)' }}
+            >
+              <View className="w-12 h-12 rounded-full bg-white items-center justify-center shadow-sm">
+                <MaterialIcons name="document-scanner" size={24} color="#d97706" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: '#9a5511' }}>Personal Spending</Text>
+                {/* Once there is data the card reports it instead of repeating
+                    a prompt the user has already acted on — that is what earns
+                    it a permanent slot on Home rather than being a first-run
+                    nudge that disappears. */}
+                {personalSummary.count === 0 ? (
+                  <Text className="font-semibold text-on-surface" numberOfLines={1}>
+                    Track your own spending — scan a screenshot to start
+                  </Text>
+                ) : (
+                  <>
+                    <Text className="font-bold text-on-surface text-lg" numberOfLines={1} style={tabularNums}>
+                      {formatINR(personalSummary.total)}
+                    </Text>
+                    <Text className="text-xs text-on-surface-variant" numberOfLines={1}>
+                      {personalSummary.count} expense{personalSummary.count === 1 ? '' : 's'} this month
+                    </Text>
+                  </>
+                )}
+              </View>
+              <MaterialIcons name="chevron-right" size={24} color="#d97706" />
+            </AnimatedPressable>
+          </View>
+        )}
+
         {/* Insights tile — the split month figure, full width; tapping it opens
             the split breakdown in Insights. Today's split is a small sub-line
             that only appears when today's amount rounds to at least ₹1, or "Today —" when today's
@@ -939,18 +979,20 @@ export default function HomeScreen() {
               pathname: '/(tabs)/analytics',
               params: { scope: 'split', window: '6m', month: 'current', t: String(Date.now()) },
             })}
-            className="w-full liquid-glass rounded-2xl p-4"
+            className="w-full liquid-glass rounded-2xl px-4 py-2.5 flex-row items-center"
           >
-            <View className="w-8 h-8 rounded-full bg-surface mb-2 items-center justify-center">
-              <MaterialIcons name="trending-up" size={16} color="#004c22" />
+            <View className="w-7 h-7 rounded-full bg-surface mr-3 items-center justify-center">
+              <MaterialIcons name="trending-up" size={14} color="#004c22" />
             </View>
-            <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-0.5">This month (split)</Text>
-            <Text className="text-lg font-bold text-on-surface" style={tabularNums}>{loadStatus.monthly === 'failed' ? '—' : formatINR(monthlySpend, { decimals: 0 })}</Text>
-            {loadStatus.today === 'failed' ? (
-              <Text className="text-xs text-on-surface-variant mt-1" style={tabularNums}>Today —</Text>
-            ) : Math.abs(todaySpend) >= 0.5 ? (
-              <Text className="text-xs text-on-surface-variant mt-1" style={tabularNums}>{`Today ${formatINR(todaySpend, { decimals: 0 })}`}</Text>
-            ) : null}
+            <View className="flex-1">
+              <Text className="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider" numberOfLines={1}>This month (split)</Text>
+              {loadStatus.today === 'failed' ? (
+                <Text className="text-[11px] text-on-surface-variant" style={tabularNums}>Today —</Text>
+              ) : Math.abs(todaySpend) >= 0.5 ? (
+                <Text className="text-[11px] text-on-surface-variant" style={tabularNums}>{`Today ${formatINR(todaySpend, { decimals: 0 })}`}</Text>
+              ) : null}
+            </View>
+            <Text className="text-base font-bold text-on-surface" style={tabularNums}>{loadStatus.monthly === 'failed' ? '—' : formatINR(monthlySpend, { decimals: 0 })}</Text>
           </AnimatedPressable>
         </View>
 
@@ -993,46 +1035,6 @@ export default function HomeScreen() {
         {/* The static "Smart Split" suggestion card was removed in the Home
             declutter: its only action was /statement, already reached by the
             balance card's Statement button and Recent Activity's See all. */}
-
-        {/* Personal Spending card — amber. While the first-run "Track your own
-            spending" hint is showing and there is nothing to report, the card
-            would say the same thing, so it waits until the hint is dismissed
-            or the first expense exists. */}
-        {personalSummary !== null && !(showPersonal && personalSummary.count === 0) && (
-          <View className="px-6 mb-8">
-            <AnimatedPressable
-              onPress={() => router.push('/finance')}
-              className="rounded-2xl p-4 flex-row gap-4 items-center"
-              style={{ backgroundColor: 'rgba(217,119,6,0.14)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.35)' }}
-            >
-              <View className="w-12 h-12 rounded-full bg-white items-center justify-center shadow-sm">
-                <MaterialIcons name="document-scanner" size={24} color="#d97706" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: '#9a5511' }}>Personal Spending</Text>
-                {/* Once there is data the card reports it instead of repeating
-                    a prompt the user has already acted on — that is what earns
-                    it a permanent slot on Home rather than being a first-run
-                    nudge that disappears. */}
-                {personalSummary.count === 0 ? (
-                  <Text className="font-semibold text-on-surface" numberOfLines={1}>
-                    Track your own spending — scan a screenshot to start
-                  </Text>
-                ) : (
-                  <>
-                    <Text className="font-bold text-on-surface text-lg" numberOfLines={1} style={tabularNums}>
-                      {formatINR(personalSummary.total)}
-                    </Text>
-                    <Text className="text-xs text-on-surface-variant" numberOfLines={1}>
-                      {personalSummary.count} expense{personalSummary.count === 1 ? '' : 's'} this month
-                    </Text>
-                  </>
-                )}
-              </View>
-              <MaterialIcons name="chevron-right" size={24} color="#d97706" />
-            </AnimatedPressable>
-          </View>
-        )}
 
         {/* Recent Activity */}
         <View className="px-6 mb-4">
