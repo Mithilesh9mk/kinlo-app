@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://kinlo.tummytimestudio.com/">
+<meta property="og:url" content="https://kinlo.tummytimestudio.com/">
+<title>Kinlo, a bill splitter for friends and groups</title>
+<meta name="description" content="Kinlo splits bills between friends and groups, tracks who owes whom and reads payment screenshots. A free Android preview, open source under MIT.">
+<meta property="og:title" content="Kinlo, a bill splitter for friends and groups">
+<meta property="og:description" content="Split bills to the last paisa. Android preview, open source under MIT.">
+<meta property="og:type" content="website">
+<link rel="icon" href="assets/img/favicon.png" type="image/png">
+<link rel="stylesheet" href="assets/css/site.css">
+<link rel="stylesheet" href="assets/css/scenes.css">
+<script src="assets/js/boot.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<span class="progress" data-sc-progress aria-hidden="true"></span>
+
+<header class="nav">
+  <div class="container nav__row">
+    <a class="wordmark" href="/" aria-label="Kinlo home"><svg class="mark" viewBox="190 190 640 640" aria-hidden="true" focusable="false"><path pathLength="1" d="M806 215 C700 222 560 238 440 280 C340 316 285 360 255 420 C232 466 215 510 215 548 C215 600 250 690 290 732 C340 620 430 505 563 437 C465 530 385 670 363 782 C410 802 460 808 510 806 C598 800 662 756 696 690 C726 634 745 556 765 472 C788 386 802 300 806 215 Z"/></svg>Kinlo</a>
+    <a class="nav__link" href="#download">Get the APK</a>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-h" data-sc-act="flow">
+  <div class="planes" aria-hidden="true">
+    <div class="plane plane--far" data-sc-parallax="1.6"><svg class="plane__leaf" viewBox="190 190 640 640" focusable="false"><path d="M806 215 C700 222 560 238 440 280 C340 316 285 360 255 420 C232 466 215 510 215 548 C215 600 250 690 290 732 C340 620 430 505 563 437 C465 530 385 670 363 782 C410 802 460 808 510 806 C598 800 662 756 696 690 C726 634 745 556 765 472 C788 386 802 300 806 215 Z"/></svg></div>
+    <div class="plane plane--mid" data-sc-parallax="-0.9">
+      <span class="slip slip--1"><b>Hotel</b><i>&#8377;6,000</i></span>
+      <span class="slip slip--2"><b>Dinner</b><i>&#8377;2,000</i></span>
+      <span class="slip slip--3"><b>Cab</b><i>&#8377;1,200</i></span>
+    </div>
+  </div>
+  <div class="planes planes--front" aria-hidden="true">
+    <div class="plane plane--near" data-sc-parallax="-1.8"><span class="coin coin--1">&#8377;</span><span class="coin coin--2">&#8377;</span></div>
+  </div>
+  <div class="container hero__grid">
+    <div class="hero__text">
+      <h1 id="hero-h">Split the bill to the last paisa.</h1>
+      <p class="lead">Try a split here, then run your group&rsquo;s tab on Android.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Mithilesh9mk/kinlo-app/releases/tag/v1.0.0-preview" rel="noopener">Get the preview APK</a>
+        <button class="btn btn--quiet" type="button" disabled aria-disabled="true">Google Play: coming soon</button>
+      </div>
+    </div>
+
+    <div class="calc-wrap" data-sheets>
+    <span class="sheet sheet--b" aria-hidden="true"></span>
+    <span class="sheet sheet--a" aria-hidden="true"></span>
+    <form class="calc" id="calc-form" novalidate aria-labelledby="calc-h" autocomplete="off">
+      <h2 class="visually-hidden" id="calc-h">Split calculator</h2>
+      <div class="calc__grid">
+        <div>
+          <label class="fld-label" for="total">Total</label>
+          <div class="money">
+            <span class="money__sign" aria-hidden="true">&#8377;</span>
+            <input class="input input--money" id="total" name="total" type="text" inputmode="decimal" autocomplete="off" value="100" dir="auto" aria-describedby="total-help" disabled data-needs-js>
+          </div>
+          <p class="help" id="total-help" aria-live="polite"></p>
+        </div>
+
+        <fieldset>
+          <legend>People</legend>
+          <div class="people-row">
+            <div class="seg" role="group" aria-label="Number of people">
+              <input type="radio" name="people" id="p2" value="2" disabled data-needs-js><label for="p2">2</label>
+              <input type="radio" name="people" id="p3" value="3" checked disabled data-needs-js><label for="p3">3</label>
+              <input type="radio" name="people" id="pm" value="more" disabled data-needs-js><label for="pm">More</label>
+            </div>
+            <div class="stepper is-off" id="stepper" inert>
+              <button type="button" id="step-down" aria-label="One fewer person" disabled data-needs-js>&minus;</button>
+              <input class="input" id="count" type="number" inputmode="numeric" min="4" max="12" value="4" aria-label="Number of people, 4 to 12" disabled data-needs-js>
+              <button type="button" id="step-up" aria-label="One more person" disabled data-needs-js>+</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="calc__row2">
+          <div>
+            <label class="fld-label" for="payer">Who paid</label>
+            <select class="select" id="payer" name="payer" disabled data-needs-js>
+              <option value="0" selected>Asha</option>
+              <option value="1">Ravi</option>
+              <option value="2">Meera</option>
+              <option value="-1">Not set</option>
+            </select>
+          </div>
+          <fieldset>
+            <legend>Split</legend>
+            <div class="seg seg--grow" role="group" aria-label="Split type">
+              <input type="radio" name="mode" id="m-eq" value="equal" checked disabled data-needs-js><label for="m-eq">Equal</label>
+              <input type="radio" name="mode" id="m-cu" value="custom" disabled data-needs-js><label for="m-cu">Custom</label>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+
+      <ol class="rows" id="rows" tabindex="0" aria-label="Each person&rsquo;s share">
+        <li class="row"><input class="row__name" type="text" value="Asha" aria-label="Name of person 1" disabled data-needs-js><output class="row__amt num">&#8377;33.34</output><span class="row__note">paid &#8377;100.00, gets back &#8377;66.66</span></li>
+        <li class="row"><input class="row__name" type="text" value="Ravi" aria-label="Name of person 2" disabled data-needs-js><output class="row__amt num">&#8377;33.33</output><span class="row__note">pays <bdi>Asha</bdi> &#8377;33.33</span></li>
+        <li class="row"><input class="row__name" type="text" value="Meera" aria-label="Name of person 3" disabled data-needs-js><output class="row__amt num">&#8377;33.33</output><span class="row__note">pays <bdi>Asha</bdi> &#8377;33.33</span></li>
+      </ol>
+
+      <p class="calc__sum num" id="calc-sum">&#8377;33.34 + &#8377;33.33 + &#8377;33.33 = &#8377;100.00</p>
+
+      <p class="calc__status" id="calc-status" role="status" aria-live="polite" data-state="ok"><strong>Shares add up to &#8377;100.00.</strong> Ravi pays Asha &#8377;33.33. Meera pays Asha &#8377;33.33.</p>
+      <p class="calc__nojs">This is a saved example. Turn on JavaScript to change it.</p>
+    </form>
+    </div>
+  </div>
+</section>
+
+<section class="screens" id="tour" data-sc-act="pan" data-sc-span="3.8" aria-labelledby="tour-h">
+  <div class="screens__stage" data-sc-stage>
+    <div class="screens__rail" data-sc-pan="0.04">
+      <div class="screens__lead">
+        <h2 id="tour-h">Circles, friends, and who paid.</h2>
+        <ul class="screens__list">
+          <li><b>Circles and friends.</b> Split with a group or one person.</li>
+          <li><b>Settle outside the app.</b> Kinlo keeps the record and never holds your money.</li>
+          <li><b>Repeating expenses.</b> Rent comes back every week, month or year.</li>
+        </ul>
+      </div>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-add-expense.webp" width="600" height="1333" alt="The Add Expense screen in the Kinlo app: an amount of 0 rupees, a what-was-it-for field, category chips and a number pad." loading="lazy"></div>
+        <figcaption>Add an expense: an amount, what it was for, a category.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-circles.webp" width="600" height="1333" alt="The Your Circles screen in the Kinlo app: a search box and cards for travel circles, each showing its members and a Settled balance." loading="lazy"></div>
+        <figcaption>Circles: one card per group, with its balance.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-finance.webp" width="600" height="1333" alt="The Personal Spending screen in the Kinlo app: this month's total, a bar chart by month, Add from screenshot and Enter manually buttons, and spending by category." loading="lazy"></div>
+        <figcaption>Personal spending, with Add from screenshot.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="screen__frame"><img src="assets/img/screen-insights.webp" width="600" height="1333" alt="The Insights screen in the Kinlo app: spending over the last four weeks as bars, with a split between shared and personal spending and a top category." loading="lazy"></div>
+        <figcaption>Insights: spending over a week, a month or longer.</figcaption>
+      </figure>
+      <div class="screens__end"><p>Screens from the Android preview.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="ways-h">
+  <div class="container split">
+    <div class="split__text" data-reveal>
+      <h2 id="ways-h">Four ways to share one bill.</h2>
+      <p>The same bill between Asha, Ravi and Meera. Pick a way, then drag the bars or change the total. The shares always add back up to the bill, to the last paisa.</p>
+    </div>
+    <div class="ways" data-ways data-reveal>
+      <div class="ways__top">
+        <div>
+          <label class="fld-label" for="w-total">Bill total</label>
+          <div class="money">
+            <span class="money__sign" aria-hidden="true">&#8377;</span>
+            <input class="input input--money" id="w-total" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-describedby="w-total-help" disabled data-needs-js>
+          </div>
+          <p class="help" id="w-total-help" aria-live="polite"></p>
+        </div>
+        <fieldset class="ways__pick">
+          <legend>Split type</legend>
+          <div class="seg seg--grow" role="group" aria-label="Split type">
+            <input type="radio" name="way" id="w-eq" value="equal" checked disabled data-needs-js><label for="w-eq">Equal</label>
+            <input type="radio" name="way" id="w-ex" value="exact" disabled data-needs-js><label for="w-ex">Exact</label>
+            <input type="radio" name="way" id="w-pc" value="percent" disabled data-needs-js><label for="w-pc">Percent</label>
+            <input type="radio" name="way" id="w-sh" value="shares" disabled data-needs-js><label for="w-sh">Shares</label>
+          </div>
+        </fieldset>
+      </div>
+      <p class="ways__why" id="ways-why">Everyone pays the same. The extra paisa goes to the first people in the list.</p>
+      <ol class="wrows" aria-describedby="ways-why">
+        <li><bdi class="w__name">Asha</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.34</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Asha&rsquo;s share" disabled></li>
+        <li><bdi class="w__name">Ravi</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Ravi&rsquo;s share" disabled></li>
+        <li><bdi class="w__name">Meera</bdi><output class="w__in">equal</output><output class="w__amt num">&#8377;333.33</output><input class="w__range" type="range" min="0" max="100" step="1" value="33" aria-label="Meera&rsquo;s share" disabled></li>
+      </ol>
+      <p class="ways__sum num">&#8377;333.34 + &#8377;333.33 + &#8377;333.33 = &#8377;1,000.00</p>
+      <p class="visually-hidden" id="ways-live" role="status" aria-live="polite"></p>
+      <p class="small ways__nojs">This is a saved example. Turn on JavaScript to change it.</p>
+      <div class="ways__foot">
+        <p class="small">Pick Exact, Percent or Shares, then drag a bar or use the arrow keys. Example people, nothing is saved.</p>
+        <button class="link-btn" type="button" data-ways-reset hidden>Reset</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="nine" id="fewer" data-sc-act="pin" data-sc-span="4.6" aria-labelledby="nine-h">
+  <div class="nine__stage" data-sc-stage>
+    <div class="container nine__grid">
+      <div class="nine__text">
+        <h2 id="nine-h" data-sc-cue="0 1 0 0">Nine payments, or three.</h2>
+        <div class="nine__beats">
+          <p data-sc-cue="0 0.34 0 0.3">A weekend away: hotel, dinner and cab, shared by four friends. Settle each cost on its own and that is nine payments.</p>
+          <p data-sc-cue="0.3 0.66 0.3 0.3">Kinlo adds it all up first, so each person ends with one balance.</p>
+          <p class="nine__final" data-sc-cue="0.62 1 0.25 0" data-sc-kinetic="lines">Three payments, all to Asha.</p>
+        </div>
+        <p class="nine__count num" aria-hidden="true"><span class="nine__n nine__n--9">9</span><span class="nine__n nine__n--3">3</span><span class="nine__u">payments</span></p>
+        <p class="nine__note">The numbers are the Goa weekend example, not a real group.</p>
+        <p class="visually-hidden">Example: Asha paid &#8377;6,000 for the hotel, Ravi &#8377;2,000 for dinner and Meera &#8377;1,200 for the cab. Settled one cost at a time that is nine payments. Netted, it is three: Ravi pays Asha &#8377;300, Meera pays Asha &#8377;1,100 and Dev pays Asha &#8377;2,300.</p>
+      </div>
+      <div class="nine__fig"><svg class="nine__svg" viewBox="0 -24 520 460" aria-hidden="true" focusable="false"><g class="nine__gross"><path pathLength="1" d="M380 110 Q262 84 144 110"/><path pathLength="1" d="M385 293.4 Q276.1 189.5 138.3 128.9"/><path pathLength="1" d="M110 280 Q136 212 110 144"/><path pathLength="1" d="M140 110 Q258 136 376 110"/><path pathLength="1" d="M410 280 Q436 212 410 144"/><path pathLength="1" d="M135 293.4 Q272.8 232.7 381.7 128.9"/><path pathLength="1" d="M135 126.6 Q243.9 230.5 381.7 291.1"/><path pathLength="1" d="M410 140 Q384 208 410 276"/><path pathLength="1" d="M140 310 Q258 336 376 310"/></g><g class="nine__net"><path class="n" pathLength="1" d="M380 110 L145 110"/><path class="h" d="M141 110 L155 103 L155 117 Z"/><path class="n" pathLength="1" d="M385 293.4 L139.1 129.4"/><path class="h" d="M135.8 127.2 L151.3 129.1 L143.6 140.8 Z"/><path class="n" pathLength="1" d="M110 280 L110 145"/><path class="h" d="M110 141 L117 155 L103 155 Z"/></g><g class="nine__amts"><text x="262" y="92" text-anchor="middle">&#8377;300</text><text x="338" y="222" text-anchor="middle">&#8377;1,100</text><text x="92" y="214" text-anchor="end">&#8377;2,300</text></g><g class="nine__nodes"><circle cx="110" cy="110" r="26"/><text class="i" x="110" y="117" text-anchor="middle">A</text><text class="nm" x="110" y="68" text-anchor="middle">Asha</text><text class="bal" x="110" y="48" text-anchor="middle">gets back &#8377;3,700</text><circle cx="410" cy="110" r="26"/><text class="i" x="410" y="117" text-anchor="middle">R</text><text class="nm" x="410" y="68" text-anchor="middle">Ravi</text><text class="bal" x="410" y="48" text-anchor="middle">owes &#8377;300</text><circle cx="410" cy="310" r="26"/><text class="i" x="410" y="317" text-anchor="middle">M</text><text class="nm" x="410" y="362" text-anchor="middle">Meera</text><text class="bal" x="410" y="384" text-anchor="middle">owes &#8377;1,100</text><circle cx="110" cy="310" r="26"/><text class="i" x="110" y="317" text-anchor="middle">D</text><text class="nm" x="110" y="362" text-anchor="middle">Dev</text><text class="bal" x="110" y="384" text-anchor="middle">owes &#8377;2,300</text></g></svg></div>
+    </div>
+  </div>
+</section>
+
+<section class="journey" id="journey" aria-labelledby="journey-h" data-journey>
+  <div class="journey__track">
+    <div class="journey__sticky">
+      <div class="container journey__grid">
+        <div class="journey__text">
+          <h2 id="journey-h">One bill, from entry to settled.</h2>
+          <ol class="jsteps" data-jsteps>
+            <li><button type="button" data-step="1" disabled><span class="n" aria-hidden="true">1</span><span class="jt"><b>Add the expenses.</b><span class="d"><span>A weekend away. Asha pays the hotel, Ravi the dinner, Meera the cab.</span></span></span></button></li>
+            <li><button type="button" data-step="2" disabled><span class="n" aria-hidden="true">2</span><span class="jt"><b>Share them out.</b><span class="d"><span>Each cost is split equally between the four of them.</span></span></span></button></li>
+            <li><button type="button" data-step="3" disabled><span class="n" aria-hidden="true">3</span><span class="jt"><b>See who is ahead.</b><span class="d"><span>Everything nets into one balance each. Asha is owed &#8377;3,700.</span></span></span></button></li>
+            <li><button type="button" data-step="4" disabled><span class="n" aria-hidden="true">4</span><span class="jt"><b>Fewer payments.</b><span class="d"><span>Nine payments if each cost were settled alone. Three once the balances are netted.</span></span></span></button></li>
+            <li><button type="button" data-step="5" disabled><span class="n" aria-hidden="true">5</span><span class="jt"><b>Record the settlement.</b><span class="d"><span>When someone pays, mark it settled. Kinlo keeps the record. The money moves outside the app.</span></span></span></button></li>
+          </ol>
+        </div>
+
+        <div class="ledger" role="group" aria-label="Example ledger: a Goa weekend, four people" data-ledger data-step="5">
+          <p class="ledger__top"><b>Goa weekend</b><span>Example, not a real group</span></p>
+
+          <section class="lg lg--exp" aria-labelledby="lg-exp">
+            <h3 id="lg-exp">Expenses</h3>
+            <ul>
+              <li><span class="nm">Hotel</span><span class="by"><bdi>Asha</bdi> paid</span><b class="amt">&#8377;6,000</b><span class="sh">&#8377;1,500 each</span></li>
+              <li><span class="nm">Dinner</span><span class="by"><bdi>Ravi</bdi> paid</span><b class="amt">&#8377;2,000</b><span class="sh">&#8377;500 each</span></li>
+              <li><span class="nm">Cab</span><span class="by"><bdi>Meera</bdi> paid</span><b class="amt">&#8377;1,200</b><span class="sh">&#8377;300 each</span></li>
+            </ul>
+          </section>
+
+          <div class="ledger__cols">
+            <section class="lg lg--bal" aria-labelledby="lg-bal">
+              <h3 id="lg-bal">Balances</h3>
+              <ul>
+                <li><bdi>Asha</bdi><span>gets back <b class="amt">&#8377;3,700</b></span></li>
+                <li><bdi>Ravi</bdi><span>owes <b class="amt">&#8377;300</b></span></li>
+                <li><bdi>Meera</bdi><span>owes <b class="amt">&#8377;1,100</b></span></li>
+                <li><bdi>Dev</bdi><span>owes <b class="amt">&#8377;2,300</b></span></li>
+              </ul>
+              <p class="lg__sum">Total &#8377;9,200. Each share &#8377;2,300.</p>
+            </section>
+
+            <section class="lg lg--pay" aria-labelledby="lg-pay">
+              <h3 id="lg-pay">Payments</h3>
+              <ul>
+                <li><span><bdi>Ravi</bdi> pays <bdi>Asha</bdi></span><b class="amt">&#8377;300</b><span class="st"><span class="st__a">To pay</span><span class="st__b">Settled</span></span></li>
+                <li><span><bdi>Meera</bdi> pays <bdi>Asha</bdi></span><b class="amt">&#8377;1,100</b><span class="st"><span class="st__a">To pay</span><span class="st__b">Settled</span></span></li>
+                <li><span><bdi>Dev</bdi> pays <bdi>Asha</bdi></span><b class="amt">&#8377;2,300</b><span class="st"><span class="st__a">To pay</span><span class="st__b">Settled</span></span></li>
+              </ul>
+              <p class="lg__sum">3 payments, not 9.</p>
+            </section>
+          </div>
+
+          <p class="ledger__note">Marked settled in Kinlo. The money itself moved outside it, in a UPI app or in cash.</p>
+          <div class="ledger__ctl"><button class="link-btn" type="button" data-journey-next hidden>Next step</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="scan-h">
+  <div class="container split">
+    <div class="split__text" data-reveal>
+      <h2 id="scan-h">Screenshot in, expense out.</h2>
+      <p>An AI service reads your UPI or bank payment screenshot into a personal expense. You check it before you rely on it. It does not create a shared expense. The image is sent to an AI service (Anthropic, or Google as a backup) to be read.</p>
+      <p class="small">Free plan: 3 scans a month per account, 6 per app install.</p>
+    </div>
+    <figure class="demo demo--receipt" data-state="done" aria-labelledby="scan-cap">
+      <div class="demo__stage">
+        <div class="pane" aria-hidden="true">
+          <p class="pane__title small">Payment screenshot</p>
+          <span class="hit hit--2 pane__line">Example Cafe</span>
+          <span class="hit hit--1 pane__amt">&#8377;480.00</span>
+          <span class="hit hit--3 pane__line">24 Oct</span>
+          <div class="scan"><div class="scan__bar"></div></div>
+        </div>
+        <div class="pane" aria-hidden="true">
+          <p class="pane__title small">Personal expense</p>
+          <dl class="fields">
+            <div class="fld"><dt>Amount</dt><dd>&#8377;480.00</dd></div>
+            <div class="fld"><dt>Merchant</dt><dd>Example Cafe</dd></div>
+            <div class="fld"><dt>Date</dt><dd>24 Oct</dd></div>
+          </dl>
+          <span class="badge" data-demo-last>Needs review</span>
+        </div>
+      </div>
+      <p class="visually-hidden">Example: a payment screenshot from Example Cafe, &#8377;480.00 on 24 Oct, becomes a personal expense with the same amount, merchant and date, marked Needs review.</p>
+      <figcaption class="demo__bar">
+        <span class="demo__cap" id="scan-cap">Demo, not live: nothing is uploaded and the cafe is made up.</span>
+        <div class="demo__ctl">
+          <button class="link-btn" type="button" data-demo-play>Play demo</button>
+        </div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section section--tall" aria-labelledby="nudge-h">
+  <div class="container split split--flip">
+    <figure class="demo demo--remind" data-state="done" aria-labelledby="nudge-cap">
+      <div class="demo__stage">
+        <div class="friend" aria-hidden="true">
+          <span class="friend__av">R</span>
+          <div class="friend__main">
+            <div class="friend__name">Ravi</div>
+            <div class="friend__owes">owes you &#8377;33.33</div>
+          </div>
+          <span class="btn btn--small is-static">Send reminder</span>
+        </div>
+        <div class="notif" aria-hidden="true" data-demo-last>
+          <p class="notif__who">What Ravi sees</p>
+          <p class="notif__text">Asha reminded you about &#8377;33.33 you owe them.</p>
+        </div>
+      </div>
+      <p class="visually-hidden">Example: Ravi owes Asha &#8377;33.33. Asha taps Send reminder. Ravi sees: Asha reminded you about &#8377;33.33 you owe them.</p>
+      <figcaption class="demo__bar">
+        <span class="demo__cap" id="nudge-cap">Demo, not live. Reminder notifications are not working in the current preview APK yet.</span>
+        <div class="demo__ctl">
+          <button class="link-btn" type="button" data-demo-play>Play demo</button>
+        </div>
+      </figcaption>
+    </figure>
+    <div class="split__text" data-reveal>
+      <h2 id="nudge-h">A nudge that does the chasing.</h2>
+      <p>Tap Send reminder on a friend who owes you. One a day, per person. Kinlo records who owes what. It does not move money.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section section--mid" aria-labelledby="diff-h">
+  <div class="container" data-reveal>
+    <h2 id="diff-h">What Kinlo does differently.</h2>
+    <dl class="diff">
+      <div class="diff__row"><dt>Reminders are built in</dt><dd>Nudge a friend who owes you, once a day. Notifications are not working in the current preview yet.</dd></div>
+      <div class="diff__row"><dt>Screenshots become personal expenses</dt><dd>Scan a payment screenshot instead of typing it.</dd></div>
+      <div class="diff__row"><dt>Friends who have not joined</dt><dd>Add them first. If they join later, you both confirm the link.</dd></div>
+      <div class="diff__row"><dt>Open source</dt><dd>MIT-licensed code on <a href="https://github.com/Mithilesh9mk/kinlo-app" rel="noopener">GitHub</a>. The Kinlo name and logo stay reserved.</dd></div>
+      <div class="diff__row"><dt>Private by default</dt><dd>No ads, no tracking SDKs, no data sales. Read the <a href="/privacy">privacy policy</a>.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="band section section--tall" id="download" aria-labelledby="dl-h">
+  <div class="container band__grid">
+    <div class="band__text" data-reveal>
+      <h2 id="dl-h">Install the Android preview.</h2>
+      <p>Kinlo is a preview build for Android, about 100 MB, from GitHub. It is not on Google Play yet.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Mithilesh9mk/kinlo-app/releases/tag/v1.0.0-preview" rel="noopener">Get the preview APK</a>
+        <button class="btn btn--quiet" type="button" disabled aria-disabled="true">Google Play: coming soon</button>
+      </div>
+    </div>
+    <div class="band__side" data-reveal>
+      <svg class="mark mark--big" viewBox="190 190 640 640" aria-hidden="true" focusable="false"><path pathLength="1" d="M806 215 C700 222 560 238 440 280 C340 316 285 360 255 420 C232 466 215 510 215 548 C215 600 250 690 290 732 C340 620 430 505 563 437 C465 530 385 670 363 782 C410 802 460 808 510 806 C598 800 662 756 696 690 C726 634 745 556 765 472 C788 386 802 300 806 215 Z"/></svg>
+      <p>Android may ask you to allow installs from your browser. Then sign up with your email.</p>
+      <p><a href="https://github.com/Mithilesh9mk/kinlo-app">Source code and MIT licence</a></p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="container">
+    <div class="foot__top">
+      <a class="wordmark" href="/" aria-label="Kinlo home">Kinlo</a>
+      <ul class="foot__nav">
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms</a></li>
+        <li><a href="/delete-account">Delete account</a></li>
+      </ul>
+    </div>
+    <div class="foot__legal">
+      <p>Mithilesh Kale, Pune, operating as Tummy Time Studio. Tummy Time Studio is not a registered company. Android only for now.</p>
+      <p>Contact: Studio email coming soon.</p>
+      <p>The code is MIT licensed. The Kinlo name, logo and screenshots are not.</p>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/site.js" defer></script>
+<script src="assets/js/scrollcraft.js" defer></script>
+<script src="assets/js/mount.js" defer></script>
+</body>
+</html>
