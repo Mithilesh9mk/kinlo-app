@@ -25,7 +25,9 @@ const esc = (t) =>
     .replace(/’/g, '&rsquo;').replace(/“/g, '&ldquo;').replace(/”/g, '&rdquo;')
     .replace(/→/g, '&rarr;').replace(/₹/g, '&#8377;');
 const slug = (h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const mailto = (t) => t.split(L.GRIEVANCE_EMAIL).join(`<a href="mailto:${L.GRIEVANCE_EMAIL}">${L.GRIEVANCE_EMAIL}</a>`);
+const contactHtml = L.STUDIO_EMAIL ? `<a href="mailto:${L.STUDIO_EMAIL}">${L.STUDIO_EMAIL}</a>` : esc(L.CONTACT_LINE);
+// Policy text carries CONTACT_LINE as plain text; link it only when a real mailbox exists.
+const mailto = (t) => (L.STUDIO_EMAIL ? t.split(L.STUDIO_EMAIL).join(contactHtml) : t);
 
 // Footer pieces, built from lib/legal.ts so a domain change is one edit.
 const parentLinks = L.PARENT_SITE_URL
@@ -41,11 +43,12 @@ const footNav = `<ul class="foot__nav">
       </ul>`;
 const footLegal = `<div class="foot__legal">
       <p>Mithilesh Kale, Pune, operating as Tummy Time Studio. Tummy Time Studio is not a registered company. Android only for now.</p>
-      <p>Contact: <a href="mailto:${L.GRIEVANCE_EMAIL}">${L.GRIEVANCE_EMAIL}</a></p>
+      <p>Contact: ${contactHtml}</p>
       <p>The code is MIT licensed. The Kinlo name, logo and screenshots are not.</p>
     </div>`;
 const syncShared = (html, file) =>
   html
+    .replace(/<!--contact-->[\s\S]*?<!--\/contact-->/, `<!--contact-->${contactHtml}<!--/contact-->`)
     .replace(/<ul class="foot__nav">[\s\S]*?<\/ul>/, footNav)
     .replace(/<div class="foot__legal">[\s\S]*?<\/div>/, footLegal)
     .replace(/(<link rel="canonical" href=")[^"]*(">)/, `$1${L.PUBLIC_WEBSITE_URL}${file}$2`)
