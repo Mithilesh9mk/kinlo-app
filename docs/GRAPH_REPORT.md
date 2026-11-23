@@ -1,11 +1,11 @@
 # Kinlo — Automated Architecture & Graph Report
-> **Last Generated:** 23/11/2026, 5:11:29 pm
+> **Last Generated:** 23/11/2026, 10:26:20 pm
 
 ## 📊 Repository Summary
-- **Total Tracked System Nodes:** 204
-- **UI Screens (`app/`):** 55
-- **Components (`components/`):** 21
-- **Business Logic (`lib/` & `context/`):** 50
+- **Total Tracked System Nodes:** 214
+- **UI Screens (`app/`):** 56
+- **Components (`components/`):** 28
+- **Business Logic (`lib/` & `context/`):** 52
 - **SQL Migrations (`supabase/migrations/`):** 72
 - **Edge Functions (`supabase/functions/`):** 6
 
@@ -64,6 +64,7 @@
 - `app/security/_layout.tsx`
 - `app/settle-success.tsx`
 - `app/settle-up.tsx`
+- `app/sprout.tsx`
 - `app/statement.tsx`
 - `app/transaction/[id].tsx`
 - `app/_layout.tsx`
@@ -112,10 +113,12 @@
 - `lib/reminders.ts`
 - `lib/splitCalculator.ts`
 - `lib/sprout/friends.ts`
+- `lib/sprout/lines.ts`
 - `lib/sprout/model.ts`
 - `lib/sprout/prefs.ts`
 - `lib/sprout/stats.ts`
 - `lib/sprout/useSprout.ts`
+- `lib/sprout/useSproutTalk.ts`
 - `lib/statementCsv.ts`
 - `lib/supabase.ts`
 - `lib/useFirstRunHints.ts`

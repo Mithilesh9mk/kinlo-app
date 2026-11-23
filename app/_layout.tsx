@@ -344,6 +344,7 @@ export default function RootLayout() {
                 <Stack.Screen name="settle-success" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false, animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="mfa-challenge" options={{ headerShown: false, gestureEnabled: false }} />
                 <Stack.Screen name="security" options={{ headerShown: false }} />
+                <Stack.Screen name="sprout" options={{ headerShown: false }} />
               </Stack>
             </Animated.View>
           </AlertProvider>

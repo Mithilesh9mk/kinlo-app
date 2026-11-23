@@ -56,3 +56,34 @@ export async function getLastOpenAt(userId: string): Promise<number | null> {
 export async function setLastOpenAt(userId: string, at: number): Promise<void> {
   await setItem(k('lastOpenAt', userId), String(at));
 }
+
+/**
+ * Points last shown to the user (for the "+N growth" moment). null = never
+ * stored, which means "first run: store a baseline, do not pop".
+ */
+export async function getLastShownPoints(userId: string): Promise<number | null> {
+  const raw = await getItem(k('lastShownPoints', userId));
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
+export async function setLastShownPoints(userId: string, points: number): Promise<void> {
+  if (!Number.isFinite(points) || points < 0) return;
+  await setItem(k('lastShownPoints', userId), String(Math.floor(points)));
+}
+
+/**
+ * Quiet days (streakInfo.daysQuiet) as last computed from FRESH counts, so a
+ * remounted card can still tell that a logged action just ended a quiet spell.
+ * null = never stored (first run: no revive).
+ */
+export async function getQuietDays(userId: string): Promise<number | null> {
+  const raw = await getItem(k('quietDays', userId));
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+export async function setQuietDays(userId: string, days: number): Promise<void> {
+  if (!Number.isFinite(days) || days < 0) return;
+  await setItem(k('quietDays', userId), String(Math.floor(days)));
+}

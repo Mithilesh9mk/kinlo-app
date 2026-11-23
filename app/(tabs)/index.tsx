@@ -733,6 +733,12 @@ export default function HomeScreen() {
           {greeting}{userFirstName ? `, ${userFirstName}` : ''}
         </Text>
 
+        {/* Sprout hero: first card under the greeting. Renders nothing when
+            Show Sprout is off. */}
+        <View className="px-6">
+          <SproutHomeCard className="mt-1 mb-3" />
+        </View>
+
         {/* A pending connection request is a decision waiting on the user, so
             it gets its own row here rather than only a count in the history
             badge. Opens Activity, where the requests are listed and answered.
@@ -766,7 +772,6 @@ export default function HomeScreen() {
         {/* Own-number nudge: renders nothing unless the number is missing. */}
         <View className="px-6">
           <AddNumberCard className="mt-1 mb-3" />
-          <SproutHomeCard className="mt-1 mb-3" />
         </View>
 
         {/* Friends row: a horizontally-scrolling strip plus a fixed "View

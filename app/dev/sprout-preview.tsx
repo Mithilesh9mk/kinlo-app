@@ -8,7 +8,7 @@ import {
 
 // Dev-only preview of every Sprout stage and mood. Not linked from the UI.
 const STAGES: SproutStage[] = ['seed', 'sprout', 'sapling', 'tree'];
-const MOODS: SproutMood[] = ['idle', 'celebrate', 'curious', 'proud', 'welcomeBack', 'sleepy', 'growing'];
+const MOODS: SproutMood[] = ['idle', 'celebrate', 'curious', 'proud', 'welcomeBack', 'sleepy', 'growing', 'droopy', 'sad', 'grumpy', 'revived'];
 
 const BG = '#FBF7EE';
 const INK = '#0B2A16';

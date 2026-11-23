@@ -12,21 +12,26 @@ import {
   levelName,
   pointsFrom,
   resolveMood,
+  streakInfo,
   toNextLevel,
+  wiltFor,
   type SproutEvent,
   type SproutMood,
   type SproutStage,
 } from './model';
 import { fetchSproutCounts, getCachedCounts } from './stats';
+import type { SproutCounts } from './model';
 import {
   getCachedLevel,
   getHidden,
   getLastOpenAt,
   getLastSeenLevel,
+  getQuietDays,
   setCachedLevel,
   setHiddenPref,
   setLastOpenAt,
   setLastSeenLevel,
+  setQuietDays,
 } from './prefs';
 
 export interface SproutOverrides {
@@ -60,7 +65,22 @@ export interface UseSproutResult {
   refresh: () => Promise<void>;
   /** Increments when, after the first load, a refresh yields more points. */
   tickKey: number;
+  /** Signed-in user id (null until loaded / signed out). */
+  userId: string | null;
+  /** Latest per-day counts (cached, then fresh). Counts only, no amounts. */
+  counts: SproutCounts | null;
+  /** Active days in a row (one grace day allowed). LOCAL only, never synced. */
+  streakDays: number;
+  /** Whole IST days since the last logged action; 0 for a brand-new user. */
+  daysQuiet: number;
+  /** 0..1 wilt for the figure, from daysQuiet only. */
+  wilt: number;
+  /** One-shot: a logged action just ended a quiet spell. */
+  justRevived: boolean;
 }
+
+const REVIVE_MS = 3000;
+const NOW_TICK_MS = 5 * 60 * 1000;
 
 export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
   const { event, scanning, hasOpenBalances } = overrides;
@@ -72,6 +92,10 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
   const [hidden, setHiddenState] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tickKey, setTickKey] = useState(0);
+  const [counts, setCounts] = useState<SproutCounts | null>(null);
+  const [justRevived, setJustRevived] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const reviveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
   const openStamped = useRef(false);
   /** Latest points known in this instance; null until the first load lands. */
@@ -81,7 +105,14 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      if (reviveTimer.current) clearTimeout(reviveTimer.current);
     };
+  }, []);
+
+  // Re-evaluate quiet days across IST midnight while the app stays open.
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
+    return () => clearInterval(id);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -107,6 +138,7 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
         setUserId(uid);
         setHiddenState(isHidden);
         setPoints(cachedPoints);
+        setCounts(cachedCounts);
         setCachedLevelState(cLevel);
         setLastSeen(seen);
         // Only the first read per hook instance is the "previous open".
@@ -123,10 +155,23 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
       const freshPoints = pointsFrom(fresh);
       const shown = displayLevel(levelFor(freshPoints), cLevel);
       await setCachedLevel(uid, shown);
+      // Revive: quiet time was >= 2 days last time we looked, and a logged action ended it.
+      const quietNow = streakInfo(fresh, new Date()).daysQuiet;
+      const quietBefore = await getQuietDays(uid);
+      await setQuietDays(uid, quietNow);
+      if (mounted.current && quietBefore != null && quietBefore >= 2 && quietNow === 0) {
+        setJustRevived(true);
+        if (reviveTimer.current) clearTimeout(reviveTimer.current);
+        reviveTimer.current = setTimeout(() => {
+          reviveTimer.current = null;
+          if (mounted.current) setJustRevived(false);
+        }, REVIVE_MS);
+      }
       if (seen == null) await setLastSeenLevel(uid, shown); // first run: nothing to celebrate
       if (mounted.current) {
         lastPoints.current = freshPoints;
         setPoints(freshPoints);
+        setCounts(fresh);
         setCachedLevelState(shown);
         if (seen == null) setLastSeen(shown);
         if (before !== null && freshPoints > before) setTickKey((n) => n + 1);
@@ -144,6 +189,10 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
   const art = artFor(level);
   const toNext = toNextLevel(points);
 
+  void nowMs; // the 5-minute tick only forces a re-render so `now` stays fresh
+  const now = new Date();
+  const { streakDays, daysQuiet } = streakInfo(counts, now);
+  // Quiet moods come from daysQuiet only. hasOpenBalances is only ever used for 'proud'.
   const mood = resolveMood({
     level,
     lastSeenLevel,
@@ -151,7 +200,9 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
     scanning,
     lastOpenAt,
     hasOpenBalances,
-    now: new Date(),
+    daysQuiet,
+    justRevived,
+    now,
   });
 
   const setHidden = useCallback((value: boolean) => {
@@ -182,5 +233,11 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
     loading,
     refresh,
     tickKey,
+    userId,
+    counts,
+    streakDays,
+    daysQuiet,
+    wilt: wiltFor(daysQuiet),
+    justRevived,
   };
 }

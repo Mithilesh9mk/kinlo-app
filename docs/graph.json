@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-23T11:41:29.537Z",
-  "totalFiles": 204,
+  "timestamp": "2026-11-23T16:56:20.450Z",
+  "totalFiles": 214,
   "layers": {
     "appScreens": [
       "app/(tabs)/analytics.tsx",
@@ -55,6 +55,7 @@
       "app/security/_layout.tsx",
       "app/settle-success.tsx",
       "app/settle-up.tsx",
+      "app/sprout.tsx",
       "app/statement.tsx",
       "app/transaction/[id].tsx",
       "app/_layout.tsx"
@@ -74,11 +75,18 @@
       "components/ParetoChart.tsx",
       "components/QrCodeView.tsx",
       "components/Skeleton.tsx",
+      "components/sprout/HowSproutGrows.tsx",
       "components/sprout/palette.ts",
       "components/sprout/Sprout.tsx",
+      "components/sprout/SproutBubble.tsx",
       "components/sprout/SproutCompare.tsx",
       "components/sprout/SproutFigure.tsx",
+      "components/sprout/SproutHero.tsx",
       "components/sprout/SproutHomeCard.tsx",
+      "components/sprout/SproutJourney.tsx",
+      "components/sprout/SproutPlusPop.tsx",
+      "components/sprout/SproutProgress.tsx",
+      "components/sprout/SproutToday.tsx",
       "components/SwipeableRow.tsx",
       "components/Toast.tsx"
     ],
@@ -124,10 +132,12 @@
       "lib/reminders.ts",
       "lib/splitCalculator.ts",
       "lib/sprout/friends.ts",
+      "lib/sprout/lines.ts",
       "lib/sprout/model.ts",
       "lib/sprout/prefs.ts",
       "lib/sprout/stats.ts",
       "lib/sprout/useSprout.ts",
+      "lib/sprout/useSproutTalk.ts",
       "lib/statementCsv.ts",
       "lib/supabase.ts",
       "lib/useFirstRunHints.ts"

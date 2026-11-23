@@ -7,10 +7,16 @@
 export type SproutStage = 'seed' | 'sprout' | 'sapling' | 'tree';
 
 /**
- * Deliberately NO negative mood (sad, worried, lonely...). Owing money,
- * overspending or inactivity must never map to a mood, and this union is the
- * guarantee: resolveMood can only return a member of it, so it is impossible
- * for any input to produce a negative one. Do not add one.
+ * Moods. Negative moods (droopy, sad, grumpy) exist since the owner decision
+ * of 23 Nov, under ONE rule: they come ONLY from inactivity, i.e. whole IST
+ * days without a logged action (`daysQuiet`, see streakInfo). They must NEVER
+ * be derived from money, balances, `hasOpenBalances`, amounts or who owes whom.
+ * They are mood and wilting only: level, points, the progress bar, server data
+ * (sprout_stats) and what friends see never drop. A new user with no activity
+ * at all has daysQuiet 0 and is never sad. A logged action ends a quiet spell
+ * ('revived' one-shot). 'welcomeBack' is kept in the union so older callers
+ * compile, but resolveMood no longer returns it (quiet time is measured from
+ * the last logged action, not from app open).
  */
 export type SproutMood =
   | 'idle'
@@ -19,7 +25,14 @@ export type SproutMood =
   | 'proud'
   | 'welcomeBack'
   | 'sleepy'
-  | 'growing';
+  | 'growing'
+  | 'droopy'
+  | 'sad'
+  | 'grumpy'
+  | 'revived';
+
+/** Moods that come from inactivity only. */
+export const QUIET_MOODS: readonly SproutMood[] = ['droopy', 'sad', 'grumpy'];
 
 export type SproutEvent =
   | 'expenseLogged'
@@ -108,6 +121,71 @@ const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
 /** YYYY-MM-DD of an instant in Asia/Kolkata (fixed UTC+5:30, no DST). Pure. */
 export function istDay(date: Date): string {
   return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Whole-day index of a YYYY-MM-DD key; NaN if malformed. */
+function dayIndex(key: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return NaN;
+  return Math.floor(Date.parse(`${key}T00:00:00Z`) / DAY_MS);
+}
+
+/**
+ * Streak and quiet time, from the existing per-day counts only (no new data).
+ * An active day is an IST day with >= 1 counted action in any of the four
+ * per-day maps. LOCAL display only: never stored in sprout_stats.
+ *
+ * - daysQuiet: whole IST days since the last active day (0 if active today).
+ *   No activity at all => 0 (a brand-new user is neutral, never sad).
+ * - streakDays: number of active days in the chain ending at the last active
+ *   day, provided that day is today or yesterday. A single missed day between
+ *   two active days is a grace day and does not break the chain (it is not
+ *   counted); two or more missed days in a row break it. If the last active
+ *   day is 2+ days ago the streak is 0.
+ */
+export function streakInfo(
+  counts: SproutCounts | null | undefined,
+  now: Date,
+): { streakDays: number; daysQuiet: number } {
+  const none = { streakDays: 0, daysQuiet: 0 };
+  if (!counts) return none;
+  const today = dayIndex(istDay(now));
+  if (!Number.isFinite(today)) return none;
+  const active = new Set<number>();
+  const maps = [counts.expensesByDay, counts.settlementsByDay, counts.scansByDay, counts.friendsByDay];
+  for (const map of maps) {
+    if (!map || typeof map !== 'object') continue;
+    for (const key of Object.keys(map)) {
+      if (safeCount(map[key]) < 1) continue;
+      const d = dayIndex(key);
+      if (Number.isFinite(d) && d <= today) active.add(d);
+    }
+  }
+  if (active.size === 0) return none;
+  let last = -Infinity;
+  for (const d of active) if (d > last) last = d;
+  const daysQuiet = today - last;
+  if (daysQuiet >= 2) return { streakDays: 0, daysQuiet };
+  let streakDays = 1;
+  let cur = last;
+  for (;;) {
+    if (active.has(cur - 1)) cur -= 1;
+    else if (active.has(cur - 2)) cur -= 2; // one grace day
+    else break;
+    streakDays += 1;
+  }
+  return { streakDays, daysQuiet };
+}
+
+/** 0..1 how wilted Sprout looks for a quiet spell. Look only; never touches data. */
+export function wiltFor(daysQuiet: number): number {
+  const d = Math.floor(Number(daysQuiet));
+  if (!Number.isFinite(d) || d < 2) return 0;
+  if (d === 2) return 0.35;
+  if (d === 3) return 0.55;
+  if (d === 4) return 0.75;
+  return 0.9;
 }
 
 function safeCount(n: unknown): number {
@@ -238,10 +316,14 @@ export interface MoodInput {
   lastSeenLevel: number | null;
   event?: SproutEvent | null;
   scanning?: boolean;
-  /** Epoch ms of the previous app open; null = unknown / first run. */
-  lastOpenAt: number | null;
-  /** true = the user has open balances, false = none (all settled), undefined = unknown. 'proud' only when false. */
+  /** Epoch ms of the previous app open. Unused since 23 Nov (quiet time comes from daysQuiet); kept so callers compile. */
+  lastOpenAt?: number | null;
+  /** true = the user has open balances, false = none (all settled), undefined = unknown. 'proud' only when false. NEVER yields a negative mood. */
   hasOpenBalances?: boolean;
+  /** Whole IST days since the last logged action (streakInfo). Missing, 0 or 1 = no quiet mood. */
+  daysQuiet?: number;
+  /** One-shot: a logged action just ended a quiet spell. */
+  justRevived?: boolean;
   now: Date;
 }
 
@@ -252,7 +334,9 @@ export function isSleepyHour(now: Date): boolean {
 }
 
 export function resolveMood(input: MoodInput): SproutMood {
-  const { level, lastSeenLevel, event, scanning, lastOpenAt, hasOpenBalances, now } = input;
+  const { level, lastSeenLevel, event, scanning, hasOpenBalances, justRevived, now } = input;
+  const q = Math.floor(Number(input.daysQuiet));
+  const daysQuiet = Number.isFinite(q) && q > 0 ? q : 0;
 
   if (lastSeenLevel != null && level > lastSeenLevel) return 'growing';
 
@@ -260,11 +344,14 @@ export function resolveMood(input: MoodInput): SproutMood {
     return 'celebrate';
   }
 
+  if (justRevived) return 'revived';
+
   if (scanning || event === 'scanStarted') return 'curious';
 
-  if (lastOpenAt != null && now.getTime() - lastOpenAt > WELCOME_BACK_MS) {
-    return 'welcomeBack';
-  }
+  // Inactivity only. hasOpenBalances and amounts are deliberately not read here.
+  if (daysQuiet >= 5) return 'grumpy';
+  if (daysQuiet >= 3) return 'sad';
+  if (daysQuiet === 2) return 'droopy';
 
   if (hasOpenBalances === false) return 'proud';
 

@@ -10,7 +10,6 @@ import assert from 'node:assert/strict';
 import {
   EMPTY_COUNTS,
   LEVELS,
-  WELCOME_BACK_MS,
   artFor,
   blossomsFor,
   displayLevel,
@@ -20,9 +19,12 @@ import {
   levelName,
   pointsFrom,
   resolveMood,
+  QUIET_MOODS,
   stageFor,
+  streakInfo,
   toNextLevel,
   toNextStage,
+  wiltFor,
   type MoodInput,
   type SproutCounts,
   type SproutMood,
@@ -242,33 +244,6 @@ test('growing does not fire for first run (lastSeenLevel null) or same level', (
   assert.notEqual(resolveMood({ ...base, level: 5, lastSeenLevel: 5 }), 'growing');
 });
 
-test('mood priority: growing > celebrate > curious > welcomeBack > proud > sleepy', () => {
-  const stale = NOON.getTime() - WELCOME_BACK_MS - 1;
-  const full: MoodInput = {
-    level: 6,
-    lastSeenLevel: 5,
-    event: 'settled',
-    scanning: true,
-    lastOpenAt: stale,
-    hasOpenBalances: false,
-    now: at(23),
-  };
-  assert.equal(resolveMood(full), 'growing');
-  assert.equal(resolveMood({ ...full, level: 5 }), 'celebrate');
-  assert.equal(resolveMood({ ...full, level: 5, event: null }), 'curious');
-  assert.equal(resolveMood({ ...full, level: 5, event: null, scanning: false }), 'welcomeBack');
-  assert.equal(
-    resolveMood({ ...full, level: 5, event: null, scanning: false, lastOpenAt: NOON.getTime() }),
-    'proud',
-  );
-  assert.equal(
-    resolveMood({
-      ...full, level: 5, event: null, scanning: false, lastOpenAt: at(22).getTime(), hasOpenBalances: true,
-    }),
-    'sleepy',
-  );
-});
-
 test('celebrate events and scanStarted', () => {
   for (const event of ['settled', 'circleSquared', 'expenseLogged'] as const) {
     assert.equal(resolveMood({ ...base, event }), 'celebrate');
@@ -284,36 +259,164 @@ test('sleepy 22:00 to 06:00 only, idle otherwise', () => {
   assert.equal(resolveMood({ ...base, now: at(6) }), 'idle');
 });
 
-test('welcomeBack after more than 7 days away, not at exactly 7', () => {
-  assert.equal(resolveMood({ ...base, lastOpenAt: NOON.getTime() - WELCOME_BACK_MS }), 'idle');
-  assert.equal(
-    resolveMood({ ...base, lastOpenAt: NOON.getTime() - WELCOME_BACK_MS - 1 }),
-    'welcomeBack',
-  );
-  assert.equal(resolveMood({ ...base, lastOpenAt: null }), 'idle');
-});
-
 test('proud only when explicitly no open balances', () => {
   assert.equal(resolveMood({ ...base, hasOpenBalances: false }), 'proud');
   assert.equal(resolveMood({ ...base, hasOpenBalances: true }), 'idle');
   assert.equal(resolveMood({ ...base, hasOpenBalances: undefined }), 'idle');
 });
 
-test('never a negative mood for any input combination', () => {
-  const allowed: SproutMood[] = [
-    'idle', 'celebrate', 'curious', 'proud', 'welcomeBack', 'sleepy', 'growing',
-  ];
-  const events = [null, 'settled', 'circleSquared', 'expenseLogged', 'friendAdded', 'circleJoined', 'scanStarted', 'scanFinished', 'appOpened'] as const;
+// ---- streak & quiet days (23 Nov: inactivity-driven mood) ----
+
+/** A counts object with one expense on each given IST day. */
+const active = (...days: string[]): SproutCounts =>
+  counts({ expensesByDay: Object.fromEntries(days.map((d) => [d, 1])) });
+const dayAt = (d: string, hhmm = '12:00') => new Date(`${d}T${hhmm}:00+05:30`);
+const NOW = dayAt('2026-11-23'); // noon IST on the 23rd
+
+test('streakInfo: brand-new user is neutral (no activity at all)', () => {
+  assert.deepEqual(streakInfo(EMPTY_COUNTS, NOW), { streakDays: 0, daysQuiet: 0 });
+  assert.deepEqual(streakInfo(null, NOW), { streakDays: 0, daysQuiet: 0 });
+  assert.deepEqual(streakInfo(undefined, NOW), { streakDays: 0, daysQuiet: 0 });
+  assert.equal(resolveMood({ ...base, daysQuiet: streakInfo(EMPTY_COUNTS, NOW).daysQuiet }), 'idle');
+});
+
+test('streakInfo: consecutive days ending today or yesterday', () => {
+  assert.deepEqual(streakInfo(active('2026-11-23'), NOW), { streakDays: 1, daysQuiet: 0 });
+  assert.deepEqual(streakInfo(active('2026-11-21', '2026-11-22', '2026-11-23'), NOW), { streakDays: 3, daysQuiet: 0 });
+  // yesterday is the last active day: streak still alive, daysQuiet 1
+  assert.deepEqual(streakInfo(active('2026-11-21', '2026-11-22'), NOW), { streakDays: 2, daysQuiet: 1 });
+});
+
+test('streakInfo: one grace day does not break the streak, two missed days do', () => {
+  // 20, 21, (22 missed), 23 -> grace day, 3 active days
+  assert.deepEqual(streakInfo(active('2026-11-20', '2026-11-21', '2026-11-23'), NOW), { streakDays: 3, daysQuiet: 0 });
+  // yesterday and today both missed: last active is 2 days ago -> broken
+  assert.deepEqual(streakInfo(active('2026-11-20', '2026-11-21'), NOW), { streakDays: 0, daysQuiet: 2 });
+  // two missed days in a row inside the chain: 18, 19, (20, 21 missed), 22, 23
+  assert.deepEqual(streakInfo(active('2026-11-18', '2026-11-19', '2026-11-22', '2026-11-23'), NOW), {
+    streakDays: 2,
+    daysQuiet: 0,
+  });
+  // a grace day may repeat in the chain: 17, 19, 21, 23
+  assert.equal(streakInfo(active('2026-11-17', '2026-11-19', '2026-11-21', '2026-11-23'), NOW).streakDays, 4);
+  // grace day between yesterday and the day before, today not logged yet: 20, (21 missed), 22
+  assert.deepEqual(streakInfo(active('2026-11-20', '2026-11-22'), NOW), { streakDays: 2, daysQuiet: 1 });
+});
+
+test('streakInfo: counts any of the four per-day maps, ignores zero / junk / future keys', () => {
+  const c = counts({
+    expensesByDay: { '2026-11-23': 0, 'bad-key': 5 },
+    settlementsByDay: { '2026-11-22': 1 },
+    scansByDay: { '2026-11-21': 2 },
+    friendsByDay: { '2026-12-31': 9 },
+  });
+  assert.deepEqual(streakInfo(c, NOW), { streakDays: 2, daysQuiet: 1 });
+});
+
+test('streakInfo: IST midnight boundary', () => {
+  const c = active('2026-11-22');
+  // 23:59 IST on the 22nd (18:29 UTC): active today
+  assert.deepEqual(streakInfo(c, new Date('2026-11-22T18:29:00Z')), { streakDays: 1, daysQuiet: 0 });
+  // 00:01 IST on the 23rd (18:31 UTC): a new IST day, one quiet day
+  assert.deepEqual(streakInfo(c, new Date('2026-11-22T18:31:00Z')), { streakDays: 1, daysQuiet: 1 });
+});
+
+test('quiet ladder: 0,1 -> idle, 2 -> droopy, 3-4 -> sad, 5+ -> grumpy', () => {
+  const m = (daysQuiet: number) => resolveMood({ ...base, daysQuiet });
+  assert.equal(m(0), 'idle');
+  assert.equal(m(1), 'idle');
+  assert.equal(m(2), 'droopy');
+  assert.equal(m(3), 'sad');
+  assert.equal(m(4), 'sad');
+  assert.equal(m(5), 'grumpy');
+  assert.equal(m(40), 'grumpy');
+  // and end to end from the counts
+  const mood = (last: string) => resolveMood({ ...base, daysQuiet: streakInfo(active(last), NOW).daysQuiet });
+  assert.equal(mood('2026-11-22'), 'idle');
+  assert.equal(mood('2026-11-21'), 'droopy');
+  assert.equal(mood('2026-11-20'), 'sad');
+  assert.equal(mood('2026-11-19'), 'sad');
+  assert.equal(mood('2026-11-18'), 'grumpy');
+});
+
+test('revive: a logged action ends a quiet spell (one-shot, then back to idle)', () => {
+  const quiet = streakInfo(active('2026-11-17'), NOW);
+  assert.equal(quiet.daysQuiet, 6);
+  assert.equal(resolveMood({ ...base, daysQuiet: quiet.daysQuiet }), 'grumpy');
+  // action logged today: justRevived fires once, daysQuiet is now 0
+  const after = streakInfo(active('2026-11-17', '2026-11-23'), NOW);
+  assert.equal(after.daysQuiet, 0);
+  assert.equal(resolveMood({ ...base, daysQuiet: after.daysQuiet, justRevived: true }), 'revived');
+  assert.equal(resolveMood({ ...base, daysQuiet: after.daysQuiet, justRevived: false }), 'idle');
+});
+
+test('mood priority: growing > celebrate > revived > curious > grumpy/sad/droopy > proud > sleepy > idle', () => {
+  const full: MoodInput = {
+    level: 6,
+    lastSeenLevel: 5,
+    event: 'settled',
+    scanning: true,
+    justRevived: true,
+    daysQuiet: 6,
+    hasOpenBalances: false,
+    now: at(23),
+  };
+  const calm = { ...full, level: 5, event: null, justRevived: false, scanning: false };
+  assert.equal(resolveMood(full), 'growing');
+  assert.equal(resolveMood({ ...full, level: 5 }), 'celebrate');
+  assert.equal(resolveMood({ ...full, level: 5, event: null }), 'revived');
+  assert.equal(resolveMood({ ...full, level: 5, event: null, justRevived: false }), 'curious');
+  assert.equal(resolveMood(calm), 'grumpy');
+  assert.equal(resolveMood({ ...calm, daysQuiet: 4 }), 'sad');
+  assert.equal(resolveMood({ ...calm, daysQuiet: 2 }), 'droopy');
+  assert.equal(resolveMood({ ...calm, daysQuiet: 0 }), 'proud');
+  assert.equal(resolveMood({ ...calm, daysQuiet: 0, hasOpenBalances: true }), 'sleepy');
+  assert.equal(resolveMood({ ...calm, daysQuiet: 0, hasOpenBalances: true, now: at(12) }), 'idle');
+});
+
+test('resolveMood no longer returns welcomeBack (quiet time is from the last log, not app open)', () => {
+  assert.equal(resolveMood({ ...base, lastOpenAt: 0 }), 'idle');
+});
+
+test('wiltFor: 0 until 2 quiet days, then grows, always within 0..1', () => {
+  assert.equal(wiltFor(0), 0);
+  assert.equal(wiltFor(1), 0);
+  assert.equal(wiltFor(NaN), 0);
+  assert.ok(wiltFor(2) > 0 && wiltFor(2) < wiltFor(3) && wiltFor(3) < wiltFor(4) && wiltFor(4) < wiltFor(5));
+  assert.ok(wiltFor(999) <= 1);
+});
+
+test('money can never move a neutral user to a negative mood', () => {
+  const events = [null, 'friendAdded', 'circleJoined', 'scanFinished', 'appOpened'] as const;
+  for (const level of [1, 5, 10])
+    for (const lastSeenLevel of [null, level])
+      for (const event of events)
+        for (const hasOpenBalances of [true, false, undefined])
+          for (const lastOpenAt of [null, 0, NOON.getTime()])
+            for (const daysQuiet of [0, 1, undefined])
+              for (const h of [3, 12, 23]) {
+                const m = resolveMood({
+                  level, lastSeenLevel, event, scanning: false, hasOpenBalances, lastOpenAt, daysQuiet, now: at(h),
+                });
+                assert.ok(!QUIET_MOODS.includes(m), `${m} from balances alone`);
+              }
+});
+
+test('negative moods occur only with daysQuiet >= 2, whatever else is set', () => {
+  const events = [null, 'settled', 'circleSquared', 'expenseLogged', 'friendAdded', 'scanStarted', 'appOpened'] as const;
   for (const level of [1, 5, 10])
     for (const lastSeenLevel of [null, 1, 10])
       for (const event of events)
         for (const scanning of [true, false])
-          for (const hasOpenBalances of [true, false, undefined])
-            for (const lastOpenAt of [null, 0, NOON.getTime()])
-              for (const h of [3, 12, 23]) {
-                const m = resolveMood({
-                  level, lastSeenLevel, event, scanning, hasOpenBalances, lastOpenAt, now: at(h),
-                });
-                assert.ok(allowed.includes(m), m);
-              }
+          for (const justRevived of [true, false])
+            for (const hasOpenBalances of [true, false, undefined])
+              for (const daysQuiet of [undefined, -3, NaN, 0, 1, 2, 3, 4, 5, 9])
+                for (const h of [3, 12, 23]) {
+                  const m = resolveMood({
+                    level, lastSeenLevel, event, scanning, justRevived, hasOpenBalances, daysQuiet, now: at(h),
+                  });
+                  if (QUIET_MOODS.includes(m)) {
+                    assert.ok(typeof daysQuiet === 'number' && daysQuiet >= 2, `${m} with daysQuiet ${daysQuiet}`);
+                  }
+                }
 });

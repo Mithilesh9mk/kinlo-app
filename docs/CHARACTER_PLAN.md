@@ -43,11 +43,18 @@ growth keeps showing: one terracotta blossom per further 40 points, max 5.
 Typical user: first expense + first friend ≈ Sprout in the first session;
 a trip or two ≈ Sapling; a few months of rent/dinners ≈ Tree.
 
-**Why no decay, streak or care loop:** Kinlo use is episodic (a trip, a dinner,
-month-end rent). A daily loop would punish normal use and make Sprout feel like
-a nag. Points are counts of rows, so a deleted expense can lower the raw count:
-the displayed stage is `max(cachedStage, derivedStage)` so it **never regresses**.
-The existing DB streak (0060) is left alone and not tied to Sprout.
+**Streak and mood (REVERSED 23 Nov by the owner; this replaces the old "why no
+decay, streak or care loop" rule).** Kinlo use is episodic, so the owner chose a
+deliberately small version: Sprout has a **streak that drives its feelings**
+(happy, droopy, sad, grumpy) and reacts when touched. "Degrowth" is **mood and
+wilting only**: level, points, the progress bar, "N to go", server data
+(`sprout_stats`) and what friends see **never drop or change**. The ONLY trigger
+is days without logging; money owed, balances, `hasOpenBalances` and amounts
+never matter. No notifications or push. Streak and mood are local, not stored
+server-side and not shown to friends. Points are counts of rows, so a deleted
+expense can lower the raw count: the displayed level is
+`max(cachedLevel, derivedLevel)` so it **never regresses**. The existing DB
+streak (0060) is left alone and not tied to Sprout.
 
 **Storage:** none new for v1. Derived on focus with `head: true` count queries;
 the last points/stage, `lastSeenStage` (to fire a one-time "grew" celebration),
@@ -134,8 +141,9 @@ migration of stored values).
 **Feedback per action (not only level-ups):** Home card shows a progress ring
 (`fraction` to the next level) and "N to go to <name>"; each point gain plays a
 small grow-tick on Sprout (`tickKey` prop changes -> quick scale pulse + leaf
-wiggle, reduced motion: none); a level-up plays `growing` (skippable). Mood never
-sad. No streaks, no decay.
+wiggle, reduced motion: none); a level-up plays `growing` (skippable). Moods turn
+droopy / sad / grumpy only after days without logging (23 Nov rule above); that
+is look and motion only, never a drop in level, points or the bar.
 
 **Server (0074, committed but NOT applied, so edited in place; it is not a
 shipped migration):** store `level` next to `stage`; friends see level, stage,
@@ -146,12 +154,14 @@ Asia/Kolkata, linked friends only, circles with >= 2 members.
 
 ```ts
 type SproutStage = 'seed' | 'sprout' | 'sapling' | 'tree';
-type SproutMood  = 'idle' | 'celebrate' | 'curious' | 'proud' | 'welcomeBack' | 'sleepy' | 'growing';
+type SproutMood  = 'idle' | 'celebrate' | 'curious' | 'proud' | 'welcomeBack' | 'sleepy' | 'growing'
+                 | 'droopy' | 'sad' | 'grumpy' | 'revived';   // 23 Nov; welcomeBack no longer returned
 type SproutEvent = 'expenseLogged' | 'settled' | 'circleSquared' | 'friendAdded'
                  | 'circleJoined' | 'scanStarted' | 'scanFinished' | 'appOpened';
 
 interface SproutFigureProps {          // static renderer, swap-able
   stage: SproutStage; mood: SproutMood; blossoms: number; size: number;
+  wilt?: number;                       // 0..1 droop / desaturate / ~0.94 scale; default from mood
 }
 interface SproutProps {                // animated wrapper used by screens
   stage: SproutStage; mood: SproutMood; blossoms?: number; size?: number;
@@ -162,14 +172,32 @@ interface SproutProps {                // animated wrapper used by screens
 Mood resolver (pure, `lib/sprout/model.ts`), priority order:
 1. `growing` — derived stage > `lastSeenStage` (once, then store new stage).
 2. `celebrate` — event `settled` / `circleSquared` / `expenseLogged` on a success screen.
-3. `curious` — while a receipt scan runs.
-4. `welcomeBack` — `lastOpenAt` older than 7 days (warm wave, no guilt text).
-5. `proud` — the user has no open balances (from existing balance context).
-6. `sleepy` — local time 22:00–06:00 (cosmetic only).
-7. `idle`.
+3. `revived` — one-shot perk-up when a logged action ends a quiet spell (>= 2
+   quiet days); detected in `useSprout` and then the mood is recomputed.
+4. `curious` — while a receipt scan runs.
+5. `grumpy` / `sad` / `droopy` — `daysQuiet` >= 5 / 3-4 / 2 (see below).
+6. `proud` — the user has no open balances (from existing balance context).
+7. `sleepy` — local time 22:00–06:00 (cosmetic only).
+8. `idle`.
 
-**Never sad.** Owing money, overspending or inactivity never map to a negative
-mood. No copy says "you haven't…", "Sprout misses you" or similar.
+`welcomeBack` is no longer returned: quiet time is measured from the last
+**logged action**, not from app open. The union member stays so older callers compile.
+
+**Inactivity-only negative moods (23 Nov, owner).** `streakInfo(counts, now)` in
+`lib/sprout/model.ts` uses only the existing per-day counts (no new queries): an
+active day is an IST day with >= 1 counted action (expense, settlement, scan,
+friend). `daysQuiet` = whole IST days since the last active day (0 if active
+today; **0 for a user with no activity at all, so a brand-new user is never
+sad**). `streakDays` = active days in the chain ending today or yesterday, with
+**one grace day** (a single missed day between active days does not break it;
+two in a row do). Ladder: 0-1 quiet days -> normal moods, 2 -> `droopy`,
+3-4 -> `sad`, 5+ -> `grumpy` (angry-cartoon: V brows, puffed cheeks, a little
+steam puff, never hostile). Tests prove balances and `hasOpenBalances` can never
+move a neutral user to a negative mood, and negative moods need `daysQuiet >= 2`.
+Copy rule: quiet tiers only nudge gently toward logging; no line mentions money,
+debts or who owes whom (`tests/sprout-lines.test.ts`). Touch: sad = sigh, a brief
+small perk, back to sad; grumpy = huff/stomp hop and shake; a tap never changes the
+mood, only a logged action revives Sprout.
 
 ## 4. Character design spec
 
@@ -194,7 +222,11 @@ deep shade `#004C22` (rim at bottom-right), highlight `#FFFFFF` 35%, eyes
 | celebrate | Hop + arm leaves up, 3 small leaf confetti pieces; tap to skip. |
 | curious | Head tilt 8°, eyes look side to side, "…" bubble; loops while scanning. |
 | proud | Closed happy eyes, small bounce, faint sparkle. |
-| welcomeBack | One arm-leaf wave. |
+| welcomeBack | One arm-leaf wave. (No longer triggered, 23 Nov.) |
+| droopy | Leaves droop, soft worried brows, small flat mouth, slow low sway. |
+| sad | More wilt, downturned brows, frown, occasional sigh (slow scale dip). |
+| grumpy | Angry V brows, puffed cheeks, small steam puff, periodic small huff/shake. |
+| revived | One-shot perk-up hop and stretch, then back to idle. |
 | sleepy | Half-closed eyes, slower breathe, small "z". |
 | growing | Squash then stretch into the new stage with a soft scale cross-fade. |
 
@@ -223,6 +255,7 @@ hides every placement; nothing else changes.
 | A friend (a `friendships` row in either direction) | Your Sprout's **stage, blossoms, total points** only. |
 | Pending requests, removed friends, people who only share a circle, everyone else | Nothing. |
 | Anyone, ever | No amounts, balances, expense or settlement counts, per-action breakdown, circle names, or anything financial. |
+| Nobody but you (23 Nov) | Streak days, quiet days and the droopy / sad / grumpy mood are local to the device: not in `sprout_stats`, not in the friend comparison. "Show Sprout" off hides all of it. |
 
 - `friendships` has no status column; pending requests live in the connection
   request tables (0038–0043), so a `friendships` row IS an accepted friend.
@@ -291,8 +324,10 @@ No shared component (`AnimatedPressable`, `AppAlert`, `Toast`, `Avatar`,
 ## 7. Test plan
 
 - `npx tsx --test tests/sprout-model.test.ts`: thresholds at 4/5, 24/25, 79/80;
-  blossoms cap; no regress when counts drop; mood priority; never a negative mood
-  for any balance input; sleepy window across midnight.
+  blossoms cap; no regress when counts drop; mood priority (growing > celebrate >
+  revived > curious > quiet moods > proud > sleepy > idle); balances can never
+  produce a negative mood and negative moods need `daysQuiet >= 2` (23 Nov);
+  `streakInfo` grace day, IST midnight, brand-new user; sleepy window across midnight.
 - Existing: `npx tsx --test tests/recurrence.test.ts tests/split-calculator.test.ts`.
 - `npx tsc --noEmit` clean.
 - Fingerprint unchanged (`npx expo-updates fingerprint:generate` or compare to

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, {
   Easing,
@@ -24,6 +24,18 @@ export interface SproutProps {
   growth?: number;
   /** When this changes after first render, play a small grow-tick pulse. */
   tickKey?: number;
+  /**
+   * Make Sprout tappable: a tap plays one of four rotating reactions (hop, leaf
+   * shake, spin-wiggle, squish-giggle). Default off, so existing callers that
+   * sit inside a tappable parent keep passing the touch through at rest.
+   */
+  interactive?: boolean;
+  /** Called after a tap at rest (implies interactive). Receives the tap count. */
+  onTap?: (count: number) => void;
+  /** Extra screen-reader hint when interactive. */
+  accessibilityHint?: string;
+  /** 0..1 wilt passed to the figure (default: derived from the mood). Look only. */
+  wilt?: number;
 }
 
 const MOOD_WORD: Record<SproutMood, string> = {
@@ -34,6 +46,10 @@ const MOOD_WORD: Record<SproutMood, string> = {
   welcomeBack: 'waving hello',
   sleepy: 'sleepy',
   growing: 'growing',
+  droopy: 'a little droopy',
+  sad: 'feeling low',
+  grumpy: 'grumpy',
+  revived: 'perking up',
 };
 
 const TERRACOTTA = '#D85A30';
@@ -111,6 +127,10 @@ export function Sprout({
   label,
   growth = 1,
   tickKey,
+  interactive,
+  onTap,
+  accessibilityHint,
+  wilt,
 }: SproutProps) {
   const reduced = useReducedMotion();
 
@@ -123,6 +143,16 @@ export function Sprout({
   const growthScale = useSharedValue(growthToScale(growth));
   const tickScale = useSharedValue(1);
   const tickRot = useSharedValue(0);
+  const tapY = useSharedValue(0);
+  const tapRot = useSharedValue(0);
+  const tapSX = useSharedValue(1);
+  const tapSY = useSharedValue(1);
+  const tapIndex = useRef(0);
+  const tapTotal = useRef(0);
+  const isInteractive = interactive === true || onTap !== undefined;
+  const tapRef = useRef(onTap);
+  tapRef.current = onTap;
+  const [blink, setBlink] = useState(false);
   const prevTick = useRef(tickKey);
 
   const endRef = useRef(onAnimationEnd);
@@ -166,6 +196,14 @@ export function Sprout({
     cancelAnimation(confetti);
     cancelAnimation(tickScale);
     cancelAnimation(tickRot);
+    cancelAnimation(tapY);
+    cancelAnimation(tapRot);
+    cancelAnimation(tapSX);
+    cancelAnimation(tapSY);
+    tapY.value = 0;
+    tapRot.value = 0;
+    tapSX.value = 1;
+    tapSY.value = 1;
     tickScale.value = 1;
     tickRot.value = 0;
     scale.value = 1;
@@ -174,7 +212,7 @@ export function Sprout({
     ty.value = 0;
     rot.value = 0;
     confetti.value = 0;
-  }, [scale, scaleX, scaleY, ty, rot, confetti, tickScale, tickRot]);
+  }, [scale, scaleX, scaleY, ty, rot, confetti, tickScale, tickRot, tapY, tapRot, tapSX, tapSY]);
 
   useEffect(() => {
     resetRest();
@@ -292,6 +330,90 @@ export function Sprout({
         );
         break;
       }
+      case 'revived': {
+        // One-shot perk-up: a little hop and stretch, then back to the gentle breathe.
+        ty.value = withSequence(
+          withTiming(-hop * 1.1, { duration: 240, easing: easeOut }),
+          withTiming(0, { duration: 300, easing: Easing.in(Easing.quad) }),
+        );
+        scaleY.value = withSequence(
+          withTiming(1.08, { duration: 240, easing: easeOut }),
+          withTiming(1, { duration: 300, easing: easeInOut }),
+        );
+        rot.value = withSequence(
+          withTiming(-5, { duration: 160, easing: easeInOut }),
+          withTiming(5, { duration: 200, easing: easeInOut }),
+          withTiming(0, { duration: 180, easing: easeInOut }),
+        );
+        scale.value = withDelay(
+          600,
+          withRepeat(
+            withSequence(
+              withTiming(1.03, { duration: 1500, easing: easeInOut }),
+              withTiming(1, { duration: 1500, easing: easeInOut }),
+            ),
+            -1,
+          ),
+        );
+        break;
+      }
+      case 'droopy': {
+        // Slow, low sway: sits a touch lower and leans gently side to side.
+        ty.value = withTiming(size * 0.015, { duration: 600, easing: easeInOut });
+        rot.value = withRepeat(
+          withSequence(
+            withTiming(2.5, { duration: 2600, easing: easeInOut }),
+            withTiming(-2.5, { duration: 5200, easing: easeInOut }),
+            withTiming(0, { duration: 2600, easing: easeInOut }),
+          ),
+          -1,
+        );
+        breathe(5200, 0.012);
+        break;
+      }
+      case 'sad': {
+        // Occasional sigh: a slow dip in scale and height, then back up.
+        scale.value = withRepeat(
+          withSequence(
+            withTiming(1, { duration: 3200 }),
+            withTiming(0.955, { duration: 1100, easing: easeInOut }),
+            withTiming(1, { duration: 1500, easing: easeInOut }),
+          ),
+          -1,
+        );
+        ty.value = withRepeat(
+          withSequence(
+            withTiming(0, { duration: 3200 }),
+            withTiming(size * 0.02, { duration: 1100, easing: easeInOut }),
+            withTiming(0, { duration: 1500, easing: easeInOut }),
+          ),
+          -1,
+        );
+        break;
+      }
+      case 'grumpy': {
+        // Small huff: a pause, a quick puff-up with a little shake, settle (both cycles 2800 ms).
+        scale.value = withRepeat(
+          withSequence(
+            withTiming(1, { duration: 2400 }),
+            withTiming(1.05, { duration: 140, easing: easeOut }),
+            withTiming(1, { duration: 260, easing: easeInOut }),
+          ),
+          -1,
+        );
+        rot.value = withRepeat(
+          withSequence(
+            withTiming(0, { duration: 2400 }),
+            withTiming(3, { duration: 60, easing: easeInOut }),
+            withTiming(-3, { duration: 90, easing: easeInOut }),
+            withTiming(3, { duration: 90, easing: easeInOut }),
+            withTiming(-2, { duration: 90, easing: easeInOut }),
+            withTiming(0, { duration: 70, easing: easeInOut }),
+          ),
+          -1,
+        );
+        break;
+      }
       case 'sleepy':
         breathe(4500, 0.02);
         break;
@@ -317,9 +439,40 @@ export function Sprout({
       cancelAnimation(growthScale);
       cancelAnimation(tickScale);
       cancelAnimation(tickRot);
+      cancelAnimation(tapY);
+      cancelAnimation(tapRot);
+      cancelAnimation(tapSX);
+      cancelAnimation(tapSY);
     },
-    [clearTimer, scale, scaleX, scaleY, ty, rot, confetti, growthScale, tickScale, tickRot],
+    [clearTimer, scale, scaleX, scaleY, ty, rot, confetti, growthScale, tickScale, tickRot, tapY, tapRot, tapSX, tapSY],
   );
+
+  // Idle life: a quick eyes-only blink every 3 to 6 seconds. Off under reduced motion.
+  useEffect(() => {
+    if (reduced) {
+      setBlink(false);
+      return;
+    }
+    let alive = true;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      t = setTimeout(() => {
+        if (!alive) return;
+        setBlink(true);
+        t = setTimeout(() => {
+          if (!alive) return;
+          setBlink(false);
+          schedule();
+        }, 140);
+      }, 3000 + Math.random() * 3000);
+    };
+    schedule();
+    return () => {
+      alive = false;
+      if (t) clearTimeout(t);
+      setBlink(false);
+    };
+  }, [reduced]);
 
   useEffect(() => {
     const target = growthToScale(growth);
@@ -350,20 +503,141 @@ export function Sprout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickKey]);
 
+  const playTap = useCallback(
+    (kind: number) => {
+      const hop = size * 0.16;
+      cancelAnimation(tapY);
+      cancelAnimation(tapRot);
+      cancelAnimation(tapSX);
+      cancelAnimation(tapSY);
+      tapY.value = 0;
+      tapRot.value = 0;
+      tapSX.value = 1;
+      tapSY.value = 1;
+      if (kind === 10) {
+        // sad / droopy: a sigh (slow sink), a brief small perk, then back to how it was
+        tapSY.value = withSequence(
+          withTiming(0.94, { duration: 520, easing: easeInOut }),
+          withTiming(1.04, { duration: 170, easing: easeOut }),
+          withTiming(1, { duration: 260, easing: easeInOut }),
+        );
+        tapY.value = withSequence(
+          withTiming(size * 0.025, { duration: 520, easing: easeInOut }),
+          withTiming(-size * 0.045, { duration: 170, easing: easeOut }),
+          withTiming(0, { duration: 260, easing: easeInOut }),
+        );
+      } else if (kind === 11) {
+        // grumpy: huff / stomp hop, squash on landing, then a little shake
+        tapY.value = withSequence(
+          withTiming(-hop * 0.7, { duration: 140, easing: easeOut }),
+          withTiming(0, { duration: 120, easing: Easing.in(Easing.quad) }),
+        );
+        tapSY.value = withSequence(
+          withTiming(1.05, { duration: 140, easing: easeOut }),
+          withTiming(0.9, { duration: 120, easing: easeOut }),
+          withTiming(1, { duration: 160, easing: easeInOut }),
+        );
+        tapSX.value = withSequence(
+          withTiming(0.97, { duration: 140, easing: easeOut }),
+          withTiming(1.1, { duration: 120, easing: easeOut }),
+          withTiming(1, { duration: 160, easing: easeInOut }),
+        );
+        tapRot.value = withSequence(
+          withTiming(0, { duration: 260 }),
+          withTiming(7, { duration: 60, easing: easeInOut }),
+          withTiming(-7, { duration: 90, easing: easeInOut }),
+          withTiming(6, { duration: 90, easing: easeInOut }),
+          withTiming(-5, { duration: 90, easing: easeInOut }),
+          withTiming(0, { duration: 70, easing: easeInOut }),
+        );
+      } else if (kind === 0) {
+        // hop
+        tapY.value = withSequence(
+          withTiming(-hop, { duration: 190, easing: easeOut }),
+          withTiming(0, { duration: 230, easing: Easing.in(Easing.quad) }),
+          withTiming(-hop * 0.35, { duration: 110, easing: easeOut }),
+          withTiming(0, { duration: 130, easing: Easing.in(Easing.quad) }),
+        );
+        tapSY.value = withSequence(
+          withTiming(1.06, { duration: 190, easing: easeOut }),
+          withTiming(0.92, { duration: 230, easing: easeInOut }),
+          withTiming(1, { duration: 240, easing: easeInOut }),
+        );
+      } else if (kind === 1) {
+        // leaf shake
+        tapRot.value = withSequence(
+          withTiming(9, { duration: 70, easing: easeInOut }),
+          withTiming(-9, { duration: 120, easing: easeInOut }),
+          withTiming(7, { duration: 110, easing: easeInOut }),
+          withTiming(-5, { duration: 110, easing: easeInOut }),
+          withTiming(0, { duration: 90, easing: easeInOut }),
+        );
+      } else if (kind === 2) {
+        // spin-wiggle
+        tapRot.value = withSequence(
+          withTiming(360, { duration: 480, easing: easeInOut }),
+          withTiming(0, { duration: 0 }),
+          withTiming(-8, { duration: 90, easing: easeInOut }),
+          withTiming(8, { duration: 130, easing: easeInOut }),
+          withTiming(0, { duration: 90, easing: easeInOut }),
+        );
+        tapY.value = withSequence(
+          withTiming(-hop * 0.5, { duration: 240, easing: easeOut }),
+          withTiming(0, { duration: 240, easing: Easing.in(Easing.quad) }),
+        );
+      } else {
+        // squish-giggle
+        tapSY.value = withSequence(
+          withTiming(0.8, { duration: 110, easing: easeOut }),
+          withTiming(1.1, { duration: 110, easing: easeOut }),
+          withTiming(0.88, { duration: 100, easing: easeOut }),
+          withTiming(1.05, { duration: 100, easing: easeOut }),
+          withTiming(1, { duration: 120, easing: easeInOut }),
+        );
+        tapSX.value = withSequence(
+          withTiming(1.16, { duration: 110, easing: easeOut }),
+          withTiming(0.94, { duration: 110, easing: easeOut }),
+          withTiming(1.1, { duration: 100, easing: easeOut }),
+          withTiming(0.97, { duration: 100, easing: easeOut }),
+          withTiming(1, { duration: 120, easing: easeInOut }),
+        );
+      }
+    },
+    [size, tapY, tapRot, tapSX, tapSY],
+  );
+
   const onPress = useCallback(() => {
-    if (!activeRef.current) return;
-    resetRest();
-    if (!reduced) breathe(3000, 0.03);
-    finish();
-  }, [resetRest, breathe, finish, reduced]);
+    if (activeRef.current) {
+      // A celebration is playing: a tap skips it (existing behaviour).
+      resetRest();
+      if (!reduced) breathe(3000, 0.03);
+      finish();
+      return;
+    }
+    if (!isInteractive) return;
+    tapTotal.current += 1;
+    if (!reduced) {
+      // Quiet moods have their own reaction; a tap never changes the mood itself
+      // (only a logged action revives Sprout). Happy moods keep the four rotating ones.
+      let kind: number;
+      if (mood === 'sad' || mood === 'droopy') kind = 10;
+      else if (mood === 'grumpy') kind = 11;
+      else {
+        kind = tapIndex.current % 4;
+        tapIndex.current += 1;
+      }
+      playTap(kind);
+    }
+    tapRef.current?.(tapTotal.current);
+  }, [resetRest, breathe, finish, reduced, isInteractive, playTap, mood]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: ty.value },
-      { rotate: `${rot.value + tickRot.value}deg` },
+      { translateY: ty.value + tapY.value },
+      { rotate: `${rot.value + tickRot.value + tapRot.value}deg` },
       { scale: scale.value * growthScale.value * tickScale.value },
-      { scaleX: scaleX.value },
-      { scaleY: scaleY.value },
+      { scaleX: scaleX.value * tapSX.value },
+      { scaleY: scaleY.value * tapSY.value },
     ],
   }));
 
@@ -375,12 +649,13 @@ export function Sprout({
   return (
     <Pressable
       accessible
-      accessibilityRole="image"
+      accessibilityRole={isInteractive ? 'button' : 'image'}
       accessibilityLabel={a11yLabel}
+      accessibilityHint={isInteractive ? accessibilityHint ?? 'Tap to play with Sprout' : undefined}
       onPress={onPress}
-      // Only capture taps while a skippable animation runs; otherwise let the
-      // touch fall through to a parent (e.g. the Home card is itself tappable).
-      pointerEvents={mood === 'celebrate' || mood === 'growing' ? 'auto' : 'none'}
+      // Capture taps while a skippable animation runs, or when interactive;
+      // otherwise let the touch fall through to a parent (e.g. a tappable card).
+      pointerEvents={isInteractive || mood === 'celebrate' || mood === 'growing' ? 'auto' : 'none'}
       style={[wrapStyle]}
     >
       <Animated.View style={[wrapStyle, animStyle]}>
@@ -389,7 +664,7 @@ export function Sprout({
           importantForAccessibility="no-hide-descendants"
           pointerEvents="none"
         >
-          <SproutFigure stage={stage} mood={mood} blossoms={blossoms} size={size} />
+          <SproutFigure stage={stage} mood={mood} blossoms={blossoms} size={size} blink={blink} wilt={wilt} />
         </View>
       </Animated.View>
       {showConfetti &&

@@ -1,7 +1,9 @@
 // Entry for docs/character/sprout-in-app.html (see build-sprout-in-app.mjs).
 // A browser mock of the Sprout screens. It USES the real Sprout / SproutFigure /
 // SproutCompare components and the real pure model (lib/sprout/model.ts). It does
-// NOT import stats.ts, useSprout.ts, friends.ts or supabase: state is local.
+// NOT import stats.ts, useSprout.ts, useSproutTalk.ts, friends.ts or supabase: state is local.
+// The hero card, bubble, +N pop, progress bar, journey, today and how-it-grows blocks are the REAL
+// components; the bubble line comes from the real pure pickLine().
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -15,6 +17,14 @@ import {
 } from 'react-native';
 import { Sprout } from '../../components/sprout/Sprout';
 import { SproutCompare } from '../../components/sprout/SproutCompare';
+import { SproutHero } from '../../components/sprout/SproutHero';
+import { SproutBubble } from '../../components/sprout/SproutBubble';
+import { SproutPlusPop } from '../../components/sprout/SproutPlusPop';
+import { SproutProgress } from '../../components/sprout/SproutProgress';
+import { HowSproutGrows } from '../../components/sprout/HowSproutGrows';
+import { SproutJourney } from '../../components/sprout/SproutJourney';
+import { SproutToday } from '../../components/sprout/SproutToday';
+import { pickLine, todayCountsFrom, type LineEvent } from '../../lib/sprout/lines';
 import {
   DAILY_CAPS,
   EMPTY_COUNTS,
@@ -22,7 +32,6 @@ import {
   LIFETIME_CAPS,
   MAX_LEVEL,
   POINT_WEIGHTS,
-  WELCOME_BACK_MS,
   artFor,
   displayLevel,
   growthIn,
@@ -31,20 +40,13 @@ import {
   levelName,
   pointsFrom,
   resolveMood,
+  streakInfo,
   toNextLevel,
+  wiltFor,
   type SproutCounts,
   type SproutEvent,
   type SproutStage,
 } from '../../lib/sprout/model';
-
-// ---- copy copied from the real files (SproutHomeCard.tsx) ----------------------
-const GROWTH_LINES = [
-  'Logging expenses',
-  'Settling up with friends',
-  'Adding friends and joining circles',
-  'Scanning receipts',
-  'Squaring up a circle',
-];
 
 // ---- theme ----------------------------------------------------------------
 const C = {
@@ -60,7 +62,7 @@ const C = {
 };
 
 // ---- state ----------------------------------------------------------------
-type Screen = 'home' | 'circles' | 'analytics' | 'profile' | 'friend' | 'settle' | 'scan';
+type Screen = 'home' | 'circles' | 'analytics' | 'profile' | 'friend' | 'settle' | 'scan' | 'sprout';
 type ActionType = 'expense' | 'settlement' | 'friend' | 'circle' | 'scan' | 'squared';
 type SimKind = ActionType | 'mix';
 
@@ -207,33 +209,20 @@ const Card = ({ children, style }: { children: React.ReactNode; style?: any }) =
 );
 
 
-// ---- progress bar replica (SproutHomeCard.tsx ProgressBar; RN Animated instead of Reanimated) ----
-function ProgressBar({ fraction }: { fraction: number }) {
-  const clamped = Math.max(0, Math.min(1, Number.isFinite(fraction) ? fraction : 0));
-  const v = useRef(new Animated.Value(clamped)).current;
-  useEffect(() => {
-    if (reducedNow) v.setValue(clamped);
-    else Animated.timing(v, { toValue: clamped, duration: 600, useNativeDriver: false }).start();
-  }, [clamped]);
-  const width = v.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
-  return (
-    <View
-      testID="bar-track"
-      style={{ height: 8, borderRadius: 4, marginTop: 8, overflow: 'hidden', backgroundColor: '#e5e2de' }}
-    >
-      <Animated.View testID="bar-fill" style={{ height: 8, borderRadius: 4, backgroundColor: '#8bd79b', width }} />
-    </View>
-  );
-}
-
 // ---- app ------------------------------------------------------------------
 function App() {
   const [s, setS] = useState<AppState>(load);
   const sref = useRef<AppState>(s);
   const [event, setEvent] = useState<SproutEvent | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [sheet, setSheet] = useState(false);
+  const [line, setLine] = useState<{ id: number; text: string } | null>(null);
+  const [pop, setPop] = useState<{ id: number; n: number } | null>(null);
+  const tapCount = useRef(0);
+  const lineId = useRef(0);
+  const lineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [revived, setRevived] = useState(false);
+  const reviveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [simN, setSimN] = useState('5');
   const [simKind, setSimKind] = useState<SimKind>('expense');
   const [simLeft, setSimLeft] = useState(0);
@@ -261,6 +250,56 @@ function App() {
   if (s.night) now.setHours(23, 0, 0, 0);
   const today = dayOf(s.dayIdx);
 
+  // Speech bubble: same rule as lib/sprout/useSproutTalk.ts, using the real pickLine().
+  const clearLine = () => {
+    if (lineTimer.current) clearTimeout(lineTimer.current);
+    lineTimer.current = null;
+    setLine(null);
+  };
+  const sayFrom = (o: AppState, event: LineEvent, lastGain?: number) => {
+    if (!o.shown) return;
+    const pts = pointsFrom(o.counts);
+    const lvl = displayLevel(levelFor(pts), o.cachedLevel);
+    const tn = toNextLevel(pts);
+    const at = new Date(BASE_MS + o.dayIdx * DAY_MS);
+    const hour = o.night ? 23 : new Date().getHours();
+    // Quiet tier comes from days without logging only (never from money or balances).
+    const dq = streakInfo(o.counts, at).daysQuiet;
+    const quiet = dq >= 5 ? 'grumpy' : dq >= 3 ? 'sad' : dq === 2 ? 'droopy' : null;
+    const text = pickLine({
+      quiet,
+      level: lvl,
+      toNext: tn ? { remaining: tn.remaining, nextName: tn.nextName } : null,
+      todayCounts: todayCountsFrom(o.counts, at),
+      hour,
+      event,
+      tapCount: tapCount.current,
+      lastGain,
+    });
+    lineId.current += 1;
+    setLine({ id: lineId.current, text });
+    if (lineTimer.current) clearTimeout(lineTimer.current);
+    lineTimer.current = setTimeout(
+      () => {
+        lineTimer.current = null;
+        setLine(null);
+      },
+      event === 'gain' || event === 'levelUp' || event === 'revived' ? 6000 : 7000,
+    );
+  };
+  const onSproutTap = () => {
+    tapCount.current += 1;
+    sayFrom(sref.current, 'tap');
+  };
+  useEffect(() => {
+    if (sref.current.shown) sayFrom(sref.current, 'open');
+    return () => {
+      if (lineTimer.current) clearTimeout(lineTimer.current);
+      if (reviveTimer.current) clearTimeout(reviveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Real model drives everything below.
   const points = pointsFrom(s.counts);
   const derivedLevel = levelFor(points);
@@ -272,12 +311,16 @@ function App() {
   const toNext = toNextLevel(points);
   const growth = growthIn(points);
   const fraction = toNext ? toNext.fraction : 1;
+  // Streak and quiet days come from the real streakInfo() over the virtual clock.
+  const { streakDays, daysQuiet } = streakInfo(s.counts, new Date(BASE_MS + s.dayIdx * DAY_MS));
+  const wilt = wiltFor(daysQuiet);
   const mood = resolveMood({
     level,
     lastSeenLevel: s.lastSeenLevel,
     event,
     scanning,
-    lastOpenAt: s.lastOpenAt,
+    daysQuiet,
+    justRevived: revived,
     now,
   });
   const hidden = !s.shown;
@@ -302,14 +345,14 @@ function App() {
   const go = (screen: Screen) => {
     stopScan();
     stopSim();
+    clearLine();
+    setPop(null);
     setEvent(null);
-    setSheet(false);
     setNonce((n) => n + 1);
     patch({ screen });
   };
   const toHome = () => {
     stopScan();
-    setSheet(false);
     if (sref.current.screen !== 'home') {
       setEvent(null);
       setNonce((n) => n + 1);
@@ -340,6 +383,10 @@ function App() {
     else c.circlesSquared += 1;
     const after = pointsFrom(c);
     const gained = after - before;
+    // A logged action that ends a quiet spell (>= 2 quiet days) revives Sprout once.
+    const vAt = new Date(BASE_MS + o.dayIdx * DAY_MS);
+    const revive =
+      o.shown && streakInfo(o.counts, vAt).daysQuiet >= 2 && streakInfo(c, vAt).daysQuiet === 0;
     const meta = ACTION_META[type];
     const lifetime = type === 'circle' || type === 'squared';
     let msg: string;
@@ -350,7 +397,6 @@ function App() {
     if (newLevel > displayLevel(levelFor(before), o.cachedLevel)) msg += `, level up to ${newLevel} (${levelName(newLevel)})`;
     if (screen) {
       stopScan();
-      setSheet(false);
       if (screen !== o.screen) setNonce((n) => n + 1);
     }
     commit((p) => ({
@@ -364,7 +410,28 @@ function App() {
       lastMsg: msg,
     }));
     // No celebration is queued while Sprout is hidden.
-    setEvent(o.shown ? meta.event : null);
+    // Reviving skips the celebrate event so the perk-up one-shot is what you see.
+    setEvent(o.shown && !revive ? meta.event : null);
+    if (revive) {
+      setRevived(true);
+      if (reviveTimer.current) clearTimeout(reviveTimer.current);
+      reviveTimer.current = setTimeout(() => {
+        reviveTimer.current = null;
+        setRevived(false);
+      }, 3000);
+    }
+    if (o.shown && (gained > 0 || revive)) {
+      if (gained > 0) {
+        lineId.current += 1;
+        setPop({ id: lineId.current, n: gained });
+      }
+      const next = { ...sref.current };
+      sayFrom(
+        next,
+        revive ? 'revived' : newLevel > displayLevel(levelFor(before), o.cachedLevel) ? 'levelUp' : 'gain',
+        gained,
+      );
+    }
     if (quietEvent && meta.event === 'scanStarted') {
       setTimeout(() => setEvent((e) => (e === 'scanStarted' ? null : e)), 1200);
     }
@@ -375,6 +442,20 @@ function App() {
       ...o,
       dayIdx: o.dayIdx + 1,
       lastMsg: `Next day: ${dayOf(o.dayIdx + 1)}. Daily caps are fresh again.`,
+    }));
+  };
+
+  // Days with no logging: the clock moves, counts do not, so Sprout slides down the quiet ladder.
+  const skipDays = (n: number) => {
+    stopScan();
+    stopSim();
+    setEvent(null);
+    setNonce((x) => x + 1);
+    commit((o) => ({
+      ...o,
+      dayIdx: o.dayIdx + n,
+      screen: 'home',
+      lastMsg: `Skipped ${n} ${n === 1 ? 'day' : 'days'} with no logging: ${dayOf(o.dayIdx + n)}.`,
     }));
   };
 
@@ -401,6 +482,11 @@ function App() {
       lastMsg: `+${n} points (demo bonus, bypasses daily caps)`,
     }));
     setEvent(null);
+    if (sref.current.shown && n > 0) {
+      lineId.current += 1;
+      setPop({ id: lineId.current, n });
+      sayFrom(sref.current, newLevel > displayLevel(levelFor(pointsFrom(o.counts)), o.cachedLevel) ? 'levelUp' : 'gain', n);
+    }
   };
 
   // Demo-only: set exact level, overriding the no-regress cache so it can go down.
@@ -478,18 +564,15 @@ function App() {
       patch({ screen: 'home' });
     }, 3000);
   };
-  const away = () => {
-    stopScan();
-    stopSim();
-    setEvent(null);
-    setNonce((n) => n + 1);
-    patch({ lastOpenAt: Date.now() - 8 * DAY_MS, screen: 'home' });
-  };
   const reset = () => {
     stopScan();
     stopSim();
+    clearLine();
+    if (reviveTimer.current) clearTimeout(reviveTimer.current);
+    reviveTimer.current = null;
+    setRevived(false);
+    setPop(null);
     setEvent(null);
-    setSheet(false);
     setNonce((n) => n + 1);
     commit((o) => ({
       ...fresh(),
@@ -511,35 +594,33 @@ function App() {
   };
 
   // ---- screens ------------------------------------------------------------
-  const subtitle = toNext ? `${toNext.remaining} to go to ${toNext.nextName}` : 'Fully grown, still blossoming';
 
   const Home = (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
       <Text style={{ fontSize: 26, fontWeight: '800', color: C.primary, marginBottom: 14 }}>Kinlo</Text>
       {!hidden && (
         <Card style={{ marginBottom: 12 }}>
-          <Pressable
-            onPress={() => setSheet(true)}
-            accessibilityLabel={`Your Sprout is ${name}. ${subtitle}. ${points} points so far. Opens how Sprout grows.`}
-            style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 16 }}
-          >
-            <Sprout
-              key={`home-${nonce}`}
-              stage={stage}
-              mood={mood}
-              blossoms={blossoms}
-              growth={growth}
-              tickKey={s.tickKey}
-              size={72}
-              onAnimationEnd={animating ? markSeen : undefined}
-            />
-            <View style={{ flex: 1 }}>
-              <Text testID="home-name" style={{ fontWeight: '700', fontSize: 18, color: C.onSurface }}>{name}</Text>
-              <Text testID="home-sub" style={{ fontSize: 12, color: C.onVar, marginTop: 2 }}>{subtitle}</Text>
-              <ProgressBar fraction={fraction} />
-              <Text testID="home-points" style={{ fontSize: 12, color: C.onVar, marginTop: 6 }}>{points} points so far</Text>
-            </View>
-          </Pressable>
+          <SproutHero
+            key={`home-${nonce}`}
+            stage={stage}
+            mood={mood}
+            blossoms={blossoms}
+            growth={growth}
+            tickKey={s.tickKey}
+            levelName={name}
+            points={points}
+            toNext={toNext ? { remaining: toNext.remaining, nextName: toNext.nextName } : null}
+            fraction={fraction}
+            line={line}
+            pop={pop}
+            onTap={onSproutTap}
+            onDismissLine={clearLine}
+            onPopDone={() => setPop(null)}
+            onOpen={() => go('sprout')}
+            onAnimationEnd={animating ? markSeen : undefined}
+            wilt={wilt}
+            streakDays={streakDays}
+          />
         </Card>
       )}
       <Card style={{ padding: 16, marginBottom: 12 }}>
@@ -635,6 +716,8 @@ function App() {
           onPress={() => {
             patch({ shown: !s.shown });
             setEvent(null);
+            clearLine();
+            setPop(null);
           }}
           accessibilityLabel="Show Sprout"
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingBottom: 16 }}
@@ -691,43 +774,10 @@ function App() {
           {s.screen === 'circles' && Placeholder('Circles')}
           {s.screen === 'analytics' && Placeholder('Analytics')}
           {s.screen === 'settle' && <SettleSuccess key={`settle-${nonce}`} name={s.friendName || 'your friend'} hidden={hidden} stage={stage} mood={mood} blossoms={blossoms} growth={growth} tickKey={s.tickKey} markSeen={markSeen} go={go} />}
+          {s.screen === 'sprout' && <SproutScreenMock hidden={hidden} stage={stage} mood={mood} blossoms={blossoms} growth={growth} tickKey={s.tickKey} level={level} name={name} points={points} toNext={toNext} fraction={fraction} line={line} pop={pop} onTap={onSproutTap} clearLine={clearLine} clearPop={() => setPop(null)} today={todayCountsFrom(s.counts, new Date(BASE_MS + s.dayIdx * DAY_MS))} markSeen={markSeen} animating={animating} go={go} wilt={wilt} streakDays={streakDays} daysQuiet={daysQuiet} />}
           {s.screen === 'scan' && <ScanScreen hidden={hidden} stage={stage} blossoms={blossoms} growth={growth} />}
-          {sheet && s.screen === 'home' && (
-            <Pressable
-              onPress={() => setSheet(false)}
-              accessibilityLabel="Close"
-              style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
-            >
-              <Pressable onPress={() => {}} style={{ backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 }}>
-                <Text style={{ fontWeight: '700', fontSize: 18, color: C.onSurface }}>How Sprout grows</Text>
-                <Text style={{ fontSize: 14, color: C.onVar, marginTop: 8 }}>
-                  Sprout has 10 levels, from Seed to Ancient tree. The early levels come quickly; the later ones take a little longer. Sprout grows a little each time you use Kinlo:
-                </Text>
-                <View style={{ marginTop: 12, gap: 6 }}>
-                  {GROWTH_LINES.map((l) => (
-                    <Text key={l} style={{ fontSize: 14, color: C.onSurface }}>
-                      {'•  '}
-                      {l}
-                    </Text>
-                  ))}
-                </View>
-                <Text style={{ fontSize: 14, color: C.onVar, marginTop: 12 }}>
-                  A few of the same kind of action per day count; real activity over time grows Sprout fastest.
-                </Text>
-                <Text style={{ fontSize: 14, color: C.onVar, marginTop: 12 }}>
-                  Sprout never shrinks. Once it grows, it stays grown, and there are no streaks to keep up.
-                </Text>
-                <Text style={{ fontSize: 12, color: C.onVar, marginTop: 12 }}>
-                  Friends can see your Sprout's level and points. You can turn this off in Profile, Show Sprout.
-                </Text>
-                <Pressable onPress={() => setSheet(false)} accessibilityLabel="Close" style={{ marginTop: 20, backgroundColor: C.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontWeight: '600' }}>Got it</Text>
-                </Pressable>
-              </Pressable>
-            </Pressable>
-          )}
         </View>
-        {s.screen !== 'settle' && s.screen !== 'scan' && (
+        {s.screen !== 'settle' && s.screen !== 'scan' && s.screen !== 'sprout' && (
           <View style={{ height: 64, flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(191,201,189,0.5)', backgroundColor: C.bg }}>
             {(['home', 'circles', 'analytics', 'profile'] as const).map((t) => {
               const active = s.screen === t || (t === 'home' && s.screen === 'friend');
@@ -758,7 +808,10 @@ function App() {
           <Row k="Growth in level" v={growth.toFixed(2)} />
           <Row k="Bar fraction" v={fraction.toFixed(2)} />
           <Row k="To next" v={toNext ? `${toNext.remaining} to go to ${toNext.nextName}` : 'none (fully grown, still blossoming)'} />
-          <Row k="Mood now" v={`${mood}${event ? `  (event: ${event})` : ''}${scanning ? '  (scanning)' : ''}`} />
+          <Row k="Streak days" v={`${streakDays} (consecutive active days; one missed day is forgiven)`} />
+          <Row k="Quiet days" v={`${daysQuiet}  (1 = idle, 2 = droopy, 3-4 = sad, 5+ = grumpy; circle joins do not count as a logged day)`} />
+          <Row k="Wilt" v={`${wilt.toFixed(2)} (look only: level, points and the bar never drop)`} />
+          <Row k="Mood now" v={`${mood}${event ? `  (event: ${event})` : ''}${scanning ? '  (scanning)' : ''}${revived ? '  (revived one-shot)' : ''}`} />
           <Row k="Art stage" v={stage} />
           <Row k="Blossoms" v={String(blossoms)} />
           <Row k="Last action" v={s.lastMsg} />
@@ -768,7 +821,6 @@ function App() {
           />
           <Row k="Lifetime" v={`circles ${Math.min(s.counts.circles, LIFETIME_CAPS.circles)}/${LIFETIME_CAPS.circles} (${s.counts.circles} done), squared ${Math.min(s.counts.circlesSquared, LIFETIME_CAPS.squared)}/${LIFETIME_CAPS.squared} (${s.counts.circlesSquared} done)`} />
           <Row k="Clock" v={`${now.getHours()}:00${s.night ? ' (forced)' : ''}`} />
-          <Row k="Away" v={s.lastOpenAt ? `${Math.round((Date.now() - s.lastOpenAt) / DAY_MS)} days (welcome back after ${WELCOME_BACK_MS / DAY_MS})` : 'no'} />
           <Row k="Reduced motion" v={reducedNow ? 'ON: real useReducedMotion() returns true' : 'off'} />
         </Card>
 
@@ -801,6 +853,9 @@ function App() {
             <Btn label="Simulate typical month" onPress={simMonth} />
             <Btn label="Simulate one busy day (30 expenses)" onPress={simBusyDay} />
             <Btn label="Next day" onPress={nextDay} />
+            <Btn label="Skip 2 days (no logging)" onPress={() => skipDays(2)} />
+            <Btn label="Skip 3 days" onPress={() => skipDays(3)} />
+            <Btn label="Skip 5 days" onPress={() => skipDays(5)} />
             <Btn label={running ? `Stop (${simLeft} left)` : 'Stop'} onPress={stopSim} />
             <Btn label="Skip celebration" onPress={markSeen} />
           </View>
@@ -815,7 +870,6 @@ function App() {
           <Btn label={`Scan receipt (+${POINT_WEIGHTS.scan})`} onPress={scan} />
           <Btn label={`Square a circle (+${POINT_WEIGHTS.squared})`} onPress={square} />
           <Btn label="+10 points" onPress={() => addPoints(10)} />
-          <Btn label="7 days away" onPress={away} />
           <Btn label={s.night ? 'Night mode: ON (23:00)' : 'Night mode'} onPress={() => patch({ night: !s.night })} tone={s.night ? 'accent' : 'plain'} />
           <Btn label={reducedNow ? 'Reduced motion: ON (reloads)' : 'Reduced motion (reloads)'} onPress={toggleReduced} tone={reducedNow ? 'accent' : 'plain'} />
           <Btn label="Reset" onPress={reset} />
@@ -870,6 +924,7 @@ function App() {
           <Btn label="Home" onPress={() => go('home')} />
           <Btn label="Settle success (celebrate)" onPress={settle} />
           <Btn label="Receipt scan" onPress={scan} />
+          <Btn label="Sprout screen" onPress={() => go('sprout')} />
           <Btn label="Profile" onPress={() => go('profile')} />
           <Btn label="Friend page" onPress={() => go('friend')} />
         </View>
@@ -907,7 +962,7 @@ function App() {
         </Card>
 
         <Text style={{ fontSize: 11, color: C.onVar, marginTop: 18, lineHeight: 16 }}>
-          Browser mock of the screens built from the real Sprout components and model logic. Not the installed app: layout, fonts and gestures on a phone can differ. Friend data is fake; the 0074 server migration is not applied. The mock day is a virtual clock; the real app counts per Asia/Kolkata day from server data.
+          Browser mock of the screens built from the real Sprout components (hero, bubble, +N, journey, today, how it grows) and model and line logic. Not the installed app: layout, fonts and gestures on a phone can differ. Friend data is fake; the 0074 server migration is not applied. Streak and mood are local only: they are never sent to friends or the server, and only days without logging change them. The mock day is a virtual clock; the real app counts per Asia/Kolkata day from server data.
         </Text>
       </View>
     </View>
@@ -919,6 +974,108 @@ function Row({ k, v }: { k: string; v: string }) {
     <View style={{ flexDirection: 'row', paddingVertical: 2 }}>
       <Text style={{ width: 110, fontSize: 12, color: C.onVar }}>{k}</Text>
       <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: C.onSurface }}>{v}</Text>
+    </View>
+  );
+}
+
+// ---- Sprout screen replica (app/sprout.tsx) --------------------------------
+// Same blocks as the real screen: all the Sprout pieces are the real components.
+function SproutScreenMock(p: {
+  hidden: boolean;
+  stage: SproutStage;
+  mood: any;
+  blossoms: number;
+  growth: number;
+  tickKey: number;
+  level: number;
+  name: string;
+  points: number;
+  toNext: ReturnType<typeof toNextLevel>;
+  fraction: number;
+  line: { id: number; text: string } | null;
+  pop: { id: number; n: number } | null;
+  onTap: () => void;
+  clearLine: () => void;
+  clearPop: () => void;
+  today: ReturnType<typeof todayCountsFrom>;
+  markSeen: () => void;
+  animating: boolean;
+  go: (s: Screen) => void;
+  wilt: number;
+  streakDays: number;
+  daysQuiet: number;
+}) {
+  const summary = p.toNext ? `${p.toNext.remaining} to go to ${p.toNext.nextName}` : `${p.name} \u00b7 ${p.points} growth points`;
+  const section = { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: C.onVar, marginTop: 24, marginBottom: 8 } as const;
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ paddingTop: 12, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable onPress={() => p.go('home')} accessibilityLabel="Back" style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 22, color: C.primary }}>{'\u2190'}</Text>
+        </Pressable>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: C.primary, marginLeft: 8 }}>Sprout</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}>
+        {p.hidden ? (
+          <Card style={{ padding: 20, marginTop: 8 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: C.onSurface }}>Sprout is resting</Text>
+            <Text style={{ fontSize: 14, color: C.onVar, marginTop: 6 }}>
+              Show Sprout is turned off, so Sprout stays tucked away. You can bring it back any time in Profile, under Show Sprout.
+            </Text>
+          </Card>
+        ) : (
+          <>
+            <View style={{ alignItems: 'center', marginTop: 4 }}>
+              <View style={{ alignSelf: 'stretch', minHeight: 60, justifyContent: 'flex-end', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10 }}>
+                {p.line ? (
+                  <View style={{ maxWidth: 300, alignSelf: 'center' }}>
+                    <SproutBubble key={p.line.id} text={p.line.text} onDismiss={p.clearLine} tail="bottom" />
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 13, color: C.onVar }}>Tap Sprout to say hi</Text>
+                )}
+              </View>
+              <View style={{ width: 200, height: 200 }}>
+                <Sprout stage={p.stage} mood={p.mood} blossoms={p.blossoms} growth={p.growth} tickKey={p.tickKey} size={200} onTap={p.onTap} accessibilityHint="Tap to play with Sprout" onAnimationEnd={p.animating ? p.markSeen : undefined} wilt={p.wilt} />
+                {p.pop ? <SproutPlusPop key={p.pop.id} n={p.pop.n} onDone={p.clearPop} style={{ top: 8, right: 0 }} /> : null}
+              </View>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: C.onSurface, marginTop: 8 }}>{p.name}</Text>
+              <Text testID="sprout-summary" style={{ fontSize: 13, color: C.onVar, marginTop: 2 }}>{summary}</Text>
+              <View style={{ alignSelf: 'stretch', paddingHorizontal: 12 }}>
+                <SproutProgress fraction={p.toNext ? p.fraction : 1} />
+              </View>
+            </View>
+            <Text style={section}>Streak</Text>
+            <Card style={{ padding: 16 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: C.onSurface }}>
+                {p.streakDays >= 2 ? `${p.streakDays} days in a row` : p.streakDays === 1 ? 'Off to a good start' : 'Log something to get a run going'}
+              </Text>
+              <Text style={{ fontSize: 13, color: C.onVar, marginTop: 4 }}>
+                {p.daysQuiet >= 2
+                  ? `Sprout has had ${p.daysQuiet} quiet days and is a little wilted. A quick log perks it right up. Your level and points are safe.`
+                  : 'Logging an expense, a settle-up, a scan or a new friend on a day keeps Sprout bright. One missed day is fine.'}
+              </Text>
+            </Card>
+            <Text style={section}>The journey</Text>
+            <SproutJourney level={p.level} points={p.points} />
+            <Text style={section}>Today</Text>
+            <SproutToday counts={p.today} />
+          </>
+        )}
+        <Text style={section}>How Sprout grows</Text>
+        <Card style={{ padding: 16 }}>
+          <HowSproutGrows />
+        </Card>
+        <Pressable onPress={() => p.go('profile')} accessibilityLabel="Show Sprout setting. Opens Profile." style={{ marginTop: 16 }}>
+          <Card style={{ padding: 16, flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: C.onSurface }}>Show Sprout</Text>
+              <Text style={{ fontSize: 12, color: C.onVar, marginTop: 2 }}>Turn Sprout on or off in Profile</Text>
+            </View>
+            <Text style={{ fontSize: 20, color: C.onVar }}>{'\u203a'}</Text>
+          </Card>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 }
