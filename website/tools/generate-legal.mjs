@@ -27,6 +27,30 @@ const esc = (t) =>
 const slug = (h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const mailto = (t) => t.split(L.GRIEVANCE_EMAIL).join(`<a href="mailto:${L.GRIEVANCE_EMAIL}">${L.GRIEVANCE_EMAIL}</a>`);
 
+// Footer pieces, built from lib/legal.ts so a domain change is one edit.
+const parentLinks = L.PARENT_SITE_URL
+  ? `
+        <li><a href="${L.PARENT_SITE_URL}/">Tummy Time Studio</a></li>
+        <li><a href="${L.PARENT_PRIVACY_URL}">Studio privacy</a></li>
+        <li><a href="${L.PARENT_TERMS_URL}">Studio terms</a></li>`
+  : '';
+const footNav = `<ul class="foot__nav">
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms</a></li>
+        <li><a href="/delete-account">Delete account</a></li>${parentLinks}
+      </ul>`;
+const footLegal = `<div class="foot__legal">
+      <p>Mithilesh Kale, Pune, operating as Tummy Time Studio. Tummy Time Studio is not a registered company. Android only for now.</p>
+      <p>Contact: <a href="mailto:${L.GRIEVANCE_EMAIL}">${L.GRIEVANCE_EMAIL}</a></p>
+      <p>The code is MIT licensed. The Kinlo name, logo and screenshots are not.</p>
+    </div>`;
+const syncShared = (html, file) =>
+  html
+    .replace(/<ul class="foot__nav">[\s\S]*?<\/ul>/, footNav)
+    .replace(/<div class="foot__legal">[\s\S]*?<\/div>/, footLegal)
+    .replace(/(<link rel="canonical" href=")[^"]*(">)/, `$1${L.PUBLIC_WEBSITE_URL}${file}$2`)
+    .replace(/(<meta property="og:url" content=")[^"]*(">)/, `$1${L.PUBLIC_WEBSITE_URL}${file}$2`);
+
 const existing = fs.readFileSync(path.join(site, 'privacy/index.html'), 'utf8');
 const bodyTop = existing.slice(existing.indexOf('<body>'), existing.indexOf('<main id="main">'));
 const footerStart = existing.indexOf('<footer class="foot">');
@@ -84,4 +108,22 @@ ${footer}`;
 
 fs.writeFileSync(path.join(site, 'privacy/index.html'), page(L.PRIVACY_POLICY, 'privacy', 'Kinlo privacy policy', 'What Kinlo collects, who handles it, and how to ask for deletion.', 'Privacy policy'));
 fs.writeFileSync(path.join(site, 'terms/index.html'), page(L.TERMS_OF_SERVICE, 'terms', 'Kinlo terms of service', 'The rules for using Kinlo. It records who owes whom and never moves money.', 'Terms of service'));
+const sharedPages = { 'index.html': '/', '404.html': '', 'privacy/index.html': '/privacy', 'terms/index.html': '/terms', 'delete-account/index.html': '/delete-account' };
+for (const [rel, urlPath] of Object.entries(sharedPages)) {
+  const p = path.join(site, rel);
+  fs.writeFileSync(p, syncShared(fs.readFileSync(p, 'utf8'), urlPath));
+}
+
+// sitemap.xml and robots.txt are written only when the site is live, so no
+// sitemap for a domain that does not exist ever ships.
+if (L.WEBSITE_LIVE) {
+  const urls = ['/', '/privacy', '/terms', '/delete-account'];
+  const NL = String.fromCharCode(10);
+  const entries = urls.map((u) => '  <url><loc>' + L.PUBLIC_WEBSITE_URL + u + '</loc></url>').join(NL);
+  fs.writeFileSync(path.join(site, 'sitemap.xml'), ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', entries, '</urlset>', ''].join(NL));
+  fs.writeFileSync(path.join(site, 'robots.txt'), ['User-agent: *', 'Allow: /', '', 'Sitemap: ' + L.PUBLIC_WEBSITE_URL + '/sitemap.xml', ''].join(NL));
+  console.log('sitemap.xml and robots.txt written');
+} else {
+  console.log('WEBSITE_LIVE is false: no sitemap.xml written');
+}
 console.log('privacy and terms regenerated from', legalPath);
