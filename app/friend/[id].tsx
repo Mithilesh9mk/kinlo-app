@@ -870,7 +870,7 @@ export default function FriendDetailScreen() {
           {!mySprout.loading && !mySprout.hidden && friendSprout && (
             <View className="w-full mb-6">
               <SproutCompare
-                me={{ stage: mySprout.stage, blossoms: mySprout.blossoms, points: mySprout.points }}
+                me={{ stage: mySprout.stage, blossoms: mySprout.blossoms, points: mySprout.points, level: mySprout.level, levelName: mySprout.levelName }}
                 friend={friendSprout}
                 friendName={friend.name}
               />

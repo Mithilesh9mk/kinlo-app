@@ -7,6 +7,8 @@ export interface SproutCompareSide {
   stage: SproutStage;
   blossoms: number;
   points: number;
+  level?: number;
+  levelName?: string;
 }
 
 export interface SproutCompareProps {
@@ -22,8 +24,12 @@ const STAGE_LABEL: Record<SproutStage, string> = {
   tree: 'Tree',
 };
 
+function nameOf(side: SproutCompareSide): string {
+  return side.levelName || STAGE_LABEL[side.stage];
+}
+
 function Side({ title, side }: { title: string; side: SproutCompareSide }) {
-  const label = `${title}: ${STAGE_LABEL[side.stage]}, ${side.points} points`;
+  const label = `${title}: ${nameOf(side)}, ${side.points} points`;
   return (
     <View className="flex-1 items-center" accessible accessibilityLabel={label}>
       <SproutFigure stage={side.stage} mood="idle" blossoms={side.blossoms} size={64} />
@@ -33,7 +39,7 @@ function Side({ title, side }: { title: string; side: SproutCompareSide }) {
       >
         {title}
       </Text>
-      <Text className="font-body text-sm text-on-surface mt-0.5">{STAGE_LABEL[side.stage]}</Text>
+      <Text className="font-body text-sm text-on-surface mt-0.5">{nameOf(side)}</Text>
       <Text className="font-body text-xs text-on-surface-variant mt-0.5">
         {side.points} points
       </Text>

@@ -5,26 +5,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabase';
 import {
-  blossomsFor,
-  displayStage,
+  artFor,
+  displayLevel,
+  growthIn,
+  levelFor,
+  levelName,
   pointsFrom,
   resolveMood,
-  stageFor,
-  toNextStage,
+  toNextLevel,
   type SproutEvent,
   type SproutMood,
   type SproutStage,
 } from './model';
 import { fetchSproutCounts, getCachedCounts } from './stats';
 import {
-  getCachedStage,
+  getCachedLevel,
   getHidden,
   getLastOpenAt,
-  getLastSeenStage,
-  setCachedStage,
+  getLastSeenLevel,
+  setCachedLevel,
   setHiddenPref,
   setLastOpenAt,
-  setLastSeenStage,
+  setLastSeenLevel,
 } from './prefs';
 
 export interface SproutOverrides {
@@ -35,29 +37,45 @@ export interface SproutOverrides {
 
 export interface UseSproutResult {
   stage: SproutStage;
-  mood: SproutMood;
-  points: number;
+  level: number;
+  levelName: string;
   blossoms: number;
-  toNext: { next: SproutStage; remaining: number } | null;
+  points: number;
+  /** 0..1 progress through the current level (1 at the top). */
+  growth: number;
+  /** Progress to the next level, 1 at the top. */
+  fraction: number;
+  toNext: {
+    nextLevel: number;
+    nextName: string;
+    remaining: number;
+    fraction: number;
+  } | null;
+  mood: SproutMood;
   hidden: boolean;
   setHidden: (hidden: boolean) => void;
-  /** Record the shown stage as celebrated so `growing` fires only once. */
+  /** Record the shown level as celebrated so `growing` fires only once. */
   markSeen: () => void;
-  refresh: () => Promise<void>;
   loading: boolean;
+  refresh: () => Promise<void>;
+  /** Increments when, after the first load, a refresh yields more points. */
+  tickKey: number;
 }
 
 export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
   const { event, scanning, hasOpenBalances } = overrides;
   const [userId, setUserId] = useState<string | null>(null);
   const [points, setPoints] = useState(0);
-  const [cachedStage, setCachedStageState] = useState<SproutStage | null>(null);
-  const [lastSeenStage, setLastSeen] = useState<SproutStage | null>(null);
+  const [cachedLevel, setCachedLevelState] = useState<number | null>(null);
+  const [lastSeenLevel, setLastSeen] = useState<number | null>(null);
   const [lastOpenAt, setLastOpen] = useState<number | null>(null);
   const [hidden, setHiddenState] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [tickKey, setTickKey] = useState(0);
   const mounted = useRef(true);
   const openStamped = useRef(false);
+  /** Latest points known in this instance; null until the first load lands. */
+  const lastPoints = useRef<number | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -78,17 +96,18 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
         }
         return;
       }
-      const [cachedCounts, cStage, seen, openAt] = await Promise.all([
+      const [cachedCounts, cLevel, seen, openAt] = await Promise.all([
         getCachedCounts(uid),
-        getCachedStage(uid),
-        getLastSeenStage(uid),
+        getCachedLevel(uid),
+        getLastSeenLevel(uid),
         getLastOpenAt(uid),
       ]);
+      const cachedPoints = pointsFrom(cachedCounts);
       if (mounted.current) {
         setUserId(uid);
         setHiddenState(isHidden);
-        setPoints(pointsFrom(cachedCounts));
-        setCachedStageState(cStage);
+        setPoints(cachedPoints);
+        setCachedLevelState(cLevel);
         setLastSeen(seen);
         // Only the first read per hook instance is the "previous open".
         if (!openStamped.current) setLastOpen(openAt);
@@ -98,15 +117,19 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
         openStamped.current = true;
         await setLastOpenAt(uid, Date.now());
       }
+      // First load only sets the baseline: no tick for it.
+      const before = lastPoints.current;
       const fresh = await fetchSproutCounts(uid);
       const freshPoints = pointsFrom(fresh);
-      const shown = displayStage(stageFor(freshPoints), cStage);
-      await setCachedStage(uid, shown);
-      if (!seen) await setLastSeenStage(uid, shown); // first run: nothing to celebrate
+      const shown = displayLevel(levelFor(freshPoints), cLevel);
+      await setCachedLevel(uid, shown);
+      if (seen == null) await setLastSeenLevel(uid, shown); // first run: nothing to celebrate
       if (mounted.current) {
+        lastPoints.current = freshPoints;
         setPoints(freshPoints);
-        setCachedStageState(shown);
-        if (!seen) setLastSeen(shown);
+        setCachedLevelState(shown);
+        if (seen == null) setLastSeen(shown);
+        if (before !== null && freshPoints > before) setTickKey((n) => n + 1);
       }
     } catch {
       if (mounted.current) setLoading(false);
@@ -117,11 +140,13 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
     void refresh();
   }, [refresh]);
 
-  const stage = displayStage(stageFor(points), cachedStage);
+  const level = displayLevel(levelFor(points), cachedLevel);
+  const art = artFor(level);
+  const toNext = toNextLevel(points);
 
   const mood = resolveMood({
-    stage,
-    lastSeenStage,
+    level,
+    lastSeenLevel,
     event,
     scanning,
     lastOpenAt,
@@ -136,21 +161,26 @@ export function useSprout(overrides: SproutOverrides = {}): UseSproutResult {
 
   const markSeen = useCallback(() => {
     if (!userId) return;
-    setLastSeen(stage);
-    void setLastSeenStage(userId, stage);
-    void setCachedStage(userId, stage);
-  }, [userId, stage]);
+    setLastSeen(level);
+    void setLastSeenLevel(userId, level);
+    void setCachedLevel(userId, level);
+  }, [userId, level]);
 
   return {
-    stage,
-    mood,
+    stage: art.stage,
+    level,
+    levelName: levelName(level),
+    blossoms: art.blossoms,
     points,
-    blossoms: blossomsFor(points),
-    toNext: toNextStage(points),
+    growth: growthIn(points),
+    fraction: toNext?.fraction ?? 1,
+    toNext,
+    mood,
     hidden,
     setHidden,
     markSeen,
-    refresh,
     loading,
+    refresh,
+    tickKey,
   };
 }

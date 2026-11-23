@@ -20,6 +20,10 @@ export interface SproutProps {
   size?: number;
   onAnimationEnd?: () => void;
   label?: string;
+  /** 0..1 progress within the level; inner scale 0.88 + 0.12*growth. Default 1 = exactly 1.0. */
+  growth?: number;
+  /** When this changes after first render, play a small grow-tick pulse. */
+  tickKey?: number;
 }
 
 const MOOD_WORD: Record<SproutMood, string> = {
@@ -45,6 +49,11 @@ const CONFETTI: [number, number, number][] = [
 
 const easeOut = Easing.out(Easing.quad);
 const easeInOut = Easing.inOut(Easing.sin);
+
+function growthToScale(g: number) {
+  const c = Number.isFinite(g) ? Math.min(1, Math.max(0, g)) : 1;
+  return c >= 1 ? 1 : 0.88 + 0.12 * c;
+}
 
 function ConfettiPiece({
   progress,
@@ -100,6 +109,8 @@ export function Sprout({
   size = 72,
   onAnimationEnd,
   label,
+  growth = 1,
+  tickKey,
 }: SproutProps) {
   const reduced = useReducedMotion();
 
@@ -109,6 +120,10 @@ export function Sprout({
   const ty = useSharedValue(0);
   const rot = useSharedValue(0);
   const confetti = useSharedValue(0);
+  const growthScale = useSharedValue(growthToScale(growth));
+  const tickScale = useSharedValue(1);
+  const tickRot = useSharedValue(0);
+  const prevTick = useRef(tickKey);
 
   const endRef = useRef(onAnimationEnd);
   endRef.current = onAnimationEnd;
@@ -149,13 +164,17 @@ export function Sprout({
     cancelAnimation(ty);
     cancelAnimation(rot);
     cancelAnimation(confetti);
+    cancelAnimation(tickScale);
+    cancelAnimation(tickRot);
+    tickScale.value = 1;
+    tickRot.value = 0;
     scale.value = 1;
     scaleX.value = 1;
     scaleY.value = 1;
     ty.value = 0;
     rot.value = 0;
     confetti.value = 0;
-  }, [scale, scaleX, scaleY, ty, rot, confetti]);
+  }, [scale, scaleX, scaleY, ty, rot, confetti, tickScale, tickRot]);
 
   useEffect(() => {
     resetRest();
@@ -295,9 +314,41 @@ export function Sprout({
       cancelAnimation(ty);
       cancelAnimation(rot);
       cancelAnimation(confetti);
+      cancelAnimation(growthScale);
+      cancelAnimation(tickScale);
+      cancelAnimation(tickRot);
     },
-    [clearTimer, scale, scaleX, scaleY, ty, rot, confetti],
+    [clearTimer, scale, scaleX, scaleY, ty, rot, confetti, growthScale, tickScale, tickRot],
   );
+
+  useEffect(() => {
+    const target = growthToScale(growth);
+    cancelAnimation(growthScale);
+    if (reduced) {
+      growthScale.value = target;
+    } else {
+      growthScale.value = withTiming(target, { duration: 400, easing: easeInOut });
+    }
+  }, [growth, reduced, growthScale]);
+
+  useEffect(() => {
+    if (prevTick.current === tickKey) return;
+    prevTick.current = tickKey;
+    if (reduced || tickKey === undefined) return;
+    if (activeRef.current || mood === 'celebrate' || mood === 'growing') return;
+    cancelAnimation(tickScale);
+    cancelAnimation(tickRot);
+    tickScale.value = withSequence(
+      withTiming(1.08, { duration: 160, easing: easeOut }),
+      withTiming(1, { duration: 190, easing: easeInOut }),
+    );
+    tickRot.value = withSequence(
+      withTiming(6, { duration: 90, easing: easeInOut }),
+      withTiming(-6, { duration: 130, easing: easeInOut }),
+      withTiming(0, { duration: 130, easing: easeInOut }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickKey]);
 
   const onPress = useCallback(() => {
     if (!activeRef.current) return;
@@ -309,8 +360,8 @@ export function Sprout({
   const animStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: ty.value },
-      { rotate: `${rot.value}deg` },
-      { scale: scale.value },
+      { rotate: `${rot.value + tickRot.value}deg` },
+      { scale: scale.value * growthScale.value * tickScale.value },
       { scaleX: scaleX.value },
       { scaleY: scaleY.value },
     ],

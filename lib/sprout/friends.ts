@@ -4,13 +4,15 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
-import type { SproutStage } from './model';
+import { levelName, type SproutStage } from './model';
 import { getHidden } from './prefs';
 
 export interface FriendSprout {
   stage: SproutStage;
   blossoms: number;
   points: number;
+  level: number;
+  levelName: string;
 }
 
 const STAGES: string[] = ['seed', 'sprout', 'sapling', 'tree'];
@@ -22,16 +24,22 @@ export async function fetchFriendSprout(friendId: string): Promise<FriendSprout 
     if (!friendId) return null;
     const { data, error } = await supabase
       .from('sprout_stats')
-      .select('stage, blossoms, points')
+      .select('stage, blossoms, points, level')
       .eq('user_id', friendId)
       .maybeSingle();
     if (error || !data) return null;
-    const row = data as { stage: unknown; blossoms: unknown; points: unknown };
+    const row = data as { stage: unknown; blossoms: unknown; points: unknown; level: unknown };
     if (typeof row.stage !== 'string' || !STAGES.includes(row.stage)) return null;
+    const level =
+      typeof row.level === 'number' && Number.isFinite(row.level)
+        ? Math.max(1, Math.min(10, Math.floor(row.level)))
+        : 1;
     return {
       stage: row.stage as SproutStage,
       blossoms: typeof row.blossoms === 'number' ? row.blossoms : 0,
       points: typeof row.points === 'number' ? row.points : 0,
+      level,
+      levelName: levelName(level),
     };
   } catch {
     return null;

@@ -55,6 +55,93 @@ the last points/stage, `lastSeenStage` (to fire a one-time "grew" celebration),
 count queries prove slow, a later numbered migration can add a `sprout_stats`
 RPC (SECURITY INVOKER, own rows only).
 
+## 2a. REVISED growth curve (23 Nov, owner decision; supersedes the stage thresholds in section 2)
+
+Why: 5/25/80 meant the first growth took ~5 actions and the next ~20. The owner
+wants fast early wins (Duolingo-style): growth within 3 actions, always an
+"almost there" bar, gaps widening slowly. Advisor-reviewed (Opus).
+
+**Art stays 4 stages (approved look, `SproutStage` unchanged). A new `level`
+(1-10) drives pacing; `artFor(level)` maps to art + blossoms.** Between levels
+the figure scales up continuously (`growth` 0..1 within the level, inner scale
+0.88 → 1.0), so every point visibly changes something.
+
+| Level | Name | Points to reach | Gap | Art | Blossoms |
+|---|---|---|---|---|---|
+| 1 | Seed | 0 | | seed | 0 |
+| 2 | Sprout | 3 | 3 | sprout | 0 |
+| 3 | Seedling | 6 | 3 | sprout | 0 |
+| 4 | Shoot | 10 | 4 | sapling | 0 |
+| 5 | Sapling | 15 | 5 | sapling | 0 |
+| 6 | Young tree | 22 | 7 | sapling | 0 |
+| 7 | Tree | 32 | 10 | tree | 0 |
+| 8 | Blooming tree | 45 | 13 | tree | 2 |
+| 9 | Grand tree | 62 | 17 | tree | 4 |
+| 10 | Ancient tree | 85 | 23 | tree | 5 |
+
+Level 10 is the top. Past it points still count but nothing more is shown.
+
+**Weights (unchanged):** expense 1, settlement 2, friend 2, circle 2, receipt
+scan 1, circle squared 3.
+
+**Pacing targets are TESTS (tests/sprout-model.test.ts):** worst-case path of
+1-point actions reaches level 2 in <= 3 actions, level 3 in <= 8, level 4 in
+<= 15 (actual: 3 / 6 / 10). Typical month profile: ~5 expenses, 2 settlements,
+1 scan, 1 new friend or circle ≈ 12-14 points, so level 10 (85) ≈ 6 months
+and level 7 (32) ≈ 2.5 months. Past-the-top is "a few months of normal use".
+
+**Anti-farming (points have no cash value; friends only see them, so caps are
+generous and only stop a one-session sprint):**
+- Per type, per calendar day, counted by row `created_at` (not any
+  user-editable date, so backdating cannot dodge it), day boundary
+  **Asia/Kolkata (UTC+5:30)** on BOTH client and server:
+  expenses max 5 points/day, settlements 6 points/day (3 settlements),
+  scans 3 points/day, friends 6 points/day (3 friends).
+- Friends: only non-placeholder (linked) users count, distinct counterparties.
+- Circles: `group_members` has no timestamp, so use lifetime caps instead:
+  circles max 5 counted (10 pts) and a circle only counts with >= 2 members;
+  squared circles max 5 counted (15 pts) and need >= 2 members and >= 1
+  non-voided expense.
+- Best case in ONE day without real use: 5+6+3+6 = 20 points (level 6); the top
+  needs several days of real activity or real circles. Level 10 cannot be hit in
+  one sitting.
+- Accepted risk: logging then voiding after a server refresh keeps the points
+  (server never lowers, client never regresses). Harmless: no cash value, and
+  the caps bound the damage. Noted, not fixed.
+- Accepted risk: an account with long history gets its points retroactively, so
+  the owner's own account (active since June) may open at or near the top.
+  Owner should run T9 of `docs/sql/0074_paste_and_verify.sql` after applying.
+
+**Data shape (model input):** per-day, per-type counts so the caps are pure:
+```ts
+type DayCounts = Record<string /* YYYY-MM-DD in Asia/Kolkata */, number>;
+interface SproutCounts {
+  expensesByDay: DayCounts; settlementsByDay: DayCounts; scansByDay: DayCounts;
+  friendsByDay: DayCounts;           // distinct non-placeholder friends by friendship created_at day
+  circles: number;                   // circles with >= 2 members, before the lifetime cap
+  circlesSquared: number;            // before the lifetime cap
+}
+```
+Model exports: `pointsFrom(counts)`, `levelFor(points)` (1..10), `levelName(level)`,
+`artFor(level)` -> `{ stage: SproutStage; blossoms: number }`, `growthIn(points)`
+(0..1 progress through the current level, 1 at the top), `toNextLevel(points)`
+-> `{ next: number; nextName: string; remaining: number; fraction: number } | null`,
+`displayLevel(derived, cached)` (never regresses). `stageFor`/`blossomsFor` stay as
+thin wrappers over level so old callers keep working. `lastSeenLevel` and
+`cachedLevel` replace the stage-based prefs (Sprout has not shipped, so no
+migration of stored values).
+
+**Feedback per action (not only level-ups):** Home card shows a progress ring
+(`fraction` to the next level) and "N to go to <name>"; each point gain plays a
+small grow-tick on Sprout (`tickKey` prop changes -> quick scale pulse + leaf
+wiggle, reduced motion: none); a level-up plays `growing` (skippable). Mood never
+sad. No streaks, no decay.
+
+**Server (0074, committed but NOT applied, so edited in place; it is not a
+shipped migration):** store `level` next to `stage`; friends see level, stage,
+blossoms, points; recompute with the same caps, `created_at` days in
+Asia/Kolkata, linked friends only, circles with >= 2 members.
+
 ## 3. State / event model
 
 ```ts

@@ -1,8 +1,6 @@
 /** Sprout local preferences (AsyncStorage). Every call fails soft. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SproutStage } from './model';
 
-const STAGES: string[] = ['seed', 'sprout', 'sapling', 'tree'];
 const k = (name: string, userId: string) => `@kinlo/sprout/${name}/${userId}`;
 
 async function getItem(key: string): Promise<string | null> {
@@ -20,8 +18,11 @@ async function setItem(key: string, value: string): Promise<void> {
   }
 }
 
-function asStage(v: string | null): SproutStage | null {
-  return v && STAGES.includes(v) ? (v as SproutStage) : null;
+/** Valid level = integer 1..10, else null. */
+function asLevel(v: string | null): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : null;
 }
 
 /** Default false = Sprout is shown. Device-wide, not per user. */
@@ -32,19 +33,19 @@ export async function setHiddenPref(hidden: boolean): Promise<void> {
   await setItem('@kinlo/sprout/hidden', hidden ? '1' : '0');
 }
 
-export async function getLastSeenStage(userId: string): Promise<SproutStage | null> {
-  return asStage(await getItem(k('lastSeenStage', userId)));
+export async function getLastSeenLevel(userId: string): Promise<number | null> {
+  return asLevel(await getItem(k('lastSeenLevel', userId)));
 }
-export async function setLastSeenStage(userId: string, stage: SproutStage): Promise<void> {
-  await setItem(k('lastSeenStage', userId), stage);
+export async function setLastSeenLevel(userId: string, level: number): Promise<void> {
+  await setItem(k('lastSeenLevel', userId), String(level));
 }
 
-/** Highest stage ever shown; feeds the no-regress rule. */
-export async function getCachedStage(userId: string): Promise<SproutStage | null> {
-  return asStage(await getItem(k('cachedStage', userId)));
+/** Highest level ever shown; feeds the no-regress rule. */
+export async function getCachedLevel(userId: string): Promise<number | null> {
+  return asLevel(await getItem(k('cachedLevel', userId)));
 }
-export async function setCachedStage(userId: string, stage: SproutStage): Promise<void> {
-  await setItem(k('cachedStage', userId), stage);
+export async function setCachedLevel(userId: string, level: number): Promise<void> {
+  await setItem(k('cachedLevel', userId), String(level));
 }
 
 export async function getLastOpenAt(userId: string): Promise<number | null> {
