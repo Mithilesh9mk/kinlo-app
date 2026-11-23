@@ -26,7 +26,7 @@
  *   - the legal entity name and registered address that operates Kinlo
  *   - the named Grievance Officer (DPDP) and, if one is required, the EU/UK
  *     representative and a data-protection contact
- *   - a monitored GRIEVANCE_EMAIL
+ *   - a working STUDIO_EMAIL (until it exists the text says "Studio email coming soon.")
  *   - the governing-law / courts choice in the Terms (currently India)
  *   - the real Gold price and billing provider once payments go live
  * Until they are known, the text uses only "Kinlo", "we" and the email
@@ -77,9 +77,13 @@ export function webLegalLinks(): { label: string; url: string }[] {
   return links;
 }
 
-/** Contact for privacy, rights, deletion and complaints. Mithilesh Kale is the
- *  sole operator and handles these by email. */
-export const GRIEVANCE_EMAIL = 'privacy@kinlo.app';
+/** The studio email for privacy, rights, deletion and complaints.
+ *  Planned: hello@tummytimestudio.com. It does not exist yet, so this stays
+ *  empty and every page says "Studio email coming soon." The mailbox must
+ *  exist before Play submission. When it does, set it here and regenerate the
+ *  website: that is the only edit. */
+export const STUDIO_EMAIL = '';
+export const CONTACT_LINE = STUDIO_EMAIL || 'Studio email coming soon.';
 
 export interface LegalSection {
   heading: string;
@@ -198,7 +202,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Where your data is stored',
       body: [
-        'Your data is stored with our hosting provider, Supabase. Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.',
+        'Your data is stored with our hosting provider, Supabase. Our database runs in Supabase’s Seoul, South Korea region. Our service providers may process data on servers outside your country. Where the law requires it, we rely on appropriate safeguards for such transfers.',
       ],
     },
     {
@@ -215,7 +219,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       body: [
         'Delete your account in the app from Profile → Data & Export Compliance. The app shows what will be erased and what will remain before you confirm. Outstanding balances do not block deletion.',
         'Deletion takes effect when you confirm. If it fails part-way, the app tells you.',
-        `You can also ask us to delete your data by writing to ${GRIEVANCE_EMAIL}. We reply to privacy, rights and deletion requests within 30 days.`,
+        `You can also ask us to delete your data by email. ${CONTACT_LINE} We reply to privacy, rights and deletion requests within 30 days.`,
       ],
     },
     {
@@ -223,7 +227,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       body: [
         'You can ask for a copy of your data, ask us to correct it, ask us to delete your account and data, and withdraw consent for optional features. Use the in-app options or write to us.',
         'The law where you live may give you more rights, for example under India’s Digital Personal Data Protection Act, 2023, or the GDPR in the EU and UK. We will respect the rights the law gives you.',
-        `To exercise a right, email ${GRIEVANCE_EMAIL}. We may need to confirm it is you first. We reply to privacy, rights and deletion requests within 30 days.`,
+        `To exercise a right, write to the studio email in “Contact and complaints” below. We may need to confirm it is you first. We reply to privacy, rights and deletion requests within 30 days. If we have not resolved your complaint, you can complain to the Data Protection Board of India.`,
       ],
     },
     {
@@ -242,7 +246,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: 'Contact and complaints',
       body: [
-        `Mithilesh Kale, the sole operator, handles questions, requests and complaints. Contact is by email: ${GRIEVANCE_EMAIL}. We do not publish a postal address.`,
+        `Mithilesh Kale, the sole operator, handles questions, requests and complaints. Contact is by email. ${CONTACT_LINE} We do not publish a postal address.`,
       ],
     },
     {
@@ -348,8 +352,10 @@ export const TERMS_OF_SERVICE: LegalDocument = {
       ],
     },
     {
-      heading: 'Contact',
-      body: [`Questions about these terms: ${GRIEVANCE_EMAIL}`],
+      heading: 'Contact and complaints',
+      body: [
+        `Mithilesh Kale, the sole operator, handles questions, requests and complaints. Contact is by email. ${CONTACT_LINE} We do not publish a postal address.`,
+      ],
     },
   ],
 };

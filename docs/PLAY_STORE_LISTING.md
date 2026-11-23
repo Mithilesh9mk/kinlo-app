@@ -41,7 +41,7 @@ First release of Kinlo. Split bills with friends and circles, scan payment scree
 | Account deletion URL | `PUBLIC_DELETION_URL` (https://kinlo.tummytimestudio.com/delete-account once live) |
 | Terms URL (Apple, optional on Play) | `PUBLIC_TERMS_URL` |
 | Website and Apple support URL | `PUBLIC_WEBSITE_URL` |
-| Contact email on the listing | `GRIEVANCE_EMAIL` (privacy@kinlo.app for now) |
+| Contact email on the listing | `STUDIO_EMAIL` (planned hello@tummytimestudio.com; not live, so it must exist before Play submission) |
 
 ## Keywords and tags
 - Apple keywords (100 characters, comma separated, if iOS ships): split bills, expenses, shared, friends, roommates, UPI, receipt, budget, reminders

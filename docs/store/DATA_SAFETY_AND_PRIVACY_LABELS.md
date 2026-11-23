@@ -67,7 +67,7 @@ Apple also needs: Privacy Policy URL (`PUBLIC_PRIVACY_URL`), and a Support URL.
 
 | | In app | On the web |
 | :--- | :--- | :--- |
-| Path | Profile, Data & Export Compliance, Delete Account & Data. Type DELETE, confirm. Calls the `delete-account` edge function. | `PUBLIC_DELETION_URL` page (website `/delete-account`). It explains the steps and the email route: write to `GRIEVANCE_EMAIL`, reply within 30 days. |
+| Path | Profile, Data & Export Compliance, Delete Account & Data. Type DELETE, confirm. Calls the `delete-account` edge function. | `PUBLIC_DELETION_URL` page (website `/delete-account`). It explains the steps and the email route: write to the studio email (`STUDIO_EMAIL`, not live yet, so the page says "Studio email coming soon."), reply within 30 days. |
 | Without signing in | n/a | The page needs no sign-in. This is what Play asks for. |
 
 Plan for a true web route (optional, later): the web page today is instructions plus an email route. Play accepts that as the "web resource to request deletion". If Apple review asks for more, add a small authenticated "delete" button page; that needs a backend change and is not planned. [Question 5.]

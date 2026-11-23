@@ -13,7 +13,7 @@ All in `lib/legal.ts`:
 | `PUBLIC_WEBSITE_URL` | `https://kinlo.tummytimestudio.com` | Change only if the final address differs |
 | `WEBSITE_LIVE` | `false` | Set to `true` once the site answers. This turns on the web links in the app's legal screen, and the website's `sitemap.xml` and `robots.txt` |
 | `PARENT_SITE_URL` | `''` (empty) | Set to `https://tummytimestudio.com` once the parent's `privacy.html` and `terms.html` are live. This adds the parent links to the website footer and the app's legal screen. Empty means no links, so no dead links |
-| `GRIEVANCE_EMAIL` | `privacy@kinlo.app` | Change only if the contact mailbox changes. The studio email stays off the pages until the owner says the mailbox exists |
+| `STUDIO_EMAIL` | `''` (empty) | Set to `hello@tummytimestudio.com` only when that mailbox exists. Until then every page says "Studio email coming soon." (`CONTACT_LINE`). It **must exist before Play submission**, because the privacy, rights and deletion routes are by email |
 
 Derived automatically: `PUBLIC_PRIVACY_URL`, `PUBLIC_TERMS_URL`, `PUBLIC_DELETION_URL`, `PARENT_PRIVACY_URL`, `PARENT_TERMS_URL`.
 
@@ -28,14 +28,14 @@ Derived automatically: `PUBLIC_PRIVACY_URL`, `PUBLIC_TERMS_URL`, `PUBLIC_DELETIO
    `node website/tools/generate-legal.mjs`
    This rewrites privacy and terms from `lib/legal.ts`, and on every page the footer, `canonical` and `og:url`. It also writes `sitemap.xml` and `robots.txt` because `WEBSITE_LIVE` is true. Check `git diff` before deploying.
 7. **Redeploy the site** (step 2 command).
-8. **Contact mailbox**: `privacy@kinlo.app` needs the `kinlo.app` domain and a mailbox. If the owner does not own it, change `GRIEVANCE_EMAIL` to a working address and run step 6 again.
+8. **Studio mailbox**: create `hello@tummytimestudio.com` (Cloudflare Email Routing can forward it to the owner's inbox). Test that it receives mail. Then set `STUDIO_EMAIL` in `lib/legal.ts` and run step 6 again. Do not submit to Play before this: the deletion and privacy routes tell users to write there.
 9. **Ship the app change** (it holds the URLs in its bundle). The change is JavaScript only, so `eas update --channel production` reaches installed builds; a new store build also carries it. Run `npx tsc --noEmit` first.
 10. **Deep links:** none to configure. The app uses the `kinlo://` scheme only, so no `assetlinks.json` is needed. If https invite links are added later, see `docs/store/ANDROID_RELEASE_CHECKLIST.md`.
 11. **Play Console** (App content and Store listing), enter:
     - Privacy policy: `https://kinlo.tummytimestudio.com/privacy`
     - Account deletion URL (Data safety): `https://kinlo.tummytimestudio.com/delete-account`
     - Website and support: `https://kinlo.tummytimestudio.com`
-    - Contact email: the value of `GRIEVANCE_EMAIL`
+    - Contact email: `hello@tummytimestudio.com` (the value of `STUDIO_EMAIL`)
     - Data safety, rating, audience: from `docs/store/`
 12. **App Store Connect** (only if iOS ships): same privacy and support URLs, and the App Privacy answers in `docs/store/DATA_SAFETY_AND_PRIVACY_LABELS.md`.
 13. **README and website wording:** when the app is on Google Play, change "not on the Play Store" in `README.md`, the website pages and `lib/legal.ts` ("What Kinlo is"), then regenerate.
@@ -52,7 +52,7 @@ It checks that `/`, `/privacy`, `/terms`, `/delete-account` return 200, that `ca
 
 ## Where to read the Supabase region
 
-For the owner to paste back (the repo does not record it): open the Supabase dashboard, choose the Kinlo project, then **Project Settings, General**. The region is shown there (for example "South Asia (Mumbai)"). Send the exact text. Then add one sentence to "Where your data is stored" in `lib/legal.ts`, and regenerate (step 6).
+For the owner to paste back (the repo does not record it): open the Supabase dashboard, choose the Kinlo project, then **Project Settings, General**. The region is shown there (for example "South Asia (Mumbai)"). Send the exact text. The text already says Seoul, South Korea (read on 23 November 2026 from the Supabase CLI's linked-project cache, pooler host `aws-1-ap-northeast-2`). If the dashboard shows a different region, edit "Where your data is stored" in `lib/legal.ts` and regenerate (step 6).
 
 ## Post-deploy checks
 

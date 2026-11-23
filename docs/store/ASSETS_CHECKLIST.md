@@ -12,7 +12,7 @@ What exists in the repo on 23 November 2026, and what the stores need. Sizes are
 | Short and full description | Play: 80 and 4000 characters | `docs/PLAY_STORE_LISTING.md` | Written |
 | Privacy policy URL | Required | `PUBLIC_PRIVACY_URL` in `lib/legal.ts` | Needs domain |
 | Account deletion URL | Play: required | `PUBLIC_DELETION_URL` | Needs domain |
-| Support URL | Apple: required. Play: contact email or site | Use `PUBLIC_WEBSITE_URL` (home page) with `GRIEVANCE_EMAIL` | Needs domain |
+| Support URL | Apple: required. Play: contact email or site | Use `PUBLIC_WEBSITE_URL` (home page) with `STUDIO_EMAIL` (mailbox must exist first) | Needs domain |
 | Notification icon | n/a | `assets/notification-icon.png` | Done |
 | Splash | n/a | `assets/splash-icon.png` | Done |
 
