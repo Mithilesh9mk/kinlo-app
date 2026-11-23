@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
-import { LEGAL_DOCS, LEGAL_LAST_UPDATED, LEGAL_VERSION } from '../../lib/legal';
+import { LEGAL_DOCS, LEGAL_LAST_UPDATED, LEGAL_VERSION, webLegalLinks } from '../../lib/legal';
 
 /**
  * Renders the privacy policy or terms from lib/legal.ts.
@@ -69,6 +69,18 @@ export default function LegalScreen() {
                 </Text>
               ))}
             </View>
+          ))}
+
+          {/* Web copies. Empty until WEBSITE_LIVE is true in lib/legal.ts. */}
+          {webLegalLinks().map((link) => (
+            <Text
+              key={link.url}
+              className="text-sm font-semibold text-primary underline mb-3"
+              onPress={() => Linking.openURL(link.url)}
+              suppressHighlighting
+            >
+              {link.label}
+            </Text>
           ))}
         </ScrollView>
       )}
