@@ -86,10 +86,10 @@ export const STUDIO_EMAIL = '';
 export const CONTACT_LINE = STUDIO_EMAIL || 'Studio email coming soon.';
 
 /** Supabase database region, stated in the privacy text only when set, so no
- *  unverified region is published. Candidate: Seoul, South Korea (ap-northeast-2),
- *  from supabase/.temp/pooler-url. Confirm in the Supabase dashboard (Project
- *  Settings, General) before setting, e.g. 'Seoul, South Korea'. */
-export const DATABASE_REGION = '';
+ *  unverified region is published. Seoul, South Korea (ap-northeast-2): matches
+ *  supabase/.temp/pooler-url, and the owner gave ap-northeast-2 on 23 November
+ *  2026 (relayed by the TTS session, which was unsure which app he meant). */
+export const DATABASE_REGION = 'Seoul, South Korea';
 
 export interface LegalSection {
   heading: string;
