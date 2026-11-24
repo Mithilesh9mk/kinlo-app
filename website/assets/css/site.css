@@ -4,8 +4,6 @@
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: S, the split-and-ledger idea is shared by every bill splitter; moved the proof into exact paise arithmetic and honest limits (a staged demo is labelled, a missing notification is stated) */
 /* Hallmark · waive 84 · the two staged demos, the scroll-stepped ledger and the split-types demo show a server-side AI step, a push notification and app behaviour that a static page cannot call · a mock is the only honest way to show them, and each is labelled a demo or an example with numbers set by us */
 /* Hallmark · dismissed 58 · the privacy and terms pages are legal documents whose words are the disclosures, so cutting them to 80 per screen would remove facts a reader is owed; the landing page holds the budget */
-@import url("./tokens.css");
-@import url("./base.css");
 
 /* Why these choices (anti-default notes, one line each).
    Palette: the app's own greens, so the site and the app read as one product; the paper is white mixed with 5 to 12 percent of #166534, not cream.

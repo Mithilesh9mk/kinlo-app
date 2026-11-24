@@ -83,6 +83,8 @@ function page(doc, file, title, desc, h1) {
 <title>${title}</title>
 <meta name="description" content="${desc} Version ${L.LEGAL_VERSION}, effective ${L.LEGAL_EFFECTIVE_DATE}.">
 <link rel="icon" href="../assets/img/favicon.png" type="image/png">
+<link rel="stylesheet" href="../assets/css/tokens.css">
+<link rel="stylesheet" href="../assets/css/base.css">
 <link rel="stylesheet" href="../assets/css/site.css">
 <script src="../assets/js/boot.js"></script>
 </head>
