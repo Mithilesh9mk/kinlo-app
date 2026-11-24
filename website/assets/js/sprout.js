@@ -4,11 +4,19 @@
   try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
   var els = document.querySelectorAll('[data-sprout]');
   if (!els.length) return;
+  // Warm every pose so the first swap never flashes an undecoded image, and pause the breathing while off-screen.
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sprout] [data-pose]'), function (img) { var im = new Image(); im.src = img.currentSrc || img.src; });
+  if ('IntersectionObserver' in window) {
+    var vis = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { en.target.classList.toggle('is-paused', !en.isIntersecting); });
+    });
+    Array.prototype.forEach.call(els, function (el) { vis.observe(el); });
+  }
   Array.prototype.forEach.call(els, function (el) {
     var poses = {};
     Array.prototype.forEach.call(el.querySelectorAll('[data-pose]'), function (img) { poses[img.getAttribute('data-pose')] = img; });
     var say = el.querySelector('.sprout__say');
-    var words = { wave: 'Hi! I’m Sprout.', curious: 'Ooh, let me see…', celebrate: 'Yay!', proud: 'Good choice.' };
+    var words = { wave: 'Hi! I’m Sprout.', curious: 'Ooh, let me see…', celebrate: 'Yay!', proud: 'See you there!' };
     var base = 'idle', cur = 'idle', timer = 0, hopTimer = 0;
     function set(name) {
       if (!poses[name] || name === cur) return;
@@ -30,14 +38,14 @@
       hopTimer = setTimeout(function () { el.classList.remove('is-hop'); }, 700);
     }
     function cheer() { hop(); pulse('celebrate', 1400); }
-    el.addEventListener('pointerenter', cheer);
+    el.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') cheer(); });
     el.addEventListener('click', cheer);
 
     var kind = el.getAttribute('data-sprout');
     if (kind === 'hero') {
       // Says hello once after the hero has assembled, then gets curious while someone types in the calculator.
       var idleTimer = 0;
-      setTimeout(function () { if (cur === 'idle') pulse('wave', 2200); }, 2200);
+      setTimeout(function () { if (cur === 'idle') pulse('wave', 2200); }, 2600);
       var form = document.getElementById('calc-form');
       if (form) {
         var look = function () { clearTimeout(timer); clearTimeout(idleTimer); set('curious'); };

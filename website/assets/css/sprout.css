@@ -26,3 +26,4 @@
 .sprout__say.is-on { opacity: 1; transform: none; }
 .sprout { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .sprout__say { display: none; } .sprout { cursor: default; } }
+.sprout.is-paused .sprout__body { animation-play-state: paused; }
