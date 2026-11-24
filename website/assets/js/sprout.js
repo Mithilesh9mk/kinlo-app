@@ -7,12 +7,15 @@
   Array.prototype.forEach.call(els, function (el) {
     var poses = {};
     Array.prototype.forEach.call(el.querySelectorAll('[data-pose]'), function (img) { poses[img.getAttribute('data-pose')] = img; });
+    var say = el.querySelector('.sprout__say');
+    var words = { wave: 'Hi! I’m Sprout.', curious: 'Ooh, let me see…', celebrate: 'Yay!', proud: 'Good choice.' };
     var base = 'idle', cur = 'idle', timer = 0, hopTimer = 0;
     function set(name) {
       if (!poses[name] || name === cur) return;
       poses[cur].classList.remove('is-on');
       poses[name].classList.add('is-on');
       cur = name;
+      if (say) { if (words[name]) { say.textContent = words[name]; say.classList.add('is-on'); } else say.classList.remove('is-on'); }
     }
     function pulse(name, ms) {
       set(name);
