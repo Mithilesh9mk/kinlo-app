@@ -16,6 +16,40 @@ export const calculateEqualSplit = (totalAmount: number, participantsCount: numb
   return shares.map(cents => cents / 100);
 };
 
+/**
+ * Largest-remainder allocation in whole numbers.
+ *
+ * Gives each weight its floor share of `totalCents` out of `denominator`, then
+ * hands the leftover paise out one at a time, largest remainder first, ties
+ * broken by participant order (§7: deterministic).
+ *
+ * The earlier version worked the ideal share out in floating point and sorted
+ * on the fractional part. When two remainders were exactly equal, float noise
+ * could put the later participant first, so the written tie rule (lower index
+ * wins) was not always what happened: 1072 paise split 27/52/21 gave
+ * [289, 558, 225] where the rule says [290, 557, 225]. Remainders here are
+ * integers (weight * total) % denominator, so a tie is a true tie.
+ *
+ * Every product stays under 2^53 for any amount up to about ₹1 crore and any
+ * weight up to 10^6.
+ */
+const allocateByRatio = (totalCents: number, weights: number[], denominator: number): number[] => {
+  const remainders = weights.map(weight => (weight * totalCents) % denominator);
+  // (product - remainder) divides exactly, so no floating-point rounding can nudge the floor.
+  const shares = weights.map((weight, i) => (weight * totalCents - remainders[i]) / denominator);
+  const leftover = totalCents - shares.reduce((acc, cents) => acc + cents, 0);
+
+  const order = weights
+    .map((_, index) => index)
+    .sort((a, b) => (remainders[b] - remainders[a]) || (a - b));
+
+  for (let i = 0; i < leftover && order.length > 0; i++) {
+    shares[order[i % order.length]] += 1;
+  }
+
+  return shares;
+};
+
 export const calculatePercentSplit = (totalAmount: number, percentages: number[]): number[] => {
   const sum = percentages.reduce((acc, curr) => acc + (curr || 0), 0);
   if (Math.abs(sum - 100) > 0.01) {
@@ -38,19 +72,14 @@ export const calculatePercentSplit = (totalAmount: number, percentages: number[]
   // Instead: floor every share, then hand out the leftover paise one at a time
   // to whoever has the largest fractional part. Nobody can end up more than a
   // single paisa from their exact entitlement.
-  const ideal = percentages.map(percent => ((percent || 0) / 100) * totalCents);
-  const shares = ideal.map(value => Math.floor(value));
-  const leftover = totalCents - shares.reduce((acc, cents) => acc + cents, 0);
-
-  // Ties broken by participant order, so the same input always produces the
-  // same output — §7 requires the allocation to be deterministic.
-  const byRemainder = ideal
-    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
-    .sort((a, b) => (b.fraction - a.fraction) || (a.index - b.index));
-
-  for (let i = 0; i < leftover && byRemainder.length > 0; i++) {
-    shares[byRemainder[i % byRemainder.length].index] += 1;
-  }
+  // Whole-number maths (see allocateByRatio). A percentage is held in basis
+  // points (hundredths of a percent), so 33.33% is 3333 and the denominator is
+  // always 10000.
+  const shares = allocateByRatio(
+    totalCents,
+    percentages.map(percent => Math.round((percent || 0) * 100)),
+    10000,
+  );
 
   return shares.map(cents => cents / 100);
 };
@@ -75,17 +104,9 @@ export const calculateSharesSplit = (totalAmount: number, shareUnits: number[]):
   }
 
   const totalCents = Math.round(totalAmount * 100);
-  const ideal = shareUnits.map(units => ((units || 0) / totalUnits) * totalCents);
-  const shares = ideal.map(value => Math.floor(value));
-  const leftover = totalCents - shares.reduce((acc, cents) => acc + cents, 0);
-
-  const byRemainder = ideal
-    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
-    .sort((a, b) => (b.fraction - a.fraction) || (a.index - b.index));
-
-  for (let i = 0; i < leftover && byRemainder.length > 0; i++) {
-    shares[byRemainder[i % byRemainder.length].index] += 1;
-  }
+  // Units are held in thousandths so a fractional share such as 1.5 stays exact.
+  const weights = shareUnits.map(units => Math.round((units || 0) * 1000));
+  const shares = allocateByRatio(totalCents, weights, weights.reduce((acc, w) => acc + w, 0));
 
   return shares.map(cents => cents / 100);
 };
