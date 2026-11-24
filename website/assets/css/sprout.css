@@ -1,0 +1,22 @@
+/* Sprout, the Kinlo app character. Poses are exported from the app's own SproutFigure (sapling stage); nothing is redrawn here.
+   Fixed width and height on every image and a fixed-size box, so nothing moves the page. Decorative only (aria-hidden). */
+.sprout { display: block; position: relative; flex: none; --s-ease: cubic-bezier(0.45, 0, 0.55, 1); }
+.sprout--hero { width: 112px; height: 98px; --i: 3; margin-top: var(--space-xs); }
+.sprout--band { width: 200px; height: 176px; margin-bottom: var(--space-xs); }
+.sprout__body { display: block; position: absolute; inset: 0; transform-origin: 50% 100%; }
+.sprout__pose { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; opacity: 0; transition: opacity 260ms var(--s-ease); user-select: none; -webkit-user-drag: none; }
+.sprout__pose.is-on { opacity: 1; }
+/* the same slow breath as the app: scale 1 to 1.03 and back over 3 s, only once the page has shown the hero */
+.js .sprout__body { animation: sprout-breathe 3000ms var(--s-ease) infinite; }
+.js .sprout.is-hop .sprout__body { animation: sprout-hop 600ms var(--s-ease) 1, sprout-breathe 3000ms var(--s-ease) 600ms infinite; }
+@keyframes sprout-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+@keyframes sprout-hop { 0% { transform: translateY(0) scale(1); } 45% { transform: translateY(-7%) scale(1.04, 0.98); } 100% { transform: translateY(0) scale(1); } }
+/* keep it small and out of the way on phones, below the buttons */
+@media (max-width: 40rem) {
+  .sprout--hero { width: 88px; height: 77px; }
+  .sprout--band { width: 152px; height: 133px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js .sprout__body, .js .sprout.is-hop .sprout__body { animation: none; }
+  .sprout__pose { transition: none; }
+}
